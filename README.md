@@ -1,4 +1,4 @@
-# ESP32_Octo_01 — RC522 を8台（4×2）使った、コード進行の再生プロトタイプ
+# RC522 を8台（4×2）使った、コード進行の再生プロトタイプ
 
 > **このフォルダは、コード進行ゲームの作業用の複製です（2026-11-14〜）。** ゲーム（ブラウザで動く 3D）は `game/` にあります。動かし方は [game/README.md](game/README.md)（`sh tools/game.sh`）、23個の技の仕様は [docs/tricks_spec.md](docs/tricks_spec.md)、名前のない進行への加点・減点（ジャッジ）は [docs/judge_report.md](docs/judge_report.md)、流れるメロディにコードをつけるステージ（メロディとの相性の採点。2026-11-17）は [docs/melody_mode.md](docs/melody_mode.md)、名前のついた進行の一覧は [docs/progression_catalog.md](docs/progression_catalog.md)、フローチャートは [docs/game_flow_screens.png](docs/game_flow_screens.png)。
 > 以下は、複製元（ESP32 の駒認識システム）の説明で、ゲームの入力装置としても、そのまま使います。
