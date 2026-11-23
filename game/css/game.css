@@ -599,3 +599,9 @@ body.edit-pick #tray .pc { outline: 1px dashed var(--accent); outline-offset: 1p
 
 /* 技のスタンプも、押せる（技の詳細）*/
 .stamp { pointer-events: auto; cursor: pointer; }
+
+/* 公開ページ（https）: ブリッジがないので、実機のボタンは出さない */
+.web-only #btn-device, .web-only #btn-device-hud { display: none; }
+/* 起動の画面の、音・部品のクレジット（CC BY 3.0 の表記） */
+#splash .credits { margin: 0; font-size: 0.72rem; line-height: 1.6; color: var(--faint); max-width: 44rem; }
+#splash .credits a { color: var(--dim); margin-left: 0.6em; }

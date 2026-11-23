@@ -733,6 +733,7 @@ async function main() {
     },
   });
   app.device.onLibrary = (ev) => app.library.notify(ev);
+  if (app.device.offline) document.body.classList.add('web-only');          // 公開ページ（https）: 実機のボタンは隠す（画面の盤だけ）
   $('#btn-device').addEventListener('click', () => { if (app.device.needsBridge) { app.device.connectBridge(); hud.toast('ブリッジを ESP32 につないでいます…'); } else app.device.toggle(); });
   $('#btn-device-hud').addEventListener('click', () => { if (app.device.needsBridge) { app.device.connectBridge(); hud.toast('ブリッジを ESP32 につないでいます…'); } else app.device.toggle(); });
 

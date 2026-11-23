@@ -7,6 +7,8 @@
 - **常駐ブリッジへの反映（`sh tools/chordtoy_agent.sh update`）は、必ず新しいフォルダで実行する**（旧フォルダで実行すると、古い内容に戻る）。
 - VS Code は、**新しいフォルダだけ**のワークスペース（`Chord-Progression-Game.code-workspace`）で開く。旧フォルダも同時に開くと、PlatformIO の Serial Monitor・Upload が、旧フォルダのものになる（複数フォルダのとき、PlatformIO は「アクティブなプロジェクト」を1つ選んで使うため）。
 - 新しいフォルダでの確認（2026-11-23）: `pio run` が成功（RAM 13.3%・Flash 13.1%）。`tools/.venv` の Python（pyserial 3.5）が動く。旧フォルダとの差は、`.gitignore`・ワークスペースのファイル・IDE の自動生成ファイルだけ。
+- **GitHub Pages で公開する（2026-11-23 準備。公開はまだ。ユーザーの操作が要る）**: `.github/workflows/pages.yml` が、`main` へのプッシュで `game/`（`test/`・`dev.html` を除く）を公開する。初回だけ、GitHub の Settings > Pages > Source を「GitHub Actions」にする。公開 URL は `https://chord-progression-game.github.io/Chord-Progression-Game/` の形になる見込み（Settings > Pages に出る）。**公開ページ（https）には、ブリッジ（`/api/`）がない**: `net/device.js` の `bridgeAvailable()`（`location.protocol === 'http:'` のときだけ true）で、実機・ライブラリの問い合わせをしない・実機のボタンを隠す（`body.web-only`）。公開ページでは、自作コード・プリセットなど、ブラウザ内の保存（localStorage）だけが使える。起動の画面に、音・部品のクレジット（Salamander = CC BY 3.0 の作者表記）を出した（`#splash .credits`）。**https・サブパスの下で、ローカルに再現して確認ずみ**（自己署名の証明書 + `--ignore-certificate-errors`。`/api/` への問い合わせ 0 件・音源が相対パスで読める・駒が置ける）。実際の Pages 上での動作は、未確認。
+- `http://127.0.0.1:8800/` は、`sh tools/game.sh` を動かしている間だけ開く（動いていなければ「接続が拒否されました」）。いつでも開けるのは、常駐ブリッジの `http://127.0.0.1:8765/game/`（`sh tools/chordtoy_agent.sh update` で内容を更新）。
 - Claude Code のチャット履歴と記憶（memory）は、フォルダのパスごとに分かれる。旧フォルダの分を、新しいパスの分へコピーした（`~/.claude/projects/-Users-woodbell-Documents-GitHub-Chord-Progression-Game/`）。
 
 **（以下は、引っ越し前の記述。）このフォルダ `Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)` は、`ESP32_Octo_01` の複製です（2026-11-14 に、内容が同じこと・ビルドとテストが通ることを確認）。今後の編集は、このフォルダだけで行う。**

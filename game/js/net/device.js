@@ -2,6 +2,10 @@
 //   ブリッジ（tools/midi_bridge.py）が配る /api/events（つなぎっぱなしで届く通知）の `state` を受けて、盤の駒を、ゲームに渡す。
 //   ゲームのページを tools/game_server.py で開くと、/api/ がブリッジにつながる。そうでなければ、「未接続」のまま（画面の仮の盤で遊べる）。
 //   ※ 実機の盤を使うときは、実機側の演奏（自動再生）は止め、音はゲーム側で鳴らす（二重に鳴らさないため）。
+// ブリッジ（/api/）が、あり得るページか。http で配られたとき（Mac のサーバー・常駐ブリッジ・同じ Wi-Fi）だけ。
+// GitHub Pages など https の公開ページには、ブリッジがない（実機の盤・ライブラリは使えない）ので、/api/ に問い合わせない
+export const bridgeAvailable = () => typeof location === 'undefined' || location.protocol === 'http:';
+
 export class DeviceLink {
   constructor({ table, onBoard, onStatus }) {
     this.table = table;
@@ -15,13 +19,14 @@ export class DeviceLink {
     this.lastKey = '';
     this.lastSeq = -1;         // 最後に使った「盤の状態」の順番号（ブリッジの seq）。これより古い状態は、使わない（追い越された返事で、盤を前の状態に戻さない）
     this.sid = undefined;      // ブリッジを始めた時刻。変わったら、順番号を数え直す
-    this.emptyHoldMs = 6000;   // 駒が2つ以上あった盤が、一度に、すべて空になったとき、そのまま空にするまで待つ時間（ESP32 の再起動・読み直しのあいだは、いまの盤を保つ）
+    this.offline = !bridgeAvailable();   // 公開ページ（https）: ブリッジなし。画面の盤だけ
+    this.emptyHoldMs = 6000;  // 駒が2つ以上あった盤が、一度に、すべて空になったとき、そのまま空にするまで待つ時間（ESP32 の再起動・読み直しのあいだは、いまの盤を保つ）
     this._hold = null;
     this._status();
   }
 
   start() {
-    if (this._started || typeof EventSource === 'undefined') return;
+    if (this._started || this.offline || typeof EventSource === 'undefined') return;
     this._started = true;
     this._open();
     this._timer = setInterval(() => this._pollState(), 1500);

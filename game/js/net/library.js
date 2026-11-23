@@ -1,6 +1,8 @@
 // ゲーム用のライブラリ（リズム・コード編集の画面で、名前をつけて作った、ドラム・バッキング・固有進行）を、ブリッジから受け取る。
 //   ・GET /api/library で、全部を読む。変わったら、ブリッジが SSE（/api/events）で `library` の知らせを流す → すぐ読み直す（リアルタイム）。
 //   ・知らせが届かなくても、数秒ごとに読み直して、追いつく。ブリッジにつながっていなければ、何も起きない（標準の内容で遊べる）。
+import { bridgeAvailable } from './device.js';
+
 export class LibraryLink {
   constructor({ onChange }) {
     this.onChange = onChange;
@@ -11,6 +13,7 @@ export class LibraryLink {
   }
 
   start() {
+    if (!bridgeAvailable()) return;          // 公開ページ（https）には、ブリッジがない
     this.reload();
     if (!this._timer) this._timer = setInterval(() => this.reload(), 6000);
   }
