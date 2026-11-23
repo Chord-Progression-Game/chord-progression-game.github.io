@@ -3,3 +3,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+# Mac の仮想環境（tools/setup_bridge.sh で、各自の Mac に作る。場所が変わると動かなくなるので、Git に入れない）
+tools/.venv
+__pycache__
+game/test/_generated
+.DS_Store
+# テストの出力を、誤ってファイルにしたもの
+/python3

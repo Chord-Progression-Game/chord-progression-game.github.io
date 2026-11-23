@@ -6,7 +6,7 @@
 ## 動かし方
 
 ```sh
-cd "/Users/woodbell/Documents/PlatformIO/Projects/Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)"
+cd "/Users/woodbell/Documents/GitHub/Chord-Progression-Game"
 sh tools/game.sh              # サーバーを起動して、Chrome で開く（http://127.0.0.1:8800/）
 sh tools/game.sh kiosk        # 全画面（展示用）
 sh tools/game.sh 8801         # ポートを変える

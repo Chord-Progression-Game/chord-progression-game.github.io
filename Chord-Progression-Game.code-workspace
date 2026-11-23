@@ -1,0 +1,7 @@
+{
+  // このフォルダだけを開くための、VSCode のワークスペース。
+  // 複数のフォルダ（旧フォルダ・ESP32_FirstTest など）を同時に開いていると、PlatformIO の Upload / Monitor が、別のフォルダのものを使ってしまう。
+  // （ファイル > ファイルからワークスペースを開く… で、これを選ぶ）
+  "folders": [{ "path": ".", "name": "Chord-Progression-Game" }],
+  "settings": {}
+}

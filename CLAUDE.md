@@ -1,6 +1,15 @@
 # Chord-Progression-Game01 引き継ぎメモ（コード進行ゲーム。物理デバイスは RC522 8台）
 
-**このフォルダ `Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)` は、`ESP32_Octo_01` の複製です（2026-11-14 に、内容が同じこと・ビルドとテストが通ることを確認）。今後の編集は、このフォルダだけで行う。**
+## ★ 作業フォルダの引っ越し（2026-11-23 夕）— 最初に読む
+- **これ以降の作業フォルダは、`/Users/woodbell/Documents/GitHub/Chord-Progression-Game`（GitHub のクローン）だけ。** 以前の `Documents/PlatformIO/Projects/Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)`（旧フォルダ）は、**バックアップ**。編集しない。ここから先の章に出る「このフォルダ」「`Chord-Progression-Game01(...)`」は、旧フォルダのことがある（記録は、引っ越し前のまま）。
+- リモート: `https://github.com/Chord-Progression-Game/Chord-Progression-Game`（**公開リポジトリ**。2026-11-23 に API で確認）。ブランチは `main`。**コミット・プッシュは、ユーザーが GitHub Desktop で行う。Claude は、許可なしにコミット・プッシュしない**（従来どおり）。公開なので、秘密・個人の情報・他人の権利物（歌詞・楽譜・未許諾の音源）を入れない。
+- Git に入れないもの（`.gitignore`）: `.pio`・`tools/.venv`（各自の Mac に `sh tools/setup_bridge.sh` で作る）・`__pycache__`・`.DS_Store`・`.vscode` の自動生成ファイル。
+- **常駐ブリッジへの反映（`sh tools/chordtoy_agent.sh update`）は、必ず新しいフォルダで実行する**（旧フォルダで実行すると、古い内容に戻る）。
+- VS Code は、**新しいフォルダだけ**のワークスペース（`Chord-Progression-Game.code-workspace`）で開く。旧フォルダも同時に開くと、PlatformIO の Serial Monitor・Upload が、旧フォルダのものになる（複数フォルダのとき、PlatformIO は「アクティブなプロジェクト」を1つ選んで使うため）。
+- 新しいフォルダでの確認（2026-11-23）: `pio run` が成功（RAM 13.3%・Flash 13.1%）。`tools/.venv` の Python（pyserial 3.5）が動く。旧フォルダとの差は、`.gitignore`・ワークスペースのファイル・IDE の自動生成ファイルだけ。
+- Claude Code のチャット履歴と記憶（memory）は、フォルダのパスごとに分かれる。旧フォルダの分を、新しいパスの分へコピーした（`~/.claude/projects/-Users-woodbell-Documents-GitHub-Chord-Progression-Game/`）。
+
+**（以下は、引っ越し前の記述。）このフォルダ `Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)` は、`ESP32_Octo_01` の複製です（2026-11-14 に、内容が同じこと・ビルドとテストが通ることを確認）。今後の編集は、このフォルダだけで行う。**
 `ESP32_Octo_01`（コード進行おもちゃの最終形）、`ESP32_Quad_01`、`ESP32_Quad_01_v1`、`ESP32_DualTest_01`、`ESP32_FirstTest` は、バックアップとして触らない。
 これ以降の章にある「ESP32_Octo_01」「ESP32_Quad_01」という名前は、複製元の呼び名として読み替えること（複製した時点までの記録）。
 
