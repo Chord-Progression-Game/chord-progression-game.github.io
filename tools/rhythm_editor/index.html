@@ -113,6 +113,11 @@
   .game-item .sub { color: var(--muted); font-size: 13px; flex: 1; min-width: 12em; }
   .game-item button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
   .game-item button.del { color: var(--err); }
+  .game-item input.pg-pick { margin: 0 2px 0 0; width: 18px; height: 18px; accent-color: var(--ok); }
+  #pages-message { min-height: 1.6em; margin-top: 8px; }
+  #pages-message.ok { color: var(--ok); }
+  #pages-message.err { color: var(--err); }
+  #pages-url { width: min(28em, 100%); }
   #game-message { min-height: 1.6em; margin-top: 8px; }
   #game-message.ok { color: var(--ok); }
   #game-message.err { color: var(--err); }
@@ -292,6 +297,18 @@
     <p class="legend" style="margin-top:0">名前をつけて送ると、ゲームの「♪」のメニュー（ドラム・バッキング）や、図鑑（進行）に、すぐ増えます。ゲームを開いたままでも届きます。同じ名前で送り直すと、上書きされます。ESP32 には送りません。</p>
     <h3>ゲームに入っているもの</h3>
     <div class="game-list" id="game-list"></div>
+
+    <h3>公開ページ（インターネット）のゲームにも送る</h3>
+    <p class="legend" style="margin-top:0">インターネットの公開ページのゲームには、このブリッジがつながっていないので、<b>リンク</b>か<b>ファイル</b>で渡します。上の「ゲームに入っているもの」のうち、左のチェックが入っているものが、渡る対象です。リンクを開くと、ゲームが「取り込みますか?」と出します（取り込んだものは、そのブラウザに保存されます。スマホにも、リンクを送れば入ります）。リンクの内容は、ブラウザの中だけで作られ、どこにも送信されません。</p>
+    <div class="row">
+      <label>公開ページの URL <input type="text" id="pages-url" value="https://chord-progression-game.github.io/" spellcheck="false"></label>
+    </div>
+    <div class="row">
+      <button class="primary" id="pages-open">公開ページのゲームで開く（取り込む）</button>
+      <button id="pages-copy">リンクをコピー</button>
+      <button id="pages-file">ファイルに保存</button>
+    </div>
+    <div id="pages-message" role="status"></div>
   </section>
 </main>
 
@@ -870,7 +887,7 @@ function renderControl() {
     s.drum > 0 ? "※ ドラムは MIDI チャンネル10 で出ます。GarageBand のピアノでは低い音になるので、tools/gm_synth（sh tools/run.sh --gm）で鳴らしてください。" : "";
 }
 
-const PAGE_VERSION = "2026-11-15c";   // この画面の版。リアルタイム接続の表示に出る（古い画面が開いたままでないかの確認用）
+const PAGE_VERSION = "2026-11-23";   // この画面の版。リアルタイム接続の表示に出る（古い画面が開いたままでないかの確認用）
 
 // ブリッジを作り直すと、順番号が 0 から数え直しになる。「別のブリッジだ」と分かったら、覚えている順番を捨てる。
 // 画面の部品（JavaScript）も古いままかもしれないので、操作画面を見ているときは、読み込み直す
@@ -1101,6 +1118,66 @@ function gameAuto() {
   clearTimeout(game.timer);
   game.timer = setTimeout(() => { game.chain = game.chain.then(() => sendGame(true)); }, 400);
 }
+// ---------- 公開ページ（インターネットのゲーム）に送る: リンク（#lib=コード）・ファイル ----------
+//   ゲームの取り込みの画面（game/js/ui/libimport.js・net/share.js）が、同じ形を読む。形: {"app":"chord-lines-library","v":1,"drums":[…],"backings":[…],"progressions":[…]}（id は付けない）
+//   コード: "j1." + base64url(UTF-8 の JSON)。リンクの # のうしろに付けるので、サーバーには送られない
+const pages = { unpicked: new Set() };       // チェックを外した（送らない）もの "kind:id"
+const PAGES_KEY = "rhythm-editor-pages-url";
+function pagesMessage(text, cls) { const m = $("pages-message"); m.textContent = text; m.className = cls || ""; }
+function pagesPayload() {
+  if (!game.lib) return null;
+  const pick = (kind, items) => (items || []).filter((it) => !pages.unpicked.has(kind + ":" + it.id)).map((it) => { const c = Object.assign({}, it); delete c.id; return c; });
+  return { app: "chord-lines-library", v: 1, drums: pick("drum", game.lib.drums), backings: pick("backing", game.lib.backings), progressions: pick("progression", game.lib.progressions) };
+}
+function toB64Url(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function pagesLink() {
+  const p = pagesPayload();
+  if (!p) { pagesMessage("ゲームの保存場所（ブリッジ）につながっていません。常駐ブリッジを動かしてから、開き直してください。", "err"); return null; }
+  const n = p.drums.length + p.backings.length + p.progressions.length;
+  if (!n) { pagesMessage("送るものが、ありません。名前をつけて「ゲームに送る」を押してから、上の一覧で、チェックを入れてください。", "err"); return null; }
+  let base = $("pages-url").value.trim();
+  if (!/^https?:\/\//i.test(base)) { pagesMessage("公開ページの URL を、https:// から書いてください。", "err"); return null; }
+  base = base.replace(/#.*$/, "");
+  try { localStorage.setItem(PAGES_KEY, base); } catch (e) { /* 保存できなくても動く */ }
+  const link = base + "#lib=j1." + toB64Url(JSON.stringify(p));
+  return { link, count: n, payload: p };
+}
+async function pagesCopy() {
+  const r = pagesLink();
+  if (!r) return;
+  if (r.link.length > 60000) { pagesMessage("内容が大きすぎて、リンクにできません（" + r.link.length + " 文字）。チェックを減らすか、「ファイルに保存」を使ってください。", "err"); return; }
+  try { await navigator.clipboard.writeText(r.link); pagesMessage("リンクをコピーしました（" + r.count + "つ）。スマホなどに送って、開いてください。", "ok"); }
+  catch (e) { window.prompt("リンクを、コピーしてください", r.link); pagesMessage("リンクを出しました（" + r.count + "つ）。", "ok"); }
+}
+function pagesOpen() {
+  const r = pagesLink();
+  if (!r) return;
+  if (r.link.length > 60000) { pagesMessage("内容が大きすぎて、リンクにできません（" + r.link.length + " 文字）。チェックを減らすか、「ファイルに保存」を使ってください。", "err"); return; }
+  const w = window.open(r.link, "_blank", "noopener");
+  pagesMessage(w ? "公開ページを、新しいタブで開きました（" + r.count + "つ）。「はじめる」を押すと、「取り込みますか?」が出ます。" : "新しいタブを開けませんでした。「リンクをコピー」を使ってください。", w ? "ok" : "err");
+}
+function pagesFile() {
+  const r = pagesLink();
+  if (!r) return;
+  const blob = new Blob([JSON.stringify(r.payload, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "chord-lines-library.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  pagesMessage("ファイル「chord-lines-library.json」を保存しました（" + r.count + "つ）。ゲームの「リズムを取り込む」で、「ファイルを選ぶ」から読み込めます。", "ok");
+}
+function initPages() {
+  try { const u = localStorage.getItem(PAGES_KEY); if (u) $("pages-url").value = u; } catch (e) { /* 何もしない */ }
+  $("pages-open").addEventListener("click", pagesOpen);
+  $("pages-copy").addEventListener("click", pagesCopy);
+  $("pages-file").addEventListener("click", pagesFile);
+}
+
 async function loadLibrary() {
   try {
     const res = await fetch("/api/library", { cache: "no-store" });
@@ -1126,6 +1203,9 @@ function renderLibrary() {
     for (const it of items || []) {
       total++;
       const row = document.createElement("div"); row.className = "game-item"; row.dataset.kind = kind; row.dataset.id = it.id;
+      const pick = document.createElement("input"); pick.type = "checkbox"; pick.className = "pg-pick"; pick.checked = !pages.unpicked.has(kind + ":" + it.id);
+      pick.title = "公開ページのゲームにも送る"; pick.dataset.kind = kind; pick.dataset.id = it.id;
+      pick.addEventListener("change", () => { if (pick.checked) pages.unpicked.delete(kind + ":" + it.id); else pages.unpicked.add(kind + ":" + it.id); });
       const tag = document.createElement("span"); tag.className = "id"; tag.textContent = label;
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name;
       const sub = document.createElement("span"); sub.className = "sub"; sub.textContent = librarySummary(kind, it);
@@ -1133,7 +1213,7 @@ function renderLibrary() {
       open.addEventListener("click", () => loadFromLibrary(kind, it));
       const del = document.createElement("button"); del.textContent = "削除"; del.className = "del";
       del.addEventListener("click", () => deleteFromLibrary(kind, it));
-      row.append(tag, nm, sub, open, del);
+      row.append(pick, tag, nm, sub, open, del);
       box.appendChild(row);
     }
   }
@@ -1291,6 +1371,7 @@ function init() {
   drawDrum();
   drawBacking();
   initControl();
+  initPages();
   loadGameChords();
   showKind(state.kind);
 }

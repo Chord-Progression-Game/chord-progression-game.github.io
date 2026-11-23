@@ -3,17 +3,23 @@
 //   ・ルールで決める（学習したものではない）。条件も点数も、下の表のとおり。理由の文章も、条件から作る
 //   ・すでに、名前のついた技が取ったつながり（claimed）では、重ねて加点しない（二重に数えない）
 //   ・ヒント（hints.js）も、同じ「自然さ」の考え方（edgeInfo / flowReason）を使う
-//   ・加点の規則: G1 階段 / G2 機能のながれ / G3 導音の解決 / G4 なめらかな声 / G5 サス（sus4）の解決（2026-11-17）/ G6 フレーズの終わりの「解決」（2026-11-17）。減点: B1 進行感なし / B2 唐突な借用和音
+//   ・加点の規則: G1 階段 / G2 機能のながれ / G3 導音の解決 / G4 なめらかな声 / G5 サス（sus4）の解決（2026-11-17）/ G6 フレーズの終わりの「解決」（2026-11-17）/ G7 内声の半音の動き（2026-11-23）。減点: B1 進行感なし / B2 唐突な借用和音
+//   ・G7（内声の半音の動き）だけは、技が取ったつながりにも付ける。技（強進行など）は、ルート（ベース）の動きを見ていて、G7 は、内側の声（3度・7度の音）の動きを見ているため（別の観点）
 // DOM に触れない。
 
+import { chordRoles, pcName } from './chordbook.js';
+
 export const SENSE = {
-  goodCap: 240,        // 加点の合計の上限（1つの盤）
+  goodCap: 320,        // 加点の合計の上限（1つの盤）。2026-11-23 に、内声の加点（G7）のぶん、240 → 320
   badCap: 120,         // 減点の合計の上限
   stairs: { 3: 60, 4: 90, 5: 120 },     // ベースラインの階段: 3つ・4つ・5つ以上の和音
   flowSDT: 50,         // サブドミナント → ドミナント → トニック
   flowTSD: 30,         // トニック → サブドミナント → ドミナント
   leading: 40,         // 導音（Ⅶ）の解決
   susResolve: 40,      // サス（sus4）の解決: Ⅴsus47 → Ⅴ7 のように、4度の音（内声）が、半音さがって、3度の音へ
+  guideTone: 30,       // ガイドトーンの半音進行（G7）: 前の和音の7度の音が、半音動いて、次の和音の3度の音へ（Ⅱm7 → Ⅴ7 の「ド → シ」・Ⅴ7 → Ⅰ の「ファ → ミ」）。1つのつながりにつき。盤に、最大3回
+  chromatic: 40,       // 半音で動き続ける内声（G7）: 内側の声（ルート以外の音）が、3つ以上の和音で、同じ向きに、半音ずつ動く（Ⅳ → Ⅳm → Ⅰ の「ラ → ラ♭ → ソ」など）。盤に、最大2回
+  innerCap: 100,       // 内声の加点（G7）の合計の上限（1つの盤）
   resolve: 60,         // 解決: フレーズの終わり（4番・8番、またはその後に駒がない）を、安定したトニック（Ⅰ系・Ⅵm系）で終える。盤に、最大2回
   smooth: 40,          // なめらかな声の動き（3つ以上の和音で、どのつながりも共通音が2つ以上）
   incoherent: 40,      // 進行感なし（3つ以上の和音で、どのつながりも「理由」がない）
@@ -34,6 +40,41 @@ export const isMinorIv = (c) => !c.isRepeat && c.rootPc === 5 && (c.type === 'mi
 // サス（sus4）の和音と、その解決先（同じルートの、長三和音・属七の和音）。Xsus4（Xsus47）→ X（X7）で、4度の音が、半音さがって、3度の音へ動く
 export const isSus = (c) => !c.isRepeat && (c.type === 'sus47' || c.type === 'sus4');
 export const isSusResolution = (a, b) => isSus(a) && !b.isRepeat && b.rootPc === a.rootPc && (b.type === 'maj' || b.type === 'dom7');
+// ---------- 内声の半音の動き（G7）----------
+//   内声 = ルート（ベースの音）以外の、和音の構成音。ガイドトーン = 3度の音と 7度の音（和音の性格を決める音）
+const pcOf = (c, roles) => { const r = chordRoles(c).find((t) => roles.includes(t.role)); return r ? r.pc : null; };
+export const seventhPc = (c) => pcOf(c, ['bb7', 'b7', '7']);
+export const thirdPc = (c) => pcOf(c, ['b3', '3']);
+const isSemitone = (p, q) => { const d = (((p - q) % 12) + 12) % 12; return d === 1 || d === 11; };
+const innerPcs = (c) => (c.isRepeat ? [] : c.pcs.filter((p) => p !== c.rootPc));
+// ガイドトーンの半音進行: a の 7度の音が、b の 3度の音へ、半音で動く。あれば { from, to }（主音からの半音）
+export function guideToneMove(a, b) {
+  if (!a || !b || a.isRepeat || b.isRepeat) return null;
+  const s = seventhPc(a), t = thirdPc(b);
+  return s !== null && t !== null && isSemitone(s, t) ? { from: s, to: t } : null;
+}
+// 内声が、半音ずつ、同じ向きに動き続ける線（3つ以上の和音）。chords: 並びの和音。戻り値: [{ from: 最初の和音の番号, steps: 動いた数, pcs: 音の高さの並び }]（見つかった、いちばん長い線ごとに1つ。短い線は、長い線に含まれる）
+export function chromaticLines(chords) {
+  const out = [];
+  for (let i = 0; i + 2 < chords.length; i++) {
+    for (const x of innerPcs(chords[i])) {
+      for (const d of [1, 11]) {
+        const prevHas = i > 0 && !chords[i - 1].isRepeat && innerPcs(chords[i - 1]).includes((((x - d) % 12) + 12) % 12);
+        if (prevHas) continue;                                                   // 1つ前の和音から続いている線の、途中: そちらで数える
+        let k = 0, cur = x;
+        const pcs = [x];
+        while (i + k + 1 < chords.length) {
+          const next = (cur + d) % 12;
+          if (!innerPcs(chords[i + k + 1]).includes(next)) break;
+          k++; cur = next; pcs.push(next);
+        }
+        if (k >= 2) out.push({ from: i, steps: k, pcs });
+      }
+    }
+  }
+  return out;
+}
+
 // 借り物の和音（短調から借りた和音・その代理）。Ⅱ♭7（裏コード）は、別の技（裏コード）なので、ここには入れない
 //   borrowKey: ルートと種類から、借り物の呼び名を決める（Ⅱ♭M7・Ⅵ♭M7・Ⅶ♭7・Ⅲ♭M7・Ⅲ♭m6）。借り物でなければ null
 export const SUB_NAMES = ['Ⅱ♭M7', 'Ⅵ♭M7', 'Ⅶ♭7', 'Ⅲ♭M7', 'Ⅲ♭m6'];
@@ -94,6 +135,7 @@ export function judge(segments, claimed, opts = {}) {
   const phrase = opts.phrase || 4;                       // 1フレーズの長さ（位置の数）
   const claimedKinds = opts.kinds || new Map();          // 取られたつながり → 'generic'（ふつうの強進行・弱進行・半音下）か 'named'（名前のついた技）
   let resolved = 0;                                      // 「解決」の加点を出した数（盤に、最大2回）
+  let inner = 0, guides = 0, lines = 0;                  // 内声の加点（G7）: 合計・ガイドトーンの数・半音の線の数（どれも、盤ぜんぶで数える。休みで分かれた並びをまたいで）
   const items = [];
   const push = (it) => {
     const ps = it.positions.slice().sort((a, b) => a - b);
@@ -187,7 +229,7 @@ export function judge(segments, claimed, opts = {}) {
     //   フレーズの終わり = 4番・8番に着く駒、またはその後に続く駒がない駒（終止の技と同じ決まり）。
     //   名前のついた技（終止・固有進行など）が、その駒へのつながりを取っているときは、重ねて加点しない。ふつうの強進行・弱進行が取っているだけなら、加点する
     for (let i = 1; i < seg.length && resolved < 2; i++) {
-      const isEnd = i === seg.length - 1 || seg[i].last % phrase === phrase - 1;
+      const isEnd = i === seg.length - 1 || (seg[i].last % phrase === phrase - 1 && seg[i].half !== 0);
       if (!isEnd || !edgeBetween(i - 1)) continue;
       const a = seg[i - 1].chord, b = seg[i].chord;
       if (!isStableTonic(b) || a.rootPc === b.rootPc) continue;                      // 同じルートの、響きの変化は、解決ではない
@@ -196,6 +238,38 @@ export function judge(segments, claimed, opts = {}) {
       const fam = b.rootPc === 0 ? 'Ⅰ（トニック）' : 'Ⅵm（トニックの仲間。トニックの代理）';
       push({ id: `resolve|${si}|${i}`, kind: 'good', name: '解決', points: SENSE.resolve, positions: [...seg[i - 1].positions, ...seg[i].positions], chords: [a.name, b.name],
         reason: `${a.name} → ${b.name}。フレーズの終わりを ${fam} で終えました。広がりや緊張から安定した和音へ着地して、ひと区切りついた感じ（解決）があります。${b.rootPc === 9 ? 'Ⅵm は Ⅰ の代わりに終われる少し切ない着地です。' : ''}` });
+    }
+
+    // ---- G7: 内声の半音の動き（2026-11-23）。ルート（ベース）以外の声が、半音で動く、効果的なつながり ----
+    //   ・ガイドトーンの半音進行: 7度の音 → 3度の音（Ⅱm7 → Ⅴ7 の ド → シ。Ⅴ7 → Ⅰ の ファ → ミ）。+30。技が取ったつながりにも付く
+    //   ・半音で動き続ける内声: 3つ以上の和音で、同じ声が、半音ずつ同じ向きに動く（Ⅳ → Ⅳm → Ⅰ の ラ → ラ♭ → ソ）。+40
+    //   ・内声の加点の合計は、100 まで
+    {
+      for (let i = 0; i + 1 < seg.length && guides < 3; i++) {
+        if (!edgeBetween(i)) continue;
+        const a = seg[i].chord, b = seg[i + 1].chord;
+        const g = guideToneMove(a, b);
+        if (!g || inner + SENSE.guideTone > SENSE.innerCap) continue;
+        guides++; inner += SENSE.guideTone;
+        push({ id: `guide|${si}|${i}`, kind: 'good', name: 'ガイドトーンの半音進行', points: SENSE.guideTone, positions: [...seg[i].positions, ...seg[i + 1].positions], chords: [a.name, b.name],
+          reason: `${a.name} → ${b.name}。${a.name} の7度の音（${pcName(g.from)}）が、半音動いて、${b.name} の3度の音（${pcName(g.to)}）へ。ベースの動きとは別に、内側の声（内声）が半音でなめらかにつながります。和音の性格を決める3度・7度の音（ガイドトーン）が半音で動くのは、ジャズでとても大切にされる、きれいなつながりです。` });
+      }
+      // 半音で動き続ける内声: 休み・「？」で切れない、続きの並び（切れ目をまたがない）
+      let run = [];
+      const flush = () => {
+        const chords = run.map((e) => e.chord);
+        for (const ln of chromaticLines(chords)) {
+          if (lines >= 2 || inner + SENSE.chromatic > SENSE.innerCap) break;
+          const evs = run.slice(ln.from, ln.from + ln.steps + 1);
+          lines++; inner += SENSE.chromatic;
+          const names = evs.map((e) => e.chord.name);
+          push({ id: `chroma|${si}|${seg.indexOf(evs[0])}`, kind: 'good', name: '半音で動き続ける内声', points: SENSE.chromatic, positions: evs.flatMap((e) => e.positions), chords: names,
+            reason: `${names.join(' → ')}。内側の声が「${ln.pcs.map((p) => pcName(p)).join(' → ')}」と、半音ずつ同じ向きに動き続けます。ルートが動いていても、内声がなめらかな線を描くので、耳に残る、表情のある進行になります（クロマチックな内声）。` });
+        }
+        run = [];
+      };
+      for (const e of seg) { if (e.blocked || e.chord.isRepeat) flush(); else run.push(e); }
+      flush();
     }
 
     // ---- B1: 進行感なし ----
@@ -278,6 +352,7 @@ export function flowReason(prev, y, ctx = {}) {
   if (isIvPlain(prev) && isMinorIv(y)) return out(4, `${prev.name} → ${y.name}: 同じ Ⅳ を短調の響きに変えて、せつなくする（サブドミナントマイナー）`);
   if (prev.rootPc === 11 && isTonic(y)) return out(5, `${prev.name} → ${y.name}: 導音（シ）がドへ解決する`);
   if (isBorrowed(prev) && naturalAfterBorrowed(prev, y)) return out(4, `${prev.name} → ${y.name}: 借りてきた和音から、自然に着地する`);
+  if (guideToneMove(prev, y)) return out(4, `${prev.name} → ${y.name}: 7度の音が半音動いて、3度の音へ（ガイドトーンの半音進行）。内声がなめらかにつながる`);
   if (isTonic(prev) && y.rootPc === 9 && (y.type === 'min' || y.type === 'min7')) return out(3, `${prev.name} → ${y.name}: Ⅰ と Ⅵm は、よく似た響き（平行調）。ふんわり切り替わる`);
   if (prev.rootPc === 9 && (prev.type === 'min' || prev.type === 'min7') && isTonic(y)) return out(3, `${prev.name} → ${y.name}: Ⅵm から Ⅰ へ。せつなさから、明るさへ`);
   if (ctx.prevPrev && stepDir([{ chord: ctx.prevPrev }, { chord: prev }], 0) !== 0 && stepDir([{ chord: prev }, { chord: y }], 0) === stepDir([{ chord: ctx.prevPrev }, { chord: prev }], 0)) return out(4, `${ctx.prevPrev.name} → ${prev.name} → ${y.name}: ベースが階段のように同じ向きに動き続ける`);

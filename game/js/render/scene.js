@@ -15,6 +15,8 @@ import { pieceLabelTexture, numberTexture, labelTexture, glowTexture, floorTextu
 import { instanceKey } from '../core/tricks.js';
 
 export const PITCH = 1.78;                        // スロットの間隔
+export const ZONE_C = 0.25;                       // マスの中心から、この幅の内側（まん中の細い帯）に置くと、置きかえ。外側（左・右）に置くと、マスを2つに分ける
+export const HALF_DX = 0.36;                      // 分割したマスの、前半・後半の駒の、中心からのずれ（左 = -、右 = +）。半分の駒の幅は 0.62
 export const FN_COLORS = { T: '#e9b93f', SD: '#4d88dc', D: '#e2573c', X: '#9b72d4', R: '#8e8a80' };
 export const FN_NAMES = { T: 'トニック系（安定）', SD: 'サブドミナント系（広がり）', D: 'ドミナント系（緊張）', X: '色づけ・借用', R: 'くり返し' };
 
@@ -70,7 +72,8 @@ export class SceneManager {
     this.time = 0;
     this.timeScale = 1;
     this.parallax = new THREE.Vector2(0, 0);
-    this.pieces = new Array(8).fill(null);          // スロットごとの { chord, group, state }
+    this.pieces = new Array(8).fill(null);          // スロットごとの { chord, group, state }（分割したマスは、前半の駒）
+    this.pieces2 = new Array(8).fill(null);         // 分割したマスの、後半の駒（分割していないマスは null）
     this.enclosures = new Map();                    // 技の囲み（キー → Enclosure）
     this.ghosts = [];
     this.preview = null;
@@ -92,13 +95,53 @@ export class SceneManager {
 
   // ---------------------------------------------------------------- 初期化
   _initRenderer() {
-    // 指で遊ぶ端末（スマホ・タブレット）は、描く細かさを少し下げて、軽くする（解像度の上限 1.5倍・影の細かさ半分・ブルームなし）
+    // 指で遊ぶ端末（スマホ・タブレット）: ブルームは切る。描く細かさ（解像度）は、できるだけ画面の本来の細かさに近く始めて、コマ送りになったら、1段ずつ下げる（_watchFrames）。
+    //   ?q=high（いつも最高）・?q=mid・?q=low（いつも軽く）で、固定もできる（動作確認用）
     this.light = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /iPhone|iPad|iPod|Android/.test(navigator.userAgent || '');
+    const q = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('q')) || '';
+    this.qualityFixed = ['high', 'mid', 'low'].includes(q);
+    this.qualityLevel = q === 'mid' ? 1 : q === 'low' ? 3 : 0;
+    this.frameWin = []; this.frameSkip = 90; this.frameCool = 0;      // 重さを測るための、コマの時間（ミリ秒）の記録
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: !this.light, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.light ? 1.5 : 2));
-    r.shadowMap.enabled = true; r.shadowMap.type = this.light ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    r.setPixelRatio(this._pixelRatio());
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.0;        // 色を、素直に（フィルム調に、くすませない）
     r.setClearColor(0x131210, 1);
+  }
+
+  // 解像度の倍率。スマホ（light）は、描く点の総数の上限（段ごと）で決める: iPhone（DPR 3）で、本来の 3倍に近い細かさから始め、重ければ 2.3倍 → 1.9倍 → 1.6倍。PC は、最大 2倍
+  _pixelRatio() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = (this.canvas && this.canvas.clientWidth) || window.innerWidth || 800, h = (this.canvas && this.canvas.clientHeight) || window.innerHeight || 600;
+    if (this.light) {
+      const budget = [2.6e6, 1.8e6, 1.2e6, 0.8e6][this.qualityLevel] || 0.8e6;
+      return Math.max(1, Math.min(dpr, Math.sqrt(budget / (w * h))));
+    }
+    return Math.min(dpr, [2, 1.5, 1.25, 1][this.qualityLevel] || 1);
+  }
+
+  // 解像度・影の細かさを、段（0 = いちばん細かい 〜 3）で切り替える
+  setQuality(level) {
+    this.qualityLevel = Math.max(0, Math.min(3, level));
+    const ratio = this._pixelRatio();
+    this.renderer.setPixelRatio(ratio);
+    this.composer.setPixelRatio(ratio);
+    const key = this.keyLight, size = this.qualityLevel >= 2 ? 1024 : 2048;
+    if (key && key.shadow.mapSize.x !== size) { key.shadow.mapSize.set(size, size); if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; } }
+    this.onResize();
+  }
+
+  // 毎フレーム、コマの時間を測る。90コマぶん（約1.5秒）の、まん中の値が、遅ければ（スマホ 24ms = 約40コマ/秒より遅い）、1段下げる。下げたあとは、しばらく測らない
+  _watchFrames(dtReal) {
+    if (this.qualityFixed || this.qualityLevel >= 3) return;
+    if (typeof document !== 'undefined' && document.hidden) { this.frameWin.length = 0; return; }
+    if (this.frameSkip > 0) { this.frameSkip--; return; }                    // 起動の直後は、部品の準備で遅いので、測らない
+    if (dtReal > 0.25) return;                                                 // タブを切り替えたあとなどの、飛び抜けて長いコマは、数えない
+    this.frameWin.push(dtReal * 1000);
+    if (this.frameWin.length < 90) return;
+    const sorted = this.frameWin.slice().sort((a, b) => a - b), med = sorted[sorted.length >> 1];
+    this.frameWin.length = 0;
+    if (med > (this.light ? 24 : 28)) { this.setQuality(this.qualityLevel + 1); this.frameSkip = 120; }
   }
 
   _initScene() {
@@ -118,7 +161,7 @@ export class SceneManager {
     scene.add(new THREE.HemisphereLight(0xfff1de, 0x1b1813, 0.7));
     const key = this.keyLight = new THREE.DirectionalLight(0xfff3e2, 2.2);
     key.position.set(-5, 10, 6.5);
-    key.castShadow = true; key.shadow.mapSize.set(this.light ? 1024 : 2048, this.light ? 1024 : 2048);
+    key.castShadow = true; key.shadow.mapSize.set(this.qualityLevel >= 2 ? 1024 : 2048, this.qualityLevel >= 2 ? 1024 : 2048);
     Object.assign(key.shadow.camera, { left: -8, right: 8, top: 7, bottom: -7, near: 1, far: 30 });
     key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 4;
     scene.add(key);
@@ -237,41 +280,110 @@ export class SceneManager {
   // ---------------------------------------------------------------- 大きさ
   onResize() {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    if (this.light) this.setPixelRatioOnly();                                     // スマホ: 画面の大きさが変わったら、点の総数の上限から、倍率を取りなおす
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
-    this.camera.aspect = w / h;
-    // 画面が細いときは、盤が入るように、カメラを引く
-    const need = 8.9 / (2 * Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2)) * this.camera.aspect);
-    this.camDist = Math.max(12.6, need * 1.05) * this.viewZoom * this.phoneZoom;
-    const down = this.viewDown + this.phoneDown;
-    if (down) this.camera.setViewOffset(w, h, 0, -Math.round(h * down), w, h); else this.camera.clearViewOffset();      // 画像全体を、下へずらす（遠近は、変えない）
-    this.camera.updateProjectionMatrix();
+    this._applyCamera();
     this.particles.material.uniforms.uScale.value = h * 0.9;
   }
 
-  // スマホの配置（縦持ち・横持ち）: 上のバー・下のトレイにはさまれた、見える場所の、まん中に盤が来るように、少し上へ・（横持ちは）少し小さく。phone = false でもとにもどす
-  setPhoneMode(phone, portrait = true) {
-    this.phoneZoom = phone && !portrait ? 1.22 : 1;
-    this.phoneDown = phone ? (portrait ? -0.045 : -0.075) : 0;
-    this.onResize();
+  setPixelRatioOnly() {
+    const ratio = this._pixelRatio();
+    if (Math.abs(ratio - this.renderer.getPixelRatio()) < 0.01) return;
+    this.renderer.setPixelRatio(ratio);
+    this.composer.setPixelRatio(ratio);
   }
 
-  // 盤の見え方（メロディのステージでは、画面の上に、メロディの帯が出るので、盤を、少し小さく・下へ）。zoom: 大きいほど小さい / down: 下へずらす割合
+  // カメラの距離・ずらしを決める（レンダラーの大きさは変えない。軽い）
+  _applyCamera() {
+    const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    this.camera.aspect = w / h;
+    // 画面が細いときは、盤が入るように、カメラを引く
+    const need = 8.9 / (2 * Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2)) * this.camera.aspect);
+    const d0 = Math.max(12.6, need * 1.05);
+    let zoom = this.viewZoom * this.phoneZoom, downPx = h * (this.viewDown + this.phoneDown), shiftX = 0;
+    if (!this.phoneMode && this.region && this.region.left !== undefined) {                     // PC（細い窓・iPad の横持ち）: 左右の説明の欄（ガイド・得点の列）にかからないように、盤を引いて、あいだのまん中に（上下は、そのまま）
+      const fit = this._fitBoardX(d0 * this.viewZoom, w, h, this.region);
+      zoom = this.viewZoom * fit.zoom; shiftX = fit.shiftPx;
+    }
+    if (this.phoneMode && this.region && this.region.top !== undefined) {                                           // スマホ: 盤を、上のバー・得点・メロディの帯と、下のトレイの、あいだの、まん中に（入りきらなければ、引く。横持ちは、最低でも phoneZoom まで引く）
+      const fit = this._fitBoard(d0, w, h, this.region, this.viewZoom * this.phoneZoom);
+      zoom = fit.zoom; downPx = fit.shiftPx;
+    }
+    this.camDist = d0 * zoom;
+    if (Math.abs(downPx) > 0.5 || Math.abs(shiftX) > 0.5) this.camera.setViewOffset(w, h, -Math.round(shiftX), -Math.round(downPx), w, h); else this.camera.clearViewOffset();      // 画像全体を、下・右へずらす（遠近は、変えない）
+    this.camera.updateProjectionMatrix();
+  }
+
+  // 盤（板の四隅と、駒の高さ）を、いまのカメラの姿勢で画面に映したときの、上と下の位置（px）から、領域の中に収まる引き具合（zoom ≧ 1）と、まん中に置くためのずらし量（px）を求める
+  _fitBoard(d0, w, h, region, minZoom = 1) {
+    const cam = this._fitCam || (this._fitCam = new THREE.PerspectiveCamera(this.baseFov, w / h, 0.1, 80));
+    cam.aspect = w / h; cam.fov = this.baseFov; cam.updateProjectionMatrix();
+    const v = new THREE.Vector3();
+    const span = (dist) => {
+      cam.position.set(this.shiftX, 0.1 + dist * 0.74, dist * 0.62); cam.lookAt(this.shiftX, 0.1, 0); cam.updateMatrixWorld(true);
+      let top = Infinity, bottom = -Infinity;
+      for (const x of [-4.05, 4.05]) for (const z of [-2.3, 2.3]) for (const y of [-0.4, 1.25]) { v.set(x, y, z).project(cam); const py = (-v.y * 0.5 + 0.5) * h; top = Math.min(top, py); bottom = Math.max(bottom, py); }
+      return { top, bottom };
+    };
+    const room = Math.max(60, region.bottom - region.top) * 0.94;
+    let zoom = Math.max(1, minZoom), s = span(d0 * zoom);
+    for (let i = 0; i < 3 && (s.bottom - s.top) > room * 1.01; i++) { zoom *= (s.bottom - s.top) / room; s = span(d0 * zoom); }
+    return { zoom, shiftPx: (region.top + region.bottom) / 2 - (s.top + s.bottom) / 2 };
+  }
+
+  // 盤を、いまのカメラの姿勢で画面に映したときの、左右の位置（px）から、左右の欄のあいだ（region.left〜right）に収まる引き具合（zoom ≧ 1）と、まん中に置くためのずらし量（px）を求める
+  _fitBoardX(d0, w, h, region) {
+    const cam = this._fitCam || (this._fitCam = new THREE.PerspectiveCamera(this.baseFov, w / h, 0.1, 80));
+    cam.aspect = w / h; cam.fov = this.baseFov; cam.updateProjectionMatrix();
+    const v = new THREE.Vector3();
+    const span = (dist) => {
+      cam.position.set(this.shiftX, 0.1 + dist * 0.74, dist * 0.62); cam.lookAt(this.shiftX, 0.1, 0); cam.updateMatrixWorld(true);
+      let left = Infinity, right = -Infinity;
+      for (const x of [-3.4, 3.4]) for (const z of [-1.6, 1.6]) for (const y of [-0.1, 1.25]) { v.set(x, y, z).project(cam); const px = (v.x * 0.5 + 0.5) * w; left = Math.min(left, px); right = Math.max(right, px); }       // 駒のある範囲（板のふちは、説明の欄の下に入ってよい）
+      return { left, right };
+    };
+    const room = Math.max(120, region.right - region.left);
+    let zoom = 1, s = span(d0);
+    if ((s.right - s.left) <= room * 1.2) return { zoom: 1, shiftPx: 0 };                                       // ほぼ収まる・少しかかるだけ（ふつうの PC の窓）: これまでどおり。大きくかかる（幅 1100px 以下の窓・iPad の横持ち）ときだけ、引く
+    for (let i = 0; i < 3 && (s.right - s.left) > room * 1.01; i++) { zoom *= (s.right - s.left) / room; s = span(d0 * zoom); }
+    return { zoom, shiftPx: (region.left + region.right) / 2 - (s.left + s.right) / 2 };
+  }
+
+  // スマホの配置（縦持ち・横持ち）: 上のバー・下のトレイにはさまれた、見える場所の、まん中に盤が来るように、少し上へ・（横持ちは）少し小さく。phone = false でもとにもどす
+  //   縦持ちのときは、さらに setBoardRegion で、得点・メロディの帯・手順の帯の下からトレイの上までを、教えてもらう
+  setPhoneMode(phone, portrait = true) {
+    this.phoneMode = !!phone; this.phonePortrait = !!phone && !!portrait;
+    this.phoneZoom = phone && !portrait ? 1.22 : 1;
+    this.phoneDown = phone ? (portrait ? -0.045 : -0.075) : 0;
+    this._applyCamera();
+  }
+
+  // 縦持ちのスマホで、盤が見える範囲（上と下の位置。px）。null で、既定の位置
+  //   PC では、{ left, right }（左右の説明の欄のあいだ）を渡す。上下は、そのまま
+  setBoardRegion(region) {
+    const eq = (a, b) => (a === undefined && b === undefined) || (a !== undefined && b !== undefined && Math.abs(a - b) < 1);
+    const same = (!region && !this.region) || (region && this.region && eq(region.top, this.region.top) && eq(region.bottom, this.region.bottom) && eq(region.left, this.region.left) && eq(region.right, this.region.right));
+    this.region = region || null;
+    if (!same) this._applyCamera();
+  }
+
+  // 盤の見え方（PC のメロディのステージでは、画面の上に、メロディの帯が出るので、盤を、少し小さく・下へ）。zoom: 大きいほど小さい / down: 下へずらす割合
   setView({ zoom = 1, down = 0 } = {}) {
     this.viewZoom = zoom; this.viewDown = down;
-    this.onResize();
+    this._applyCamera();
   }
 
   // ---------------------------------------------------------------- 駒
-  _makePiece(chord) {
+  _makePiece(chord, { half = false } = {}) {                                            // half: 分割したマスの、半分の駒（幅 0.62。文字・形は、小さく）
     const g = new THREE.Group();
     const col = new THREE.Color(chord.color || FN_COLORS[chord.fn] || FN_COLORS.X);        // 自作コード・編集したコードは、選んだ色
     const tileCol = col.clone().multiplyScalar(0.8);
-    const tile = new THREE.Mesh(new RoundedBoxGeometry(1.34, 0.22, 1.34, 4, 0.09),
+    const tile = new THREE.Mesh(new RoundedBoxGeometry(half ? 0.62 : 1.34, 0.22, 1.34, 4, 0.09),
       new THREE.MeshStandardMaterial({ color: tileCol, roughness: 0.6, metalness: 0, emissive: col, emissiveIntensity: 0.0 }));
     tile.position.y = 0.11; tile.castShadow = true; tile.receiveShadow = true;
     g.add(tile);
-    const label = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: pieceLabelTexture(chord.name, chord.isRepeat ? '' : chord.symbol), transparent: true, toneMapped: false }));
+    const label = new THREE.Mesh(half ? new THREE.PlaneGeometry(0.9, 0.45) : new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: pieceLabelTexture(chord.name, chord.isRepeat ? '' : chord.symbol), transparent: true, toneMapped: false }));
     label.rotation.x = -Math.PI / 2; label.position.set(0, 0.225, 0.3);
     g.add(label);
     const shapeMat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0, emissive: col, emissiveIntensity: 0 });
@@ -300,22 +412,37 @@ export class SceneManager {
       }
       default: shape = new THREE.Mesh(new THREE.OctahedronGeometry(0.42), shapeMat); shape.scale.y = 1.25; h = 0.46;
     }
-    shape.position.set(0, 0.22 + h, -0.27); shape.castShadow = true;
+    if (half) { shape.scale.multiplyScalar(0.55); h *= 0.55; }
+    shape.position.set(0, 0.22 + h, half ? -0.3 : -0.27); shape.castShadow = true;
     g.add(shape);
     g.userData = { tile, shape, shapeBaseY: shape.position.y, label, spin };
     return g;
   }
 
-  setPiece(slot, chord, { animate = true } = {}) {
+  // half: このマスは分割されている（前半の駒として、左に、半分の大きさで置く）
+  setPiece(slot, chord, { animate = true, half = false } = {}) {
     const old = this.pieces[slot];
     if (old) { this.board.remove(old.group); this._disposeGroup(old.group); this.pieces[slot] = null; }
     if (!chord) return;
-    const group = this._makePiece(chord);
+    const group = this._makePiece(chord, { half });
     const p = slotPosition(slot);
-    group.position.set(p.x, animate ? 2.6 : 0, p.z);
+    group.position.set(p.x + (half ? -HALF_DX : 0), animate ? 2.6 : 0, p.z);
     group.scale.setScalar(animate ? 0.9 : 1);
     this.board.add(group);
-    this.pieces[slot] = { chord, group, y: animate ? 2.6 : 0, vy: 0, t: animate ? 0 : 1, glow: 0, landed: !animate, seed: Math.random() * 6 };
+    this.pieces[slot] = { chord, group, half, y: animate ? 2.6 : 0, vy: 0, t: animate ? 0 : 1, glow: 0, landed: !animate, seed: Math.random() * 6 };
+  }
+
+  // 分割したマスの、後半の駒（右に、半分の大きさで置く）。chord が null なら、取りのぞく
+  setPiece2(slot, chord, { animate = true } = {}) {
+    const old = this.pieces2[slot];
+    if (old) { this.board.remove(old.group); this._disposeGroup(old.group); this.pieces2[slot] = null; }
+    if (!chord) return;
+    const group = this._makePiece(chord, { half: true });
+    const p = slotPosition(slot);
+    group.position.set(p.x + HALF_DX, animate ? 2.6 : 0, p.z);
+    group.scale.setScalar(animate ? 0.9 : 1);
+    this.board.add(group);
+    this.pieces2[slot] = { chord, group, half: true, y: animate ? 2.6 : 0, vy: 0, t: animate ? 0 : 1, glow: 0, landed: !animate, seed: Math.random() * 6 };
   }
 
   _disposeGroup(g) {
@@ -325,7 +452,7 @@ export class SceneManager {
     });
   }
 
-  chordAt(slot) { return this.pieces[slot] ? this.pieces[slot].chord : null; }
+  chordAt(slot, half = 0) { const p = half === 1 ? this.pieces2[slot] : this.pieces[slot]; return p ? p.chord : null; }
 
   // ---------------------------------------------------------------- 再生位置
   setPlayhead(step) {
@@ -490,18 +617,20 @@ export class SceneManager {
   // ring: 置ける場所の枠も出すか（ドラッグ中・駒を選んでいるとき）。出さないときは、駒が少し光るだけ
   setHover(slot, ring = true) { this.hover = slot; this.hoverRingOn = ring; }
   // 持ち上げた駒を、盤の上で隠す（手に持っている間）
-  setPieceVisible(slot, visible) { const p = this.pieces[slot]; if (p) p.group.visible = visible; }
+  setPieceVisible(slot, visible, half = 0) { const p = half === 1 ? this.pieces2[slot] : this.pieces[slot]; if (p) p.group.visible = visible; }
 
   // ドラッグ中、置こうとしている駒の透けたプレビュー（slot = -1 で消す）
-  setPreview(slot, chord) {
+  //   zone: 'C' = そのマスに置く（駒があれば置きかえ）/ 'L'・'R' = 駒のあるマスの、左・右に重ねて置く（マスを2つに分ける）。L・R は、半分の大きさで、その側に出す
+  setPreview(slot, chord, zone = 'C') {
     if (this.preview) { this.board.remove(this.preview.group); this._disposeGroup(this.preview.group); this.preview = null; }
     if (slot < 0 || !chord) return;
-    const group = this._makePiece(chord);
+    const half = zone === 'L' || zone === 'R';
+    const group = this._makePiece(chord, { half });
     group.traverse((o) => { if (o.material) { o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false; } });
     const p = slotPosition(slot);
-    group.position.set(p.x, 0.5, p.z);
+    group.position.set(p.x + (zone === 'L' ? -HALF_DX : zone === 'R' ? HALF_DX : 0), 0.5, p.z);
     this.board.add(group);
-    this.preview = { group, slot };
+    this.preview = { group, slot, zone };
   }
 
   // ---------------------------------------------------------------- 当たり判定
@@ -549,20 +678,25 @@ export class SceneManager {
   // 指している候補を、はっきり見せる（index = -1 で、もとにもどす）
   setGhostHover(index) { this.ghosts.forEach((g, i) => { g.sprite.material.opacity = i === index ? 1 : (g.tier === 1 ? 0.7 : 0.4); }); }
 
-  pickSlot(clientX, clientY) {
+  pickSlot(clientX, clientY) { return this.pickSlotZone(clientX, clientY).slot; }
+
+  // 画面の位置 → { slot: マスの番号（盤の外は -1）, zone: マスの中の位置 'L'（左）| 'C'（まん中）| 'R'（右）, dx: マスの中心から、横へのずれ（世界の単位）}
+  //   zone: まん中の細い帯（幅 0.5）が C、左右が L・R。駒のあるマスで、L・R に駒を重ねると、マスが2つに分かれる（C は、置きかえ）。分割しているマスは、中心の左右で、前半・後半（C は、使わない）
+  pickSlotZone(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, this.camera);
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.12);
     const hit = new THREE.Vector3();
-    if (!ray.ray.intersectPlane(plane, hit)) return -1;
-    let best = -1, bd = 1e9;
+    if (!ray.ray.intersectPlane(plane, hit)) return { slot: -1, zone: 'C', dx: 0 };
+    let best = -1, bd = 1e9, bdx = 0;
     for (let i = 0; i < 8; i++) {
       const p = slotPosition(i);
       const d = Math.max(Math.abs(hit.x - p.x), Math.abs(hit.z - p.z));
-      if (d < PITCH * 0.52 && d < bd) { best = i; bd = d; }
+      if (d < PITCH * 0.52 && d < bd) { best = i; bd = d; bdx = hit.x - p.x; }
     }
-    return best;
+    const zone = Math.abs(bdx) <= ZONE_C ? 'C' : bdx < 0 ? 'L' : 'R';
+    return { slot: best, zone, dx: bdx };
   }
 
   // スロットの、画面の上の位置（ラベルや案内を、DOM で重ねるとき用）
@@ -602,18 +736,20 @@ export class SceneManager {
   flashScreen(color, amount = 1) { const c = new THREE.Color(color); this.flash.set(c.r * amount, c.g * amount, c.b * amount); }
 
   // 駒が、鳴っているあいだ光る（再生位置が通る）
-  glowPiece(slot, amount = 1) { const p = this.pieces[slot]; if (p) p.glow = Math.max(p.glow, amount); }
+  glowPiece(slot, amount = 1, half = 0) { const p = half === 1 ? this.pieces2[slot] : this.pieces[slot]; if (p) p.glow = Math.max(p.glow, amount); }
 
   // ---------------------------------------------------------------- 毎フレーム
   render(dtReal) {
+    this._watchFrames(dtReal);
     const dt = Math.min(0.05, dtReal) * this.timeScale;
     this.time += dt;
     const t = this.time;
     this.timeScale += (1 - this.timeScale) * Math.min(1, dtReal * 6);                     // スローから、もとの速さへ
 
     // 駒（落ちてくる・光る・ゆれる）
-    for (let i = 0; i < 8; i++) {
-      const pc = this.pieces[i]; if (!pc) continue;
+    for (let i = 0; i < 16; i++) {                                                          // 0〜7 = 前半（分けないマスの駒も）/ 8〜15 = 分割したマスの後半の駒
+      const pc = i < 8 ? this.pieces[i] : this.pieces2[i - 8]; if (!pc) continue;
+      const slotNo = i % 8;
       const g = pc.group, ud = g.userData;
       if (!pc.landed) {
         pc.t = Math.min(1, pc.t + dt / 0.5);
@@ -622,11 +758,11 @@ export class SceneManager {
         g.scale.set(lerp(0.9, 1, pc.t), lerp(1.08, 1, pc.t), lerp(0.9, 1, pc.t));
         if (pc.t >= 1) {
           pc.landed = true; g.position.y = 0; g.scale.setScalar(1);
-          const p = slotPosition(i); this.shockwave(i, 0xf1ebdd, 1.6); this.burstAtSlot(i, pc.chord.color || FN_COLORS[pc.chord.fn] || '#fff', 14, 0.5); void p;
+          const p = slotPosition(slotNo); this.shockwave(slotNo, 0xf1ebdd, 1.6); this.burstAtSlot(slotNo, pc.chord.color || FN_COLORS[pc.chord.fn] || '#fff', 14, 0.5); void p;
         }
       }
       pc.glow = Math.max(0, pc.glow - dt * 2.2);
-      const mat = ud.tile.material; mat.emissiveIntensity = pc.glow * 0.32 + (this.hover === i ? 0.1 : 0);
+      const mat = ud.tile.material; mat.emissiveIntensity = pc.glow * 0.32 + (this.hover === slotNo ? 0.1 : 0);
       ud.shape.material.emissiveIntensity = pc.glow * 0.4;
       ud.shape.position.y = ud.shapeBaseY + Math.sin(t * 1.6 + pc.seed) * 0.025 + pc.glow * 0.1;
       ud.shape.rotation.y += dt * (0.25 + pc.glow * 1.2) * ud.spin;

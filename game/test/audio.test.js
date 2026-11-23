@@ -182,6 +182,45 @@ export async function run(t) {
     t.eq('周回の境目で、4 → 8ステップに切り替わる', seq.slice(0, 13), [0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 6, 7, 0]);
   }
 
+  // ============ 分割したマス（2026-11-23）: 1つのマスの、前半（1拍）・後半（1拍）を、別のコードで鳴らす ============
+  {
+    const mk = async (spec, splitSpec, backingId = 1) => {
+      const ctx = new OfflineAudioContext(2, SR * 6, SR);
+      const e = new AudioEngine(ctx, table, presets);
+      await e.load('../audio/');
+      e.getBoard = () => board(spec);
+      e.getSplit = () => { const o = (splitSpec || '').trim().split(/\s+/).filter(Boolean).map((tok) => (tok === '-' ? null : table.byName(tok).id)); while (o.length < 8) o.push(null); return o; };
+      e.setPatterns({ drumId: 0, backingId }); e.setBpm(120);
+      e.rec = [];
+      e.playNote = (note, when, dur, vel) => { e.rec.push({ note, when, dur, vel }); };       // 鳴らす指示だけを記録する
+      for (let i = 0; i < 8 * 4; i++) e.scheduleSlot(i, 0.1 + i * e.slotSeconds());           // 4ステップぶん
+      return e;
+    };
+    const e = await mk('Ⅰ Ⅴ7 Ⅵm -', '- Ⅲm7');
+    const ss = e.slotSeconds();
+    const halves = e.events.filter((x) => x.type === 'half');
+    t.eq('分割したマス: 2拍目の頭（4マス後）に、後半のコードへ切りかわる（step 1・Ⅲm7）', [halves.length, halves[0].step, halves[0].chordId, Math.round((halves[0].time - (0.1 + 8 * ss)) / ss)], [1, 1, table.byName('Ⅲm7').id, 4]);
+    const noteTimes = (step) => e.rec.filter((r) => r.when >= 0.1 + step * 8 * ss - 1e-6 && r.when < 0.1 + (step + 1) * 8 * ss - 1e-6);
+    const s1 = noteTimes(1);
+    const firstHalf = s1.filter((r) => r.when < 0.1 + 8 * ss + 4 * ss - 1e-6), secondHalf = s1.filter((r) => r.when >= 0.1 + 8 * ss + 4 * ss - 1e-6);
+    const pcs = (list) => [...new Set(list.map((r) => r.note % 12))].sort((a, b) => a - b);
+    t.eq('分割したマス: 前半の音は Ⅴ7（ソ・シ・レ・ファ）・後半の音は Ⅲm7（ミ・ソ・シ・レ）。同じ盤の、分割しないマスは、1つのコードだけ', [pcs(firstHalf), pcs(secondHalf), pcs(noteTimes(0)).length], [[2, 5, 7, 11], [2, 4, 7, 11], 3]);
+    const whole = noteTimes(0)[0], cut = firstHalf[0];
+    t.eq('分割したマス: 前半の音は、2拍目の頭で切る（分割しないマスの、ちょうど半分の長さ）', Math.round((cut.dur / whole.dur) * 100) / 100, 0.5);
+    t.eq('分割したマス: ロングのパターン（音は、ステップの頭だけ）でも、後半は、無音にならず、前半の音を、後半のコードで鳴らし直す（長さは、2拍目の残り）', [secondHalf.length > 0, Math.round((secondHalf[0].dur / whole.dur) * 100) / 100], [true, 0.5]);
+    t.eq('分割したマス: ほかのマス（0・2番）は、これまでどおり（half の知らせがない）', e.events.filter((x) => x.type === 'half' && x.step !== 1).length, 0);
+    // 「→」は、前のマスの、最後のコード（分割したマスは、後半）を、くり返す
+    const e2 = await mk('Ⅰ Ⅴ7 → -', '- Ⅲm7');
+    const st2 = e2.events.filter((x) => x.type === 'step');
+    t.eq('分割したマスのあとの「→」: 後半のコード（Ⅲm7）を、のばす', st2[2].chordId, table.byName('Ⅲm7').id);
+    // 8ビートなど、2拍目にも音があるパターンは、鳴らし直さず、そのパターンの音を、後半のコードで鳴らす
+    const arpeggio = presets.backings.find((b) => /アルペ|8分|8ビート/.test(b.name) && /[B1-4Cc]/.test(b.cells.slice(4, 8)));
+    if (arpeggio) { const e3 = await mk('Ⅰ Ⅴ7 Ⅵm -', '- Ⅲm7', arpeggio.id); const sec = e3.rec.filter((r) => r.when >= 0.1 + 12 * ss - 1e-6 && r.when < 0.1 + 16 * ss - 1e-6); t.ok(`分割したマス: 2拍目にも音があるパターン（${arpeggio.name}）は、後半のコード（Ⅲm7）の音で鳴る`, sec.length > 0 && sec.every((r) => [2, 4, 7, 11].includes(r.note % 12) || r.note % 12 === 4)); }
+    // 分割していない盤は、これまでと、まったく同じ
+    const e4 = await mk('Ⅰ Ⅴ7 Ⅵm -', '');
+    t.eq('分割がない盤: half の知らせは出ない', e4.events.filter((x) => x.type === 'half').length, 0);
+  }
+
   // ============ 音色: どの音色も鳴る・音色ごとに、音が違う・ドライブシンセは、拍の頭で音が引っ込む ============
   {
     t.eq('音色は7種類（ピアノ・エレピ・ギター・オルガン・ストリングス・ドライブシンセ・ベル）', INSTRUMENT_IDS, ['piano', 'epiano', 'guitar', 'organ', 'strings', 'drive', 'bell']);

@@ -4,7 +4,7 @@
 //     ※ 働きの分け方は、ゲームの見た目のための仮の分け方（駒のデザインは、あなたが決める）
 // ブラウザの外（テスト）でも動くように、DOM には触れない。
 
-import { sanitizeChordbook, recordToRaw, uniqueName, CUSTOM_ID_BASE } from './chordbook.js';
+import { sanitizeChordbook, recordToRaw, uniqueName, chordOrderKey, compareOrderKeys, CUSTOM_ID_BASE } from './chordbook.js';
 
 export const REPEAT_ID = 99;
 
@@ -95,11 +95,20 @@ export class ChordTable {
         list.push(new Chord(raw));
       }
     }
-    // 難しさ（Lv.）の順に並べる。Lv が未設定の自作コードは、Lv.5 のあと・「→」の前（安定な並べかえ: 同じ Lv のなかでは、もとの順 → 自作の順）
+    // 難しさ（Lv.）の順に並べる。Lv が未設定の自作コードは、Lv.5 のあと・「→」の前。同じ Lv のなかでは、ルート音（C → B）→ 構成音の少ない順 → …（chordbook.js の chordOrderKey。
+    // 並べ順が同じになる駒（ふつうはない）は、もとの順 → 自作の順）。プリセットの駒が増えても、自作コードを足しても、この決まりで並ぶ
     const key = (c) => (c.isRepeat ? 6 : (c.level === null || c.level === undefined ? 5.5 : c.level));
-    this.list = list.map((c, i) => [c, i]).sort((a, b) => key(a[0]) - key(b[0]) || a[1] - b[1]).map((x) => x[0]);
+    const okey = new Map(list.map((c) => [c, chordOrderKey(c)]));
+    this._orderKeys = new Map(list.map((c) => [c.id, okey.get(c)]));
+    this.list = list.map((c, i) => [c, i]).sort((a, b) => key(a[0]) - key(b[0]) || compareOrderKeys(okey.get(a[0]), okey.get(b[0])) || a[1] - b[1]).map((x) => x[0]);
     this._byId = new Map(this.list.map((c) => [c.id, c]));
     this._byName = new Map(this.list.map((c) => [c.name, c]));
+  }
+
+  // 段（Lv.）を分けないトレイ（チュートリアルなど）で、駒を、ルート音（C → B）→ 構成の順に並べる。ids: 駒の ID の配列。「→」は、いつも最後
+  sortByRoot(ids) {
+    const key = (id) => this._orderKeys.get(id) || [99];
+    return ids.slice().sort((a, b) => compareOrderKeys(key(a), key(b)));
   }
 
   byId(id) { return this._byId.get(id) || null; }

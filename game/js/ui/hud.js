@@ -5,6 +5,7 @@ import { FN_NAMES } from '../render/scene.js';
 import { TRICKS, instanceKey } from '../core/tricks.js';
 import { VERDICT } from '../core/melody.js';
 import { legendEl } from './melodyview.js';
+import { isPhone } from './layout.js';
 
 // 技の表示名: 「王道進行」のように、よく知られた名前があれば、それを大きく。「？」（小節の頭の Ⅴ）は、「？ 小節頭のⅤ」
 export function trickTitle(ins) { return ins.warn ? `？ ${ins.title}` : (ins.sub && !ins.variant ? ins.sub : ins.name); }
@@ -46,6 +47,8 @@ export class HUD {
       orig: $('#orig'), why: $('#why'), whyName: $('#why-name'), whyText: $('#why-text'), whyMore: $('#why-more'), stepBar: $('#step-bar'),
     };
     this.onAddChord = null;                                   // 「＋」（トレイの、新しいコードをつくる）を押したとき（app.js が決める）
+    this.onTrialDone = null;                                  // チャレンジステージの「提出する」を押したとき（app.js が決める）
+    this.trialBox = null; this.trialNorm = null; this.trialBtn = null;
     this.onOpenDetail = null;                                // 技の詳細を開く（app.js が決める）。引数: 技（instance）か「？」
     this._whyIns = null;
     this.el.whyMore.addEventListener('click', () => { if (this._whyIns && this.onOpenDetail) this.onOpenDetail(this._whyIns); });
@@ -58,7 +61,7 @@ export class HUD {
   setStage(stage, mode) {
     this.stage = stage; this.mode = mode;
     const e = this.el;
-    e.stageNo.textContent = mode === 'tutorial' ? `STAGE ${String(stage.no).padStart(2, '0')}` : mode === 'challenge' ? 'CHALLENGE' : mode === 'melody' ? `MELODY ${String(stage.no).padStart(2, '0')}` : 'FREE PLAY';
+    e.stageNo.textContent = mode === 'tutorial' ? `STAGE ${String(stage.no).padStart(2, '0')}` : mode === 'trial' ? `CHALLENGE ${String(stage.no).padStart(2, '0')}` : mode === 'challenge' ? 'TIME ATTACK' : mode === 'melody' ? `MELODY ${String(stage.no).padStart(2, '0')}` : 'FREE PLAY';
     e.stageTitle.textContent = stage.title;
     e.goalChip.style.setProperty('--c', stage.color || '#66ffcc');
     e.goalChip.classList.remove('done');
@@ -69,7 +72,7 @@ export class HUD {
     this._buildGuideBody();
     this.setWhy(null);
     this.setScore(0, true);
-    this.el.best.textContent = mode === 'free' ? `ベスト ${this.save.best.free || 0}` : mode === 'challenge' ? `ベスト ${this.save.best.challenge || 0}` : mode === 'melody' ? `ベスト ${((this.save.melody || {})[stage.id] || {}).best || 0}` : '';
+    this.el.best.textContent = mode === 'free' ? `ベスト ${this.save.best.free || 0}` : mode === 'challenge' ? `ベスト ${this.save.best.challenge || 0}` : mode === 'melody' ? `ベスト ${((this.save.melody || {})[stage.id] || {}).best || 0}` : mode === 'trial' ? `ベスト ${((this.save.trial || {})[stage.id] || {}).best || 0}` : '';
   }
 
   setGoalDone(done) { if (!this.stage || !this.stage.goalText) return; this.el.goalChip.classList.toggle('done', !!done); this.el.goalText.textContent = done ? `✓ ${this.stage.doneText || this.stage.goalText.replace('を決めよう', 'が決まった！').replace('を置いてみよう', '')}` : this.stage.goalText; }
@@ -81,6 +84,15 @@ export class HUD {
       this.stepBox = h('div', { class: 'steps' });
       body.append(this.stepBox);
       body.append(h('div', { class: 'note' }, 'わからなくなったら右上の「ヒント」を押すと、次の候補がうっすら出ます。'));
+    } else if (this.mode === 'trial') {
+      // チャレンジステージ: 条件の一覧（守れているものに ✓）・ノルマ・「提出する」ボタン。条件の一覧は setTrial が作る（案内の欄 stepBox は使わない）
+      for (const p of s.intro) body.append(h('p', {}, p));
+      this.stepBox = null;
+      this.trialNorm = h('div', { class: 'trial-norm' });
+      this.trialBox = h('div', { class: 'steps trial-rules' });
+      this.trialBtn = h('button', { class: 'chip primary', id: 'btn-trial-done', disabled: true, onclick: () => { if (this.onTrialDone) this.onTrialDone(); } }, 'できた！ 提出する');
+      body.append(this.trialNorm, this.trialBox, this.trialBtn,
+        h('div', { class: 'note' }, '条件が全部そろって、得点がノルマ以上になったら、「提出する」を押そう。得点が高いほど、星がふえます（ノルマの1.4倍で ★★・1.8倍で ★★★）。'));
     } else if (this.mode === 'challenge') {
       body.append(h('p', {}, '制限時間のあいだに技を決めて、得点をのばそう。'), h('p', {}, '得点は「いま盤の上で決まっている技」の合計です。駒をはずしても点がなくなるだけ。何度でも組み替えられます。'),
         h('p', {}, 'ドラッグした駒を盤の外に出すと、取りやめになります。'));
@@ -93,7 +105,7 @@ export class HUD {
       this.stepBox = h('div', { class: 'steps' }); body.append(this.stepBox);
     } else {
       body.append(h('p', {}, '駒をドラッグして盤に置こう。1〜8の順番にループして演奏されます。'), h('p', {}, `技が決まると、その部分が光って名前が出ます。${Object.keys(TRICKS).length}種類の技を全部見つけてみよう。`),
-        h('p', {}, '置いた駒はドラッグで動かせます。ダブルクリックではずせます。'), h('p', {}, '気に入った進行は上の「☆ プリセット」で保存できます。'), h('p', {}, 'できた進行には上の「♪ メロディ」でメロディをつけられます。自動でつけることも自分で書くこともできます。プリセットにはメロディもいっしょに保存できます。'));
+        h('p', {}, '置いた駒はドラッグで動かせます。ダブルクリックではずせます。'), h('p', {}, '置いた駒の左がわ・右がわに、別の駒を重ねると、1つのマスを2つ（1拍ずつ）に分けられます。分けたマスの駒は、指した側だけ、はずせます。'), h('p', {}, '気に入った進行は上の「☆ プリセット」で保存できます。'), h('p', {}, 'できた進行には上の「♪ メロディ」でメロディをつけられます。自動でつけることも自分で書くこともできます。プリセットにはメロディもいっしょに保存できます。'));
       this.stepBox = h('div', { class: 'steps' }); body.append(this.stepBox);
     }
   }
@@ -101,7 +113,7 @@ export class HUD {
   // スマホ: チュートリアル（・プリセットの案内）の、いま置くところを、上の細い帯に出す
   _renderStepBar(guide) {
     const bar = this.el.stepBar;
-    if (!bar) return;
+    if (!bar || this.mode === 'trial') return;                 // チャレンジステージの帯は、setTrial が出す
     const on = !!(guide && guide.active && guide.steps && guide.steps.length);
     bar.classList.toggle('show', on);
     document.body.classList.toggle('step-bar-on', on);
@@ -109,6 +121,30 @@ export class HUD {
     const next = guide.next;
     bar.classList.toggle('done', !next);
     clear(bar).append(h('span', { class: 'n' }, next ? String(guide.steps.indexOf(next) + 1) : '✓'), h('span', {}, next ? next.text : 'ぜんぶ置けました！'));
+  }
+
+  // チャレンジステージ: 条件・ノルマの、いまの様子を出す（案内の欄・上のバー・スマホの細い帯・「提出する」ボタン）
+  setTrial(st) {
+    if (this.mode !== 'trial' || !st) return;
+    if (this.trialNorm) clear(this.trialNorm).append(h('b', {}, `ノルマ ${st.norm}点`), h('span', { class: st.normOk ? 'ok' : '' }, `いま ${st.score}点${st.normOk ? ' ✓' : ''}`));
+    if (this.trialBox) {
+      clear(this.trialBox);
+      st.rules.forEach((r, i) => this.trialBox.append(h('div', { class: `step${r.ok ? ' done' : ''}` },
+        h('span', { class: 'n' }, r.ok ? '✓' : String(i + 1)), h('span', {}, r.text, r.now && !r.ok ? h('small', {}, r.now) : null))));
+    }
+    if (this.trialBtn) this.trialBtn.disabled = !st.ready;
+    const chip = this.el.goalChip;                                // 上のバー（PC）: 条件の数・得点
+    chip.classList.remove('hidden'); chip.classList.toggle('done', st.ready);
+    this.el.goalText.textContent = st.ready ? '✓ 条件がそろいました。「提出する」を押せます' : `条件 ${st.okCount}/${st.rules.length} ・ 得点 ${st.score} / ノルマ ${st.norm}`;
+    const bar = this.el.stepBar;                                  // スマホ: 上の細い帯
+    if (bar) {
+      bar.classList.add('show'); bar.classList.toggle('done', st.ready);
+      document.body.classList.add('step-bar-on');
+      const parts = [h('span', { class: 'n' }, st.ready ? '✓' : String(st.okCount)),
+        h('span', { class: 'sb-text' }, st.ready ? '条件そろい・ノルマ達成！' : `条件 ${st.okCount}/${st.rules.length} ・ 得点 ${st.score}/${st.norm}`)];
+      if (st.ready) parts.push(h('button', { class: 'chip primary sb-btn', id: 'btn-trial-done-bar', onclick: () => { if (this.onTrialDone) this.onTrialDone(); } }, '提出する'));
+      clear(bar).append(...parts);                                // （Element.append に null を渡すと、「null」という文字が入る。h() は、null を飛ばすが、直接の append は、飛ばさない）
+    }
   }
 
   setGuide(guide) {
@@ -316,7 +352,9 @@ export class HUD {
 
   toast(text) {
     const el = h('div', { class: 'toast' }, text);
-    this.el.toasts.append(el);
+    const box = this.el.toasts, max = isPhone() ? 2 : 4;            // 知らせが重なって、盤をおおわないように、スマホでは、2つまで（古いものから消す）
+    while (box.children.length >= max) box.firstChild.remove();
+    box.append(el);
     setTimeout(() => el.remove(), 3100);
   }
 

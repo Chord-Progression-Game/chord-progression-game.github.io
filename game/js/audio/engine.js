@@ -45,6 +45,7 @@ export class AudioEngine {
     this.backingId = 1;                // ロング
     this.drumId = 2;                   // 8ビート
     this.getBoard = () => Array(NUM_STEPS).fill(null);
+    this.getSplit = () => Array(NUM_STEPS).fill(null);                // 分割したマスの、後半のコードの ID（なければ null）
     this.instrumentId = 'piano';              // コードを鳴らす音色（instruments.js）。ステージ・画面から変える
     this.refTime = 0; this.refSlot = 0;       // 拍の位置を求める基準（その時刻に、そのマスが鳴る）。BPM が変わったら、取り直す
     this.wantLoopSteps = () => NUM_STEPS;     // 次の周回を、何ステップ（4 か 8）にするか。呼ぶ側（app）が、ステージの種類と盤の駒から決める
@@ -290,15 +291,22 @@ export class AudioEngine {
     const step = Math.floor(slotInLoop / SLOTS_PER_STEP);
     const slotInStep = slotInLoop % SLOTS_PER_STEP;
     if (slotInStep === 0) this._beginStep(step, when);
+    else if (slotInStep === SLOTS_PER_STEP / 2 && this._secondHalf(step) !== null) this._beginHalf(step, when);          // 分割したマス: 2拍目の頭で、後半のコードに切りかえる
     if (slotInStep % 4 === 0) { this.events.push({ type: 'beat', time: when, step, beat: slotInStep / 4 }); this.lastBeatTime = when; }
 
     const backing = this._backing();
     if (backing && this.cur) {
       const idx = slotInLoop % backing.length;
-      const ch = backing.cells[idx];
-      const cell = parseCell(ch);
+      let cell = parseCell(backing.cells[idx]);
+      const split = this._secondHalf(step) !== null;                                     // このマスは、分割している（前半・後半）
+      const halfStart = split && slotInStep === SLOTS_PER_STEP / 2;
+      let carried = false;
+      if (halfStart && !cell.hit) {                                                     // 2拍目の頭に、パターンの音がないとき: 1拍目に鳴らした音（和音・ベース・…）を、後半のコードで鳴らし直す（そうしないと、後半が無音になる）
+        for (let k = 1; k <= SLOTS_PER_STEP / 2; k++) { const c = parseCell(backing.cells[(((idx - k) % backing.length) + backing.length) % backing.length]); if (c.hit) { cell = c; carried = true; break; } }
+      }
       if (cell.hit) {
-        const hold = holdSlots(backing.cells, idx, SLOTS_PER_STEP - slotInStep);
+        const stepEnd = split && slotInStep < SLOTS_PER_STEP / 2 ? SLOTS_PER_STEP / 2 : SLOTS_PER_STEP;       // 分割したマスの前半: 音は、2拍目の頭までで切る（後半のコードに、かぶらないように）
+        const hold = carried ? stepEnd - slotInStep : holdSlots(backing.cells, idx, stepEnd - slotInStep);
         const dur = hold * this.slotSeconds() * GATE;
         const vel = cell.soft ? BACKING_VELOCITY.soft : BACKING_VELOCITY.hard;
         const notes = this._notesFor(cell.shape);
@@ -322,9 +330,26 @@ export class AudioEngine {
 
   _wantedSteps() { const n = this.wantLoopSteps(); return n === 4 ? 4 : NUM_STEPS; }
 
+  // 分割したマスの、後半のコードの ID。分割していなければ null
+  _secondHalf(step) {
+    const sp = this.getSplit();
+    const id = sp ? sp[step] : null;
+    return id === null || id === undefined || !this.table.byId(id) || this.table.byId(id).isRepeat ? null : id;
+  }
+
+  // 分割したマスの、2拍目の頭: 後半のコードに切りかえる（前のコードの高さは、ボイスリーディングで、つなぐ）
+  _beginHalf(step, when) {
+    const id = this._secondHalf(step);
+    const chord = this.table.byId(id);
+    const voice = voiceChord(chord, BASE_C_DEFAULT + 12 * this.octave, this.lastRoot, this.voiceLeading);
+    this.lastRoot = voice.root;
+    this.cur = { step, chordId: id, chord, voice, half: 1 };
+    this.events.push({ type: 'half', time: when, step, chordId: id, notes: voice.notes });          // 技の「きらっ」（onStepScheduled）は、ステップの頭だけ（2回鳴らさない）
+  }
+
   _beginStep(step, when) {
     const board = this.getBoard();
-    const id = resolveChordAtStep(board, step, this.table);
+    const id = resolveChordAtStep(board, step, this.table, this.getSplit());
     if (step === 0) this.lastRoot = -1;                              // 位置1に戻ったら、前のコードの高さは忘れる
     if (id !== null) {
       const chord = this.table.byId(id);

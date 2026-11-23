@@ -4,7 +4,7 @@
      ・文字は、読める大きさ（本文 13〜14px 以上）。押すところは、指で押せる大きさ（およそ 40px 以上）
      ・盤（3D）が主役。左右の説明（ガイド・技の一覧）は、ふだんはしまって、ボタンで開く（シート）
      ・トレイ（駒の置き場）は、下に固定。横になぞって動かす。駒は、タップで選んで盤をタップ / 2回タップで次の場所 / 上へなぞって持ち上げる / 長押しでメニュー
-   画面の判定（JS の isPhone と同じ）: 縦持ち = 幅 700px 以下 / 横持ち = 高さ 520px 以下で、幅 1000px 以下 */
+   画面の判定（JS の isPhone と同じ）: 縦持ち = 幅 900px 以下で、高さ 521px 以上（iPad の縦持ち・細くした PC の窓も、この配置。2026-11-23 に、幅 700px から広げた）/ 横持ち = 高さ 520px 以下で、幅 1000px 以下 */
 
 .phone-only { display: none; }
 html { -webkit-text-size-adjust: 100%; }
@@ -24,9 +24,9 @@ canvas#gl { height: 100vh; height: 100dvh; }
 }
 
 /* =====================================================================
-   縦持ち（幅 700px 以下）
+   縦持ち（幅 900px 以下で、高さ 521px 以上）
    ===================================================================== */
-@media (max-width: 700px) {
+@media (max-width: 900px) and (min-height: 521px) {
   html { font-size: 14px; }
   .phone-only { display: inline-flex; }
   body { padding-top: env(safe-area-inset-top); }
@@ -54,7 +54,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
   .tb-left { flex: 1 1 100%; min-width: 0; gap: 0.4rem; flex-wrap: nowrap; }
   #stage-badge { flex: 1; min-width: 0; padding: 0 0.2rem; }
   #stage-badge span { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #stage-badge b { font-size: 0.64rem; }
+  #stage-badge b { font-size: 0.7rem; }
   .goal { display: none; }
   .tb-right { flex: 1 1 100%; gap: 0.4rem; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 0.1rem; }
   .tb-right::-webkit-scrollbar { display: none; }
@@ -95,12 +95,12 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #btn-side-toggle { margin-left: auto; }
 
   /* ---- 技のスタンプ・知らせ ---- */
-  #stamp-layer { top: calc(var(--topbar-h, 5.8rem) + 2.8rem); padding: 0 0.6rem; }
+  #stamp-layer, body.melody-mode #stamp-layer { top: calc(var(--stack-bottom, calc(var(--topbar-h, 5.8rem) + 2.8rem)) + 0.4rem); padding: 0 0.6rem; }       /* body.melody-mode: PC 用の固定の位置（game.css）より強く */
   .stamp { padding: 0.25rem 0.8rem 0.3rem; }
   .stamp .name { font-size: 1.5rem; }
   .stamp .name.long { font-size: 1.25rem; }
   .stamp .pts { font-size: 1.05rem; }
-  .stamp .kicker { font-size: 0.62rem; }
+  .stamp .kicker { font-size: 0.7rem; }
   #toasts { bottom: calc(var(--tray-h, 11rem) + 0.7rem); left: 0.6rem; right: 0.6rem; transform: none; }
   .toast { max-width: 100%; font-size: 0.85rem; }
   #clear-bar { left: 0.6rem; right: 0.6rem; transform: none; bottom: calc(var(--tray-h, 11rem) + 0.6rem); flex-wrap: wrap; justify-content: center; }
@@ -116,14 +116,15 @@ canvas#gl { height: 100vh; height: 100dvh; }
   .pc .ic { width: 1.3rem; height: 1.3rem; }
   .pc .nm { font-size: 1rem; margin-top: 0.3rem; }
   .pc .nm.long { font-size: 0.8rem; } .pc .nm.xlong { font-size: 0.68rem; } .pc .nm.xxlong { font-size: 0.58rem; }
-  .pc .sy { font-size: 0.66rem; }
-  #tray .sep { font-size: 0.64rem; padding: 0 0.15rem; }
+  .pc .sy { font-size: 0.72rem; }
+  .pc .sy.long { font-size: 0.68rem; }
+  #tray .sep { font-size: 0.7rem; padding: 0 0.15rem; }
   #drag-ghost { transform: translate(-50%, -85%) rotate(-3deg) scale(0.95); }
 
   /* ---- 技の枠・メニュー・モーダル ---- */
   .chordmenu { min-width: 12rem; }
   .modal { align-items: stretch; }
-  .modal .card, .modal .result-card, .modal .preset-card, .modal .ms-card, .modal .cl-card, .modal .td-card { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0.8rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom)); overflow: auto; border-left: 0; border-right: 0; }
+  .modal .card, .modal .result-card, .modal .preset-card, .modal .ms-card, .modal .cl-card, .modal .td-card, .modal .li-card { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0.8rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom)); overflow: auto; border-left: 0; border-right: 0; }
   #pause .card { height: auto; align-self: center; width: min(92vw, 24rem); border-radius: 8px; border: 1px solid var(--line-2); }
   .modal .td-card { padding: 0; }
   .td-head { padding: 0.8rem 0.9rem 0.6rem; }
@@ -223,4 +224,104 @@ canvas#gl { height: 100vh; height: 100dvh; }
   .cl-scroll { height: 50dvh; }
   .cl-side { max-height: calc(96dvh - 7rem); }
   .ms-scroll { height: 40dvh; overflow-x: auto; }
+}
+
+
+/* =====================================================================
+   2026-11-23 追加: スマホの不具合の修正（縦持ち・横持ち どちらも）
+   ===================================================================== */
+/* 起動・タイトル・ステージ選択の背景では、デモの技のスタンプを出さない（メニューにかぶさるため）。body[data-screen] は screens.js が付ける */
+body.is-phone[data-screen="title"] #stamp-layer,
+body.is-phone[data-screen="stages"] #stamp-layer,
+body.is-phone[data-screen="splash"] #stamp-layer { display: none; }
+/* 技の一覧・ガイドのシートを開いている間は、スタンプ・知らせが、シートの上にかぶらないように、隠す */
+body.is-phone.side-open #stamp-layer, body.is-phone.side-open #toasts,
+body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibility: hidden; }
+
+@media (max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px) {
+  /* 音のメニュー・音量のメニュー: 画面の下から出るシート。「とじる」ボタンつき（外をタップでも閉じる） */
+  .sm-close { display: inline-flex; align-items: center; margin-left: auto; min-height: 2.2rem; padding: 0.2rem 0.8rem; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); font-size: 0.82rem; font-weight: 700; }
+  .soundmenu .sm-head { align-items: center; }
+  .sm-arrow { width: 2.4rem; height: 2.4rem; }
+  .vm-slider { height: 2.2rem; }
+  .vm-mute, .sm-reset { min-height: 2.4rem; }
+  /* 色・形の見本のボタンは、指で押せる大きさに */
+  .cl-sw { width: 2.3rem; height: 2.3rem; }
+  .cl-sw.auto { width: auto; min-width: 3rem; }
+}
+
+@media (max-width: 900px) and (min-height: 521px) {
+  /* ステージ選択・メロディ選択の見出し: 「もどる」が折り返さない。見出しの下の説明は、次の行へ */
+  #stages header { flex-wrap: wrap; row-gap: 0.4rem; }
+  #stages h2 small { display: block; margin-left: 0; margin-top: 0.1rem; font-size: 0.82rem; }
+
+  /* 結果の画面のボタン: 2列（「次へ」は、1行ぜんぶ） */
+  .result-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .result-btns button { padding: 0.7rem 0.4rem; font-size: 0.9rem; min-height: 2.8rem; }
+  .result-btns button.primary { grid-column: 1 / -1; }
+
+  /* メロディの帯（「メロディーにコードをつける」）: 画面の幅いっぱいに。見出しは2行（題名 + 採点ボタン / 相性・点） */
+  #melody-roll { left: 0.6rem; right: 0.6rem; top: calc(var(--score-bottom, 8.4rem) + 0.4rem); transform: none; width: auto; padding: 0.3rem 0.35rem 0.35rem; }
+  .mr-head { flex-wrap: wrap; gap: 0.1rem 0.5rem; margin-bottom: 0.25rem; }
+  .mr-label { display: none; }
+  .mr-title { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem; }
+  #btn-melody-done { flex: none; white-space: nowrap; padding: 0.3rem 0.7rem; font-size: 0.82rem; min-height: 2.2rem; }
+  .mr-stat { order: 3; flex: 1 1 100%; margin-left: 0; white-space: nowrap; font-size: 0.76rem; }
+  .mr-stat i { margin: 0 0.1rem 0 0.5rem; }
+  .mr-chord { font-size: 0.72rem; margin: 0.15rem 0.1rem 0; padding: 0.05rem 0 0.1rem; white-space: nowrap; overflow: hidden; }
+  .mr-foot { flex-direction: column; align-items: center; gap: 0; min-height: 1.7rem; font-size: 0.62rem; }
+  .mr-pts { white-space: nowrap; line-height: 1.15; }
+  .mr-no { font-size: 0.62rem; }
+}
+
+/* 横持ち（高さ 520px 以下）: メロディの帯は、左の上に、小さく（右の列の得点・技の一覧をよける）。押すボタンは、28px 以上 */
+@media (max-height: 520px) and (max-width: 1000px) {
+  #melody-roll { left: 0.8rem; right: 15.8rem; top: 3.5rem; transform: none; width: auto; padding: 0.2rem 0.5rem 0.25rem; }
+  .mr-head { gap: 0.5rem; margin-bottom: 0.15rem; flex-wrap: nowrap; }
+  .mr-label { display: none; }
+  .mr-title { font-size: 0.88rem; white-space: nowrap; }
+  .mr-stat { font-size: 0.72rem; white-space: nowrap; }
+  .mr-stat b { font-size: 0.9rem; }
+  .mr-stat i { margin-left: 0.5rem; }
+  #btn-melody-done { flex: none; white-space: nowrap; padding: 0.1rem 0.6rem; font-size: 0.74rem; min-height: 1.8rem; }
+  .mr-grid { --rowh: min(0.2rem, calc(2.2rem / var(--rows))); }
+  .mr-notes { height: calc(var(--rows) * var(--rowh) + 0.25rem); }
+  .mn { height: 0.34rem; }
+  .mr-chord { font-size: 0.7rem; margin: 0.1rem 0.15rem 0; white-space: nowrap; overflow: hidden; }
+  .mr-foot { min-height: 0.9rem; font-size: 0.62rem; }
+  .mr-pts { display: none; }
+  .tb-right .chip, .tb-left .chip { min-height: 2.2rem; }
+  #tray-tools .chip { min-height: 2.2rem; }
+  .bpm .mini { min-width: 2.2rem; min-height: 2.2rem; }
+}
+
+/* スマホ: チャレンジステージの、上の細い帯（条件の数・得点・「提出する」）*/
+#step-bar .sb-text { flex: 1; min-width: 0; }
+#step-bar .sb-btn { flex: none; margin-left: auto; white-space: nowrap; min-height: 2rem; }
+
+/* 幅 600〜900px（iPad の縦持ちなど）: 縦持ちの配置のまま、文字・部品を、少し大きく */
+@media (min-width: 600px) and (max-width: 900px) and (min-height: 521px) {
+  html { font-size: 16px; }
+  .stage-card { min-height: 7rem; }
+  #stage-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* スマホ: 小さな補助の文字・ボタンを、読める・押せる大きさに（9.5px 未満の文字・28px 未満のボタンをなくす）*/
+@media (max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px) {
+  .bpm span { font-size: 0.72rem; }
+  .bpm .mini { min-width: 2.3rem; min-height: 2.3rem; }
+  .pc .tag { font-size: 0.7rem; }
+  .menu button b { font-size: 0.72rem; }
+  .mr-pts { font-size: 0.68rem; }
+  #tray .pcadd .sy { font-size: 0.72rem; }
+  .pm-cell .n { font-size: 0.7rem; }
+  .ms-key, .cl-key { font-size: 0.7rem; }
+  #why-more { min-height: 2rem; }
+  #btn-play, #btn-clear { min-height: 2.3rem; }
+}
+
+/* コードの編集画面（スマホ）: 下の「追加する・閉じる」の欄が、画面の下にぴったりつくように（カードの下の余白に、下の内容が、のぞかないように）*/
+@media (max-width: 900px) and (min-height: 521px) {
+  .modal .cl-card { padding-bottom: 0; }
+  .cl-foot { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
 }

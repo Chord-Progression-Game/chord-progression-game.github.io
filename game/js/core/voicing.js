@@ -31,7 +31,9 @@ export function voiceChord(chord, baseC, previousRoot = -1, leading = true) {
 //   ・ふつうの駒はそのコード / 空きは休み
 //   ・「→」は、前へたどって、最初に見つかった「→」でない駒のコード（先頭の「前」は最後の位置。全部「→」なら休み）
 // board: 長さ numSteps の配列。各要素は null か、コードID。戻り値: コードIDか null（休み）
-export function resolveChordAtStep(board, step, table) {
+//   split: 分割したマスの、後半のコードの ID（なければ null）の配列（省いてもよい）。「→」が前へたどるとき、分割したマスは、後半のコード（そのマスの、最後に鳴るコード）を繰り返す
+//   戻り値は、そのステップの、最初に鳴るコード（分割したマスは、前半のコード）
+export function resolveChordAtStep(board, step, table, split = null) {
   const n = board.length;
   const raw = board[step];
   if (raw === null || raw === undefined) return null;
@@ -40,7 +42,7 @@ export function resolveChordAtStep(board, step, table) {
     const p = (((step - j) % n) + n) % n;
     const r = board[p];
     if (r === null || r === undefined) return null;       // 前のコマが空なら、休みを繰り返す
-    if (r !== table.repeatId) return r;
+    if (r !== table.repeatId) return split && split[p] !== null && split[p] !== undefined ? split[p] : r;
   }
   return null;
 }

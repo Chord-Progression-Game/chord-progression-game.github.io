@@ -3,7 +3,9 @@ import { ChordTable } from '../js/core/chords.js';
 import { Game } from '../js/game/game.js';
 import { STAGES, FREE_STAGE, CHALLENGE_STAGE } from '../js/game/stages.js';
 import { analyze, TRICKS } from '../js/core/tricks.js';
+import { suggest } from '../js/core/hints.js';
 import { MELODY_STAGES, melodyPar, melodyStars } from '../js/game/melodies.js';
+import { TRIAL_STAGES, evaluateTrial, trialStars, nextTrialAfter } from '../js/game/trials.js';
 
 export async function run(t) {
   const table = new ChordTable(await (await fetch('../data/chords.json')).json());
@@ -398,4 +400,85 @@ export async function run(t) {
     g.save.unlockAll = true;
     t.eq('「ぜんぶ開く」', g.isUnlocked(STAGES, 7), true);
   }
+  // ============ チャレンジステージ（2026-11-23。内部の名前は 'trial'）============
+  {
+    t.eq('チャレンジステージ: 9ステージ・id は重複しない・番号は 1〜9', [TRIAL_STAGES.length, new Set(TRIAL_STAGES.map((s) => s.id)).size, TRIAL_STAGES.map((s) => s.no)], [9, 9, [1, 2, 3, 4, 5, 6, 7, 8, 9]]);
+    const RULE_TYPES = ['kind', 'group', 'kinds', 'combo', 'sense', 'only', 'use', 'level', 'max', 'min', 'fill', 'noDup', 'maxSame', 'ban', 'at', 'noOddity'];
+    t.ok('チャレンジステージ: 条件の種類は、すべて、知っているもの・技の名前・使う駒は、表にある', TRIAL_STAGES.every((s) => s.rules.length > 0 && s.rules.every((r) => RULE_TYPES.includes(r.type) && (!r.kind || TRICKS[r.kind]) && (!r.names || r.names.every((n) => !!table.byName(n)))) && (!s.pieces || s.pieces.every((n) => !!table.byName(n)))));
+    t.ok('チャレンジステージ: ノルマは、だんだん高くなる（1つ前の半分より上）・星のしきい値は、ノルマ ≦ 星2 ≦ 星3', TRIAL_STAGES.every((s, i) => s.stars[0] === s.norm && s.stars[1] > s.norm && s.stars[2] > s.stars[1] && (i === 0 || s.norm > TRIAL_STAGES[i - 1].norm / 2)));
+    // 各ステージに、条件を全部守って、ノルマに届く盤がある（お手本）。星も付く
+    const SOL = {
+      c01: 'Ⅲm Ⅵm Ⅱm Ⅴ7 ⅠM7 - - -', c02: 'Ⅵm Ⅳ Ⅴ Ⅰ - - - -', c03: 'ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 Ⅱm7 Ⅰ7 - -', c04: 'Ⅱm7 Ⅴ7 ⅠM7 Ⅵm7 Ⅱm7 Ⅴ7 ⅠM7 -', c05: 'Ⅵm Ⅳ Ⅴ Ⅵm Ⅳ Ⅰ - -',
+      c06: 'ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 ⅣM7 Ⅴ7 Ⅰ Ⅵm7', c07: 'Ⅱm7 Ⅱ♭7 ⅠM7 Ⅵm7 Ⅱm7 Ⅲ7 Ⅵm7 Ⅰ', c08: 'ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 ⅣM7 Ⅴ7 Ⅰ Ⅵm7', c09: 'Ⅵm7 ⅣM7 Ⅴ7 Ⅵ♭M7 Ⅰ7 Ⅳm6 Ⅴsus47 Ⅵ',
+    };
+    const bd = (spec) => spec.split(' ').map((n) => (n === '-' ? null : id(n)));
+    for (const st of TRIAL_STAGES) {
+      const b = bd(SOL[st.id]), an = analyze(b, table, { slotsPerBar: 2 }), ev = evaluateTrial(st, b, an, table);
+      t.ok(`${st.id}（${st.title}）: お手本の盤は、条件が全部そろい、ノルマ ${st.norm} 点に届く（${an.score.total} 点・条件 ${ev.okCount}/${ev.rules.length}）`, ev.ready && ev.allOk && an.score.total >= st.norm);
+      t.ok(`${st.id}: 空の盤は、「提出」できない（条件が足りない・ノルマ未達成）`, !evaluateTrial(st, Array(8).fill(null), analyze(Array(8).fill(null), table), table).ready);
+      t.ok(`${st.id}: 使える駒だけを使う（トレイを制限しているステージ）。使えない駒を置くと、条件を満たせない`, !st.pieces || (() => { const bad = bd(SOL[st.id]).map((x) => x); const outside = table.pieces().find((c) => !st.pieces.includes(c.name)); const b2 = b.slice(); b2[7] = outside.id; return evaluateTrial(st, b2, analyze(b2, table), table).rules.some((r) => !r.ok && /使える駒/.test(r.text)); })());
+    }
+    t.eq('星: ノルマ以上 = 1・1.4倍 = 2・1.8倍 = 3（c01: 400・560・720）', [trialStars(TRIAL_STAGES[0], 399), trialStars(TRIAL_STAGES[0], 400), trialStars(TRIAL_STAGES[0], 560), trialStars(TRIAL_STAGES[0], 720)], [0, 1, 2, 3]);
+    t.eq('nextTrialAfter: c01 の次は c02・最後の次はなし', [nextTrialAfter(TRIAL_STAGES[0]).id, nextTrialAfter(TRIAL_STAGES[8])], ['c02', null]);
+
+    // ゲームの流れ: 読み込む → 置く → 条件の知らせ → 提出 → 記録
+    const g = mk(); const events = []; g.on('trial', (e) => events.push(e.state)); let ended = null; g.on('trialEnd', (e) => { ended = e; });
+    g.loadStage(TRIAL_STAGES[0], 'trial');
+    t.eq('チャレンジステージ: 読み込むと、条件の様子が届く（条件 1/2・ノルマ 400・提出できない）', [events.length, events[0].okCount, events[0].rules.length, events[0].norm, events[0].ready], [1, 1, 2, 400, false]);
+    t.eq('チャレンジステージ: 使える駒は、このステージの駒だけ（10個）', [g.allowed.length, g.canPlace(id('Ⅲ7')), g.canPlace(id('Ⅰ'))], [10, false, true]);
+    t.eq('チャレンジステージ: 提出しようとしても、条件がそろっていない間は、ことわる', (() => { const r = g.finishTrial(); return [r.ok, ended]; })(), [false, null]);
+    for (const [i, n] of ['Ⅲm', 'Ⅵm', 'Ⅱm', 'Ⅴ7', 'ⅠM7'].entries()) g.place(i, id(n));
+    t.eq('チャレンジステージ: 置くと、条件・得点が変わる（提出できる）', [events[events.length - 1].ready, events[events.length - 1].score >= 400], [true, true]);
+    const r = g.finishTrial();
+    t.eq('チャレンジステージ: 提出 → クリア（星・得点・記録）', [r.ok, ended.stage.id, ended.stars, ended.score >= 400, g.save.trial.c01.stars, g.save.trial.c01.best === ended.score, g.cleared], [true, 'c01', 2, true, 2, true, true]);
+    t.eq('チャレンジステージ: クリアすると、次が開く（c02）・ほかは鍵のまま', [g.isTrialUnlocked(TRIAL_STAGES, 0), g.isTrialUnlocked(TRIAL_STAGES, 1), g.isTrialUnlocked(TRIAL_STAGES, 2)], [true, true, false]);
+    const n = events.length; g.place(7, id('Ⅳ'));
+    t.ok('チャレンジステージ: 盤が変わると、条件の様子が、また届く（変わらないときは、届かない）', events.length > n && (() => { const m = events.length; g.place(7, id('Ⅳ')); return events.length === m; })());
+    g.loadStage(FREE_STAGE, 'free');
+    t.eq('チャレンジステージ以外では、条件の知らせは、出ない', (() => { const m = events.length; g.place(0, id('Ⅰ')); return events.length === m; })(), true);
+  }
+
+  // ============ 分割したマス（2026-11-23）: 1つのマスに、前半・後半の2つのコード ============
+  {
+    const g = mk(); g.loadStage(FREE_STAGE, 'free');
+    const names = () => [g.board.map((x) => (x === null ? '-' : table.byId(x).name)).join(' '), g.split.map((x) => (x === null ? '-' : table.byId(x).name)).join(' ')];
+    const evs = []; g.on('board', (e) => evs.push(['board', e.slot, e.id, !!e.slid])); g.on('split', (e) => evs.push(['split', e.slot, e.id, !!e.slid, e.firstChanged]));
+    g.place(0, id('Ⅱm7')); g.place(1, id('Ⅴ7'));
+    t.eq('分割: フリープレイ・タイムアタック・チャレンジステージだけ。チュートリアル・メロディー・タイトルのデモは、分けない', ['free', 'challenge', 'trial', 'tutorial', 'melody'].map((m) => { const x = mk(); x.loadStage(m === 'challenge' ? CHALLENGE_STAGE : m === 'trial' ? TRIAL_STAGES[0] : m === 'tutorial' ? STAGES[1] : m === 'melody' ? MELODY_STAGES[0] : FREE_STAGE, m); return x.splitAllowed(); }), [true, true, true, false, false]);
+    t.eq('分割: 駒のあるマスの右に重ねる → [旧 | 新]（前半は、もとの駒）', (() => { g.placeAt(1, 'R', id('Ⅲm7')); return names(); })(), ['Ⅱm7 Ⅴ7 - - - - - -', '- Ⅲm7 - - - - - -']);
+    t.eq('分割: 左に重ねる → [新 | 旧]（もとの駒は、後半へ。落ちる動きを付けない印 slid）', (() => { evs.length = 0; g.placeAt(0, 'L', id('Ⅰ')); return [names(), evs.map((e) => e.join(':'))]; })(), [['Ⅰ Ⅴ7 - - - - - -', 'Ⅱm7 Ⅲm7 - - - - - -'], [`board:0:${id('Ⅰ')}:false`, `split:0:${id('Ⅱm7')}:true:true`]]);
+    t.eq('分割: 分けたマスの、左・右に重ねると、その半分だけが置きかわる', (() => { g.placeAt(0, 'R', id('Ⅳ')); g.placeAt(1, 'L', id('Ⅵm7')); return names(); })(), ['Ⅰ Ⅵm7 - - - - - -', 'Ⅳ Ⅲm7 - - - - - -']);
+    t.eq('分割: 同じ駒が前半・後半になるなら、分けない（1つに戻る）', (() => { g.placeAt(0, 'R', id('Ⅰ')); return names()[1].split(' ')[0]; })(), '-');
+    t.eq('分割: まん中（C）に置くと、これまでどおり置きかえ（分割は、なくなる）', (() => { g.placeAt(1, 'R', id('Ⅴ7')); g.placeAt(1, 'C', id('ⅠM7')); return names(); })(), ['Ⅰ ⅠM7 - - - - - -', '- - - - - - - -']);
+    t.eq('分割: 空きのマスは、左・右に置いても、分けない（そのマスに置く）', (() => { g.placeAt(4, 'R', id('Ⅱm')); return names(); })(), ['Ⅰ ⅠM7 - - Ⅱm - - -', '- - - - - - - -']);
+    t.eq('分割: 「→」のマスの上には、重ねられない（置きかえになる）・「→」を、駒のあるマスの左右に置いても、分けられない（置きかえになる）', (() => { const x = mk(); x.loadStage(FREE_STAGE, 'free'); x.place(5, table.repeatId); x.placeAt(5, 'R', id('Ⅴ7')); x.place(2, id('Ⅰ')); x.placeAt(2, 'R', table.repeatId); return [x.board[5], x.split[5], x.board[2], x.split[2]]; })(), [id('Ⅴ7'), null, table.repeatId, null]);
+    t.eq('分割: 半分だけ外す（前半を外すと、後半が広がる）・後半を外すと、前半が残る', (() => { g.placeAt(1, 'R', id('Ⅲm7')); const a = g.remove(1, { half: 0 }); const o1 = names(); g.placeAt(1, 'R', id('Ⅵm7')); const b = g.remove(1, { half: 1 }); return [a, o1, b, names()]; })(), [id('ⅠM7'), ['Ⅰ Ⅲm7 - - Ⅱm - - -', '- - - - - - - -'], id('Ⅵm7'), ['Ⅰ Ⅲm7 - - Ⅱm - - -', '- - - - - - - -']]);
+    t.eq('分割: half を指定しないで外すと、マスぜんたい（前半・後半とも）が空きになる', (() => { g.placeAt(1, 'R', id('Ⅳ')); g.remove(1); return [g.board[1], g.split[1]]; })(), [null, null]);
+    // 盤の上の駒を、動かす
+    g.clear(); g.place(0, id('Ⅰ')); g.place(1, id('Ⅳ')); g.placeAt(1, 'R', id('Ⅴ7'));
+    t.eq('移動: 分けたマスの、後半を、空きに動かす（1つの駒として置く・もとのマスは、前半が広がる）', (() => { g.moveFromBoard(1, 1, 5, 'C'); return names(); })(), ['Ⅰ Ⅳ - - - Ⅴ7 - -', '- - - - - - - -']);
+    t.eq('移動: 駒を、駒のあるマスの右に落とす → そのマスを分ける。もとのマスは、空き', (() => { g.moveFromBoard(5, null, 0, 'R'); return names(); })(), ['Ⅰ Ⅳ - - - - - -', 'Ⅴ7 - - - - - - -']);
+    t.eq('移動: 分けていないマスどうしの、まん中への移動は、入れ替え（これまでどおり）', (() => { g.clear(); g.place(0, id('Ⅰ')); g.place(1, id('Ⅳ')); g.moveFromBoard(0, null, 1, 'C'); return names()[0]; })(), 'Ⅳ Ⅰ - - - - - -');
+    t.eq('移動: 同じマスの、反対側に落とすと、前半・後半が入れかわる', (() => { g.clear(); g.place(0, id('Ⅰ')); g.placeAt(0, 'R', id('Ⅴ7')); g.moveFromBoard(0, 0, 0, 'R'); return names(); })(), ['Ⅴ7 - - - - - - -', 'Ⅰ - - - - - - -']);
+    t.eq('移動: 同じマスのまん中に落とす・分けられないとき（チュートリアル）は、そのまま置きかえ', (() => { const x = mk(); x.loadStage(STAGES[1], 'tutorial'); x.place(1, id('ⅣM7')); x.place(2, id('Ⅴ7')); x.moveFromBoard(1, null, 2, 'R'); return [x.board[1], x.board[2], x.split[2]]; })(), [id('Ⅴ7'), id('ⅣM7'), null]);
+    t.eq('一括: プリセットなど（placeMany）は、後半の駒（second）も置く。分けられないモードでは、前半だけ', (() => { g.clear(); g.placeMany([{ slot: 0, id: id('Ⅱm7'), second: id('Ⅴ7') }, { slot: 1, id: id('ⅠM7') }]); const a = names(); const x = mk(); x.loadStage(STAGES[1], 'tutorial'); x.placeMany([{ slot: 0, id: id('Ⅱm7'), second: id('Ⅴ7') }], { force: true }); return [a, x.split[0]]; })(), [['Ⅱm7 ⅠM7 - - - - - -', 'Ⅴ7 - - - - - - -'], null]);
+    t.eq('ステージを読み込むと、分割は、なくなる・全部消す でも', (() => { g.placeAt(0, 'R', id('Ⅲm7')); g.clear(); const a = g.split.every((x) => x === null); g.place(0, id('Ⅰ')); g.placeAt(0, 'R', id('Ⅳ')); g.loadStage(FREE_STAGE, 'free'); return [a, g.split.every((x) => x === null)]; })(), [true, true]);
+    t.eq('実機の盤（setBoard）が来ると、変わったマスの分割は、なくなる・変わらないマスは、そのまま', (() => { g.loadStage(FREE_STAGE, 'free'); g.place(0, id('Ⅰ')); g.placeAt(0, 'R', id('Ⅳ')); g.place(1, id('Ⅴ')); g.placeAt(1, 'R', id('Ⅵm')); g.setBoard([id('Ⅰ'), id('Ⅱm'), null, null, null, null, null, null], { source: 'device' }); return names(); })(), ['Ⅰ Ⅱm - - - - - -', 'Ⅳ - - - - - - -']);
+
+    // ---- 判定（技・ジャッジ・ヒント）----
+    const A = (spec, split) => analyze(spec.split(' ').map((n) => (n === '-' ? null : id(n))), table, { split: split ? split.split(' ').map((n) => (n === '-' ? null : id(n))) : null });
+    const K = (r) => r.instances.map((i) => i.kind + '@' + i.positions.join(','));
+    t.eq('判定: 1つのマスの中の、前半 → 後半 も、つながり（Ⅱm7 | Ⅴ7 → ドミナントモーション）', K(A('Ⅱm7 - - - - - - -', 'Ⅴ7 - - - - - - -')), ['dominant_motion@0,0']);
+    t.eq('判定: 分けたマスの、後半 → 次のマス（Ⅱm7 | Ⅴ7 → ⅠM7 = ツーファイブワン）', A('Ⅱm7 ⅠM7 - - - - - -', 'Ⅴ7 - - - - - - -').instances.map((i) => i.variant), ['ツーファイブワン']);
+    t.eq('判定: 名前のついた進行は、マスの頭（前半）から。後半からは、始まらない（王道: ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 を 1番から）', [A('ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 - - - -').instances.some((i) => i.kind === 'oudou'), A('Ⅰ ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7 - - -').instances.some((i) => i.kind === 'oudou'), A('Ⅰ Ⅴ7 Ⅲm7 Ⅵm7 - - - -', 'ⅣM7 - - - - - - -').instances.some((i) => i.kind === 'oudou')], [true, false, false]);
+    t.eq('判定: 終止は、マスの終わり（後半）で決まる。4番が分割していて、前半 Ⅴ7・後半 Ⅰ なら、Ⅴ-Ⅰ終止（フレーズの終わり）', K(A('Ⅳ Ⅱm Ⅳ Ⅴ7 - - - -', '- - - Ⅰ - - - -')).filter((k) => k.startsWith('authentic')), ['authentic_cadence@3,3']);
+    t.eq('判定: 4番の前半 Ⅴ7 → 後半 Ⅵm7 は、前半がマスの終わりではないので、終止として数えない（後半の Ⅵm7 が、4番の終わり。Ⅴ7 → Ⅵm7 = 偽終止）', K(A('Ⅳ Ⅱm Ⅳ Ⅴ7 - - - -', '- - - Ⅵm7 - - - -')).filter((k) => k.startsWith('deceptive')), ['deceptive_cadence@3,3']);
+    t.eq('判定: 4番の前半が、終止の最後（Ⅴ7 → Ⅰ の Ⅰ）で、後半が続くとき、前半では、終止にならない', K(A('Ⅳ Ⅱm Ⅴ7 Ⅰ - - - -', '- - - Ⅳ - - - -')).filter((k) => k.startsWith('authentic')), []);
+    t.eq('判定: 冒頭（1番）の後半は、冒頭ではない（1番 Ⅱm7 | Ⅴ7 は、「？」にならない）', A('Ⅱm7 - - - - - - -', 'Ⅴ7 - - - - - - -').oddities.length, 0);
+    t.eq('判定: 分割がない盤は、これまでどおり（split を渡さなくても、渡しても、同じ）', JSON.stringify(A('Ⅱm7 Ⅴ7 ⅠM7 - - - - -').score) === JSON.stringify(A('Ⅱm7 Ⅴ7 ⅠM7 - - - - -', '- - - - - - - -').score), true);
+    t.eq('「→」は、分割したマスの、後半のコードをのばす（Ⅱm7 | Ⅴ7 → のばす: 後半の Ⅴ7 が続く）', (() => { const r = A('Ⅱm7 → ⅠM7 - - - - -', 'Ⅴ7 - - - - - - -'); return r.segments[0].map((e) => `${e.chord.name}:${e.first}-${e.last}:${e.half}`); })(), ['Ⅱm7:0-0:0', 'Ⅴ7:0-1:1', 'ⅠM7:2-2:null']);
+    // ヒント: 分割したマスの、後半を、「前の駒」として使う
+    t.eq('ヒント: 分けたマスの後半（Ⅴ7）のあとには、Ⅰ 系が、「Ⅴ7 → Ⅰ」としておすすめになる（前半の Ⅱm7 ではなく）。文脈は Ⅱm7 > Ⅴ7', (() => { const sg = suggest([id('Ⅱm7'), null, null, null, null, null, null, null], table, table.pieces().map((c) => c.id), { split: [id('Ⅴ7'), null, null, null, null, null, null, null] }); return [sg.cursor, sg.context.join('>'), [...sg.primary, ...sg.advanced].some((c) => /^Ⅰ/.test(c.name) && /^Ⅴ7 → Ⅰ/.test(c.reason))]; })(), [1, 'Ⅱm7>Ⅴ7', true]);
+  }
+
 }

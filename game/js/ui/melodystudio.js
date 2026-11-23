@@ -133,7 +133,7 @@ export class MelodyStudio {
     this.rh = Math.max(10, Math.round(rem * 0.95));
     const keysW = Math.round(rem * 3.4);
     const avail = e.scroll.clientWidth - keysW - 2;
-    this.cw = Math.max(window.matchMedia && window.matchMedia('(max-width: 700px), (max-height: 520px) and (max-width: 1000px)').matches ? 13 : 8, Math.floor(avail / LOOP_SLOTS));       // スマホでは、1マスを少し広く（横になぞって見る）
+    this.cw = Math.max(window.matchMedia && window.matchMedia('(max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px)').matches ? 13 : 8, Math.floor(avail / LOOP_SLOTS));       // スマホでは、1マスを少し広く（横になぞって見る）
     e.card.style.setProperty('--cw', `${this.cw}px`);
     e.card.style.setProperty('--rh', `${this.rh}px`);
     e.card.style.setProperty('--keysw', `${keysW}px`);

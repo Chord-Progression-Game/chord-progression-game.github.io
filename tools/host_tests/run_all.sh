@@ -58,6 +58,14 @@ echo "== 自作コード・コードの編集・ダブルクリックで置く�
 python3 tools/host_tests/test_chordbook_ui.py
 echo "== スマホ（iPhone の大きさ・タッチ。縦持ち・横持ち）で、ゲームが動くか（Chrome のスマホ表示）=="
 python3 tools/host_tests/test_mobile_ui.py
+echo "== 第7弾: クリアの結果・スマホ縦持ちの配置・チャレンジステージ・分割したマス（マウス・指の操作）=="
+python3 tools/host_tests/test_round7_ui.py
+echo "== 公開ページ（https。ブリッジなし）: リズム・コード編集の内容の取り込み =="
+python3 tools/host_tests/test_pages_ui.py
+echo "== 編集画面が作った「公開ページ用のリンク」を、ゲーム側の読み取りで読み直す（通しの確認）=="
+python3 tools/host_tests/test_editor_pages.py
+echo "== でたらめ操作（開いた画面・結果・盤と3Dの一致が、こわれないか。PC・スマホ縦・横・タブレット）=="
+python3 tools/host_tests/test_fuzz_ui.py 200
 echo "== ゲームを配るサーバーと、実機の盤とのつなぎ（疑似ESP32 + 本物のブリッジ + ブラウザ）=="
 python3 tools/host_tests/test_game_server.py
 echo "== MIDI メッセージ・ブリッジ用の行 =="

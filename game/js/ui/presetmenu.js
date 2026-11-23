@@ -14,8 +14,8 @@ const REASONS = {
 };
 
 export class PresetMenu {
-  constructor({ root, table, store, getBoard, getMelody = () => [], isLive, onApply, onOpen = () => {}, onClose = () => {} }) {
-    Object.assign(this, { root, table, store, getBoard, getMelody, isLive, onApply, onOpen, onClose });
+  constructor({ root, table, store, getBoard, getSplit = () => null, getMelody = () => [], isLive, onApply, onOpen = () => {}, onClose = () => {} }) {
+    Object.assign(this, { root, table, store, getBoard, getSplit, getMelody, isLive, onApply, onOpen, onClose });
     this.withMelody = true;       // メロディもいっしょに保存するか（メロディがあるときの、チェックボックス）
     this.isOpen = false;
     this.sel = [0, 7];            // えらんだ範囲（両端を含む）
@@ -125,20 +125,21 @@ export class PresetMenu {
   }
 
   renderStrip() {
-    const b = this.getBoard();
+    const b = this.getBoard(), sp = this.getSplit() || [];
     const box = clear(this.strip);
     for (let i = 0; i < 8; i++) {
       const id = b[i];
       const c = id !== null && id !== undefined ? this.table.byId(id) : null;
+      const c2 = c && sp[i] !== null && sp[i] !== undefined ? this.table.byId(sp[i]) : null;                   // 分割したマスの、後半のコード
       const on = i >= this.sel[0] && i <= this.sel[1];
       box.append(h('div', { class: `pm-cell${on ? ' on' : ''}${c ? '' : ' empty'}`, dataset: { slot: String(i) }, style: { '--c': c ? FN_COLOR[c.fn] || 'var(--line-2)' : 'var(--line)' } },
-        h('span', { class: 'n' }, String(i + 1)), h('b', {}, c ? c.name : '—')));
+        h('span', { class: 'n' }, String(i + 1)), h('b', {}, c ? c.name : '—'), c2 ? h('i', { class: 'pm-half', title: '分割したマス（前半・後半）' }, `／${c2.name}`) : null));
     }
   }
 
   // 保存の前の、確認（えらんだ範囲・駒）と、保存できるか
   preview() {
-    return makePreset({ name: '', board: this.getBoard(), from: this.sel[0], to: this.sel[1], table: this.table, existing: this.store.list(), melody: this.withMelody ? this.getMelody() : null });
+    return makePreset({ name: '', board: this.getBoard(), split: this.getSplit(), from: this.sel[0], to: this.sel[1], table: this.table, existing: this.store.list(), melody: this.withMelody ? this.getMelody() : null });
   }
   renderInfo() {
     const r = this.preview();
@@ -159,7 +160,7 @@ export class PresetMenu {
   renderMelodyRow() {
     const all = this.getMelody();
     if (!all.length) { this.melRow.classList.add('hidden'); return; }
-    const r = makePreset({ name: '', board: this.getBoard(), from: this.sel[0], to: this.sel[1], table: this.table, existing: [], melody: all });
+    const r = makePreset({ name: '', board: this.getBoard(), split: this.getSplit(), from: this.sel[0], to: this.sel[1], table: this.table, existing: [], melody: all });
     const n = r.ok && r.preset.melody ? r.preset.melody.length : sliceMelody(all, this.sel[0], this.sel[1]).length;
     this.melRow.classList.remove('hidden');
     this.melInput.disabled = n === 0;
@@ -167,7 +168,7 @@ export class PresetMenu {
   }
 
   save() {
-    const r = this.store.add({ name: this.nameInput.value, board: this.getBoard(), from: this.sel[0], to: this.sel[1], melody: this.withMelody ? this.getMelody() : null });
+    const r = this.store.add({ name: this.nameInput.value, board: this.getBoard(), split: this.getSplit(), from: this.sel[0], to: this.sel[1], melody: this.withMelody ? this.getMelody() : null });
     if (r.ok) {
       this.newId = r.preset.id;
       this.msg = { text: `「${r.preset.name}」を保存しました（${r.preset.chords.filter((x) => x !== null).length}つ${r.preset.melody ? `・メロディ ${r.preset.melody.length}音` : ''}）`, kind: 'ok' };
@@ -210,11 +211,13 @@ export class PresetMenu {
         return inp;
       })()
       : h('b', { class: 'pm-name-text' }, p.name);
-    const chips = p.chords.map((nm) => {
+    const halves = p.half && p.half.length === p.chords.length ? p.half : p.chords.map(() => null);
+    const chips = p.chords.map((nm, i) => {
       if (nm === null) return h('span', { class: 'pm-chip rest', title: 'お休み（空き）' }, '・');
       const c = this.table.byName(nm);
       if (!c) return h('span', { class: 'pm-chip rest', title: 'いまは、ないコード（削除した自作コードなど）。置くときは、空きになります' }, `？${nm}`);
-      return h('span', { class: 'pm-chip', style: { '--c': c.color || FN_COLOR[c.fn] || 'var(--line-2)' }, title: c.symbol }, nm);
+      const c2 = halves[i] === null ? null : this.table.byName(halves[i]);
+      return h('span', { class: 'pm-chip', style: { '--c': c.color || FN_COLOR[c.fn] || 'var(--line-2)' }, title: c2 ? `${c.symbol}／${c2.symbol}（分割したマス）` : c.symbol }, nm, halves[i] !== null ? h('i', { class: 'pm-half' }, `／${halves[i]}`) : null);
     });
     const del = this.confirming === p.id
       ? h('button', { class: 'chip danger', dataset: { act: 'delete' }, onclick: () => { clearTimeout(this._confirmTimer); this.store.remove(p.id); this.confirming = null; this.renderList(); } }, '本当に削除')

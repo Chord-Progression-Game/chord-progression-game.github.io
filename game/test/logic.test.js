@@ -3,7 +3,7 @@ import { ChordTable } from '../js/core/chords.js';
 import { voiceChord, chooseOctaveShift, resolveChordAtStep } from '../js/core/voicing.js';
 import { analyze, buildSegments, TRICKS, PATTERNS, HEAD_V_PENALTY, setCustomProgressions } from '../js/core/tricks.js';
 import { suggest, findCursor, isSeventh, sevenBonus, sameSevenFamily } from '../js/core/hints.js';
-import { SENSE, senseTotals, edgeInfo, isBorrowed, naturalAfterBorrowed, borrowKey } from '../js/core/sense.js';
+import { SENSE, senseTotals, edgeInfo, isBorrowed, naturalAfterBorrowed, borrowKey, flowReason as SENSE_FLOW } from '../js/core/sense.js';
 import * as CB from '../js/core/chordbook.js';
 import { sanitizeChordbook } from '../js/core/chordbook.js';
 import { ChordStore } from '../js/game/chordstore.js';
@@ -14,6 +14,7 @@ import * as MEL from '../js/core/melody.js';
 import { MELODY_STAGES, melodyPar, applyMelody } from '../js/game/melodies.js';
 import { makePreset, sanitizePresets, placementPlan, defaultName, trimChords, sameChords, sliceMelody, cutNotes, applyMelodyPlan, MAX_PRESETS, PresetStore } from '../js/game/presets.js';
 import * as AM from '../js/core/automelody.js';
+import * as SH from '../js/net/share.js';
 import { loadSave, DEFAULT_VOLUME } from '../js/game/save.js';
 import { MelodyDoc, sanitizeNotes, NOTE_LO, NOTE_HI, MAX_NOTES } from '../js/game/usermelody.js';
 
@@ -150,7 +151,7 @@ export async function run(t) {
   r = analyze(board('Ⅱm Ⅴ7 Ⅰ - Ⅴ Ⅰ'), table);
   t.eq('5番の Ⅴ は「？」ではない。ツーファイブワンと、Ⅴ-Ⅰ終止（5→6番）が決まる', [kinds(r), r.oddities.length], [['dominant_motion|ツーファイブワン', 'authentic_cadence'], 0]);
   r = analyze(board('Ⅴ Ⅱm7 Ⅴ7 ⅠM7'), table);
-  t.eq('技の点から、減点する（ツーファイブワン 400 + 駒のレベル 40 - 100 = 340）。「？」の Ⅴ は、つながりにならない', [kinds(r), r.score.base, r.score.levelBonus, r.score.penalty, r.score.total], [['dominant_motion|ツーファイブワン'], 400, 40, 100, 340]);
+  t.eq('技の点から、減点する（ツーファイブワン 400 + 駒のレベル 40 + ジャッジ（ガイドトーンの半音進行 30 × 2）- 100 = 400）。「？」の Ⅴ は、つながりにならない', [kinds(r), r.score.base, r.score.levelBonus, r.score.penalty, r.score.total], [['dominant_motion|ツーファイブワン'], 400, 40, 100, 400]);
   r = analyze(board('Ⅴ Ⅰ - - Ⅴ7 Ⅰ'), table);
   t.eq('「？」は、1番の Ⅴ だけ（5番の Ⅴ7 は「？」ではない）。100点の減点', [r.oddities.length, r.score.penalty], [1, 100]);
   t.eq('2番以降の Ⅴ は、「？」ではない（5番も）', [analyze(board('Ⅰ Ⅴ'), table).oddities.length, analyze(board('Ⅰ Ⅱm Ⅲm Ⅴ'), table).oddities.length, analyze(board('- - - - Ⅰ Ⅴ'), table).oddities.length, analyze(board('- - - - Ⅴ7'), table).oddities.length], [0, 0, 0, 0]);
@@ -257,7 +258,7 @@ export async function run(t) {
   r = analyze(board('Ⅱ♭M7 Ⅱ♭M7 Ⅱ♭M7'), table);
   t.eq('レベルボーナス: 同じ駒を何枚置いても、1回だけ（40）', r.score.levelBonus, 40);
   t.eq('レベルボーナス: 「→」と、小節頭の Ⅴ（？）の駒は、数えない', [analyze(board('ⅠM7 → →'), table).score.levelBonus, analyze(board('Ⅴ7'), table).score.levelBonus], [10, 0]);
-  t.eq('レベルボーナス: 技の倍率（コンボ・種類）には、含めない', analyze(board('Ⅱm7 Ⅴ7 ⅠM7'), table).score.total, 440);
+  t.eq('レベルボーナス: 技の倍率（コンボ・種類）には、含めない（400 + 40 + ガイドトーンの半音進行 +60）', analyze(board('Ⅱm7 Ⅴ7 ⅠM7'), table).score.total, 500);
 
   r = analyze(board('Ⅰ Ⅴ Ⅳ Ⅳ Ⅰ Ⅴ Ⅰ Ⅴ'), table);
   t.eq('ブルース進行（8小節）: 8つぜんぶ（+ ループのつなぎ目 Ⅴ → Ⅰ の強進行）', [kinds(r), r.instances[0].points, r.instances[0].chords.length], [['blues8|8小節ブルース', 'dominant_motion|強進行'], 900, 8]);
@@ -287,9 +288,9 @@ export async function run(t) {
   t.eq('小室（Ⅵm→Ⅳ→Ⅴ）+ Ⅴ→Ⅰ終止 = 2つの技が、つながる', kinds(r), ['komuro', 'authentic_cadence']);
   t.eq('コンボ ×1.5 → 600 + 300 = 900、種類2つで ×1.1 → 990', [r.instances.map((i) => i.total), r.score.base, r.score.total], [[600, 300], 900, 990]);
   r = analyze(board('- Ⅴ7 Ⅰ - Ⅳ Ⅴ7 Ⅰ'), table);
-  t.eq('同じ技の繰り返し（2回目は 0.6 倍）。Ⅴ-Ⅰ終止は、7→8番の最後でも決まる（Ⅴ7 は Lv2 で +10）', [kinds(r), r.instances.map((i) => i.total), r.score.total], [['authentic_cadence', 'authentic_cadence'], [200, 120], 380]);       // 330 + ジャッジ（Ⅳ→Ⅴ7→Ⅰ の「おしまいへ向かう流れ」+50）
+  t.eq('同じ技の繰り返し（2回目は 0.6 倍）。Ⅴ-Ⅰ終止は、7→8番の最後でも決まる（Ⅴ7 は Lv2 で +10）', [kinds(r), r.instances.map((i) => i.total), r.score.total], [['authentic_cadence', 'authentic_cadence'], [200, 120], 440]);       // 330 + ジャッジ（Ⅳ→Ⅴ7→Ⅰ の「おしまいへ向かう流れ」+50）+ ガイドトーンの半音進行（Ⅴ7 → Ⅰ の ファ → ミ）+30 × 2
   r = analyze(board('Ⅱm7 Ⅴ7 ⅠM7 - ⅣM7 Ⅲ7 Ⅵm7'), table);
-  t.eq('種類の違う技を2つ（連鎖なし）= 400 + 500、種類2つで ×1.1 = 990、駒のレベルで +80（Ⅱm7 Lv3・Ⅴ7 Lv2・ⅠM7 Lv2・ⅣM7 Lv2・Ⅲ7 Lv3・Ⅵm7 Lv2）', [r.score.base, r.score.levelBonus, r.score.total], [900, 80, 1070]);
+  t.eq('種類の違う技を2つ（連鎖なし）= 400 + 500、種類2つで ×1.1 = 990、駒のレベルで +80（Ⅱm7 Lv3・Ⅴ7 Lv2・ⅠM7 Lv2・ⅣM7 Lv2・Ⅲ7 Lv3・Ⅵm7 Lv2）', [r.score.base, r.score.levelBonus, r.score.total], [900, 80, 1170]);       // 990 + 80 + ジャッジ（内声 +100: ガイドトーン 30 × 2・丸サの半音の線 +40）
 
   // 技にならなかったつながりの描写
   r = analyze(board('Ⅰ Ⅱm7'), table);
@@ -373,8 +374,8 @@ export async function run(t) {
   t.eq('Ⅰ → Ⅲ♭M7 → Ⅳ（♭Ⅲ）', kinds(analyze(board('Ⅰ Ⅲ♭M7 Ⅳ'), table)), ['sdm_sub|♭Ⅲ']);
   t.eq('Ⅰ → Ⅲ♭m6 → Ⅱm7（♭Ⅲm6）', kinds(analyze(board('Ⅰ Ⅲ♭m6 Ⅱm7'), table)), ['sdm_sub|♭Ⅲm6']);
   r = analyze(board('Ⅰ Ⅵ♭M7 Ⅲ7'), table);
-  t.eq('借用和音のあとが、不自然（Ⅵ♭M7 → Ⅲ7）なら、技にしない。ただし、前の和音とはつながる（共通音が2つ）ので、減点もしない', [kinds(r), r.critiques.length], [[], 0]);
-  t.eq('借用和音の、前後どちらともつながらない（Ⅱm7 → Ⅵ♭M7 → Ⅲ7）→ 技にならず、「唐突な借用和音」の減点', [kinds(analyze(board('Ⅱm7 Ⅵ♭M7 Ⅲ7'), table)), analyze(board('Ⅱm7 Ⅵ♭M7 Ⅲ7'), table).critiques.map((c) => c.id.split('|')[0])], [[], ['incoherent', 'abrupt']]);
+  t.eq('借用和音のあとが、不自然（Ⅵ♭M7 → Ⅲ7）なら、技にしない。ただし、前の和音とはつながる（共通音が2つ）ので、減点もしない（内声の加点は付く: ソ → ソ♯・ミ → ミ♭ → レ）', [kinds(r), r.critiques.filter((c) => c.points < 0).length, r.critiques.map((c) => c.id.split('|')[0])], [[], 0, ['guide', 'chroma']]);
+  t.eq('借用和音の、前後どちらともつながらない（Ⅱm7 → Ⅵ♭M7 → Ⅲ7）→ 技にならず、「唐突な借用和音」の減点', [kinds(analyze(board('Ⅱm7 Ⅵ♭M7 Ⅲ7'), table)), analyze(board('Ⅱm7 Ⅵ♭M7 Ⅲ7'), table).critiques.map((c) => c.id.split('|')[0])], [[], ['guide', 'incoherent', 'abrupt']]);
   t.ok('借用和音の仲間わけ（Ⅳm7・Ⅱ♭M7・Ⅵ♭M7・Ⅶ♭7・Ⅲ♭M7・Ⅲ♭m6 = 借用。Ⅱ♭7 は、裏コードなので、含めない）', ['Ⅳm7', 'Ⅳm6', 'Ⅱ♭M7', 'Ⅵ♭M7', 'Ⅶ♭7', 'Ⅲ♭M7', 'Ⅲ♭m6'].every((n) => isBorrowed(table.byName(n))) && !isBorrowed(table.byName('Ⅱ♭7')) && !isBorrowed(table.byName('Ⅰ')));
   t.ok('着地の表: Ⅳm7 → Ⅰ・Ⅴ は自然 / Ⅳm7 → Ⅲ7 は不自然、Ⅱ♭M7 → Ⅰ は自然 / Ⅱ♭M7 → Ⅳ は不自然', naturalAfterBorrowed(table.byName('Ⅳm7'), table.byName('Ⅰ')) && naturalAfterBorrowed(table.byName('Ⅳm7'), table.byName('Ⅴ')) && !naturalAfterBorrowed(table.byName('Ⅳm7'), table.byName('Ⅲ7')) && naturalAfterBorrowed(table.byName('Ⅱ♭M7'), table.byName('Ⅰ')) && !naturalAfterBorrowed(table.byName('Ⅱ♭M7'), table.byName('Ⅳ')));
 
@@ -393,7 +394,7 @@ export async function run(t) {
   t.eq('Ⅶ → Ⅰ でも、小節をまたぐ・Ⅰ系でない着地（Ⅶm7-5 → Ⅵm）は、導音の解決ではない', crit(analyze(board('Ⅶm7-5 Ⅵm'), table)).includes('leading:40'), false);
   t.eq('なめらかな声の動き（3つの和音で、どのつながりも共通音が2つ以上: Ⅰ → Ⅵm → Ⅳ）: +40', [kinds(analyze(board('Ⅰ Ⅵm Ⅳ'), table)), crit(analyze(board('Ⅰ Ⅵm Ⅳ'), table))], [[], ['smooth:40']]);
   r = analyze(board('Ⅳ Ⅴ7 Ⅰ'), table);
-  t.eq('機能のながれ（サブドミナント → ドミナント → トニック）: +50。Ⅴ-Ⅰ終止（200点）とは別に数える', [kinds(r), crit(r), r.score.senseGood], [['authentic_cadence'], ['flow_sdt:50'], 50]);
+  t.eq('機能のながれ（サブドミナント → ドミナント → トニック）: +50。Ⅴ-Ⅰ終止（200点）とは別に数える', [kinds(r), crit(r), r.score.senseGood], [['authentic_cadence'], ['flow_sdt:50', 'guide:30'], 80]);       // 機能のながれ +50 と、ガイドトーンの半音進行（Ⅴ7 → Ⅰ の ファ → ミ）+30
   r = analyze(board('Ⅰ Ⅱm Ⅴ'), table);
   t.eq('機能のながれ（トニック → サブドミナント → ドミナント）: +30', [kinds(r), crit(r)], [['dominant_motion|強進行'], ['flow_tsd:30']]);
   r = analyze(board('Ⅰ Ⅳ Ⅴ'), table);
@@ -406,7 +407,7 @@ export async function run(t) {
   t.eq('同じ和音が続く → 指摘だけ（0点）', [crit(r), r.score.total], [['same:0'], 0]);
   t.ok('どの講評にも、名前・理由・位置・色がある（唐突な借用和音は、借りた和音の1か所を指す）', ['Ⅰ Ⅱm Ⅲm Ⅳ', 'Ⅳ Ⅴ7 Ⅰ', 'Ⅰ Ⅲ7 Ⅵ♭M7', '- Ⅲ7 Ⅵ♭M7 Ⅱ♭7', 'Ⅰ Ⅰ', 'Ⅶm7-5 Ⅰ', 'Ⅰ Ⅵm Ⅳ'].every((spec) => analyze(board(spec), table).critiques.every((c) => c.name && c.reason.length > 20 && c.positions.length >= 1 && /^#[0-9a-f]{6}$/i.test(c.color) && ['good', 'bad', 'note'].includes(c.kind))));
   t.eq('点数のしくみ: 同じ盤を、何度判定しても、同じ結果（ルールで決める。乱数なし）', (() => { const a = JSON.stringify(analyze(board('Ⅰ Ⅲm Ⅵ♭M7 Ⅲ7'), table).critiques); return a === JSON.stringify(analyze(board('Ⅰ Ⅲm Ⅵ♭M7 Ⅲ7'), table).critiques); })(), true);
-  t.eq('加点の上限（%d）・減点の上限（%d）'.replace('%d', SENSE.goodCap).replace('%d', SENSE.badCap), [senseTotals([{ points: 120 }, { points: 120 }, { points: 100 }]), senseTotals([{ points: -70 }, { points: -70 }, { points: -70 }])], [{ good: 240, bad: 0 }, { good: 0, bad: 120 }]);
+  t.eq('加点の上限（%d）・減点の上限（%d）'.replace('%d', SENSE.goodCap).replace('%d', SENSE.badCap), [senseTotals([{ points: 120 }, { points: 120 }, { points: 100 }]), senseTotals([{ points: -70 }, { points: -70 }, { points: -70 }])], [{ good: SENSE.goodCap, bad: 0 }, { good: 0, bad: 120 }]);
   t.eq('点の表（階段 3/4/5 = 60/90/120・流れ 50/30・導音 40・声 40・サスの解決 40・解決 60・進行感なし −40・唐突 −30）', [SENSE.stairs[3], SENSE.stairs[4], SENSE.stairs[5], SENSE.flowSDT, SENSE.flowTSD, SENSE.leading, SENSE.smooth, SENSE.susResolve, SENSE.resolve, SENSE.incoherent, SENSE.abrupt], [60, 90, 120, 50, 30, 40, 40, 40, 60, 40, 30]);
   t.eq('合計は 0 より下にならない（講評の減点だけで、マイナスにならない）', analyze(board('Ⅱm7 Ⅵ♭M7 Ⅲ7'), table).score.total >= 0, true);
   t.eq('つながりの性質（Ⅰ→Ⅳ: 4度上=自然2・Ⅰ→Ⅱm: 全音=1・Ⅰ→Ⅲ7: 長3度で共通音1 = 0）', [edgeInfo(table.byName('Ⅰ'), table.byName('Ⅳ')).natural, edgeInfo(table.byName('Ⅰ'), table.byName('Ⅱm')).natural, edgeInfo(table.byName('Ⅰ'), table.byName('Ⅲ7')).natural], [2, 1, 0]);
@@ -939,7 +940,7 @@ export async function run(t) {
     t.eq('コード表: user にすると、自作コードが見える（33）。ID は 200 から・custom の印', (() => { const c = T.customChords()[0]; return [T.list.length, c.id, c.custom, c.name, c.symbol]; })(), [33, 200, true, 'Ⅲaug7(♯9)', 'Eaug7(♯9)']);
     t.eq('コード表: 自作の性質（ルート 4・種類 dom7・半音の並び 0 4 8 10 15・働き D・レベル未設定・色形はなし）', (() => { const c = T.byId(200); return [c.rootPc, c.type, c.semitones, c.fn, c.level, c.color, c.shape]; })(), [4, 'dom7', [0, 4, 8, 10, 15], 'D', null, null, null]);
     t.eq('コード表: レベル未設定の自作は、Lv.5 の駒のあと・「→」の前に並ぶ', (() => { const names = T.list.map((c) => c.name); const i = names.indexOf('Ⅲaug7(♯9)'); return [i > names.indexOf('Ⅱ♭7') || i > T.list.findIndex((c) => c.level === 5), T.list[i + 1].isRepeat]; })(), [true, true]);
-    t.eq('コード表: レベルを決めた自作は、その段のおわりに入る（Lv.2 → 同じ Lv.2 の駒のあと・Lv.3 の前）', (() => { const r = store.addCustom({ notes: [50, 53, 57, 64], level: 2 }); const lv = T.list.map((c) => c.level); const i = T.list.findIndex((c) => c.id === r.id); return [r.ok, lv[i], lv[i + 1], lv[i - 1]]; })(), [true, 2, 3, 2]);
+    t.eq('コード表: レベルを決めた自作は、その段（Lv.2）の中に、ルート音（C → B）の順で入る（2026-11-23。以前は、その段のおわり）', (() => { const r = store.addCustom({ notes: [50, 53, 57, 64], level: 2 }); const seg = T.list.filter((c) => c.level === 2); const roots = seg.map((c) => c.rootPc); const i = seg.findIndex((c) => c.id === r.id); return [r.ok, roots.every((x, k) => k === 0 || x >= roots[k - 1]), i > 0 && i < seg.length - 1, seg[i].rootPc]; })(), [true, true, true, 2]);
     t.eq('重複: 同じ構成音（ルートも同じ）は、ことわる / ほかの数が少なすぎる・多すぎる音の数', [store.addCustom({ notes: [52, 56, 60, 62, 67] }).reason, store.addCustom({ notes: [60] }).reason, store.addCustom({ notes: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57] }).ok], ['duplicate', 'few', true]);
     t.eq('重複: もとの駒と同じ構成音（G B D F = Ⅴ7）も、ことわる（どの駒と同じかを返す）', (() => { const r = store.addCustom({ notes: [55, 59, 62, 65] }); return [r.reason, r.same && r.same.name]; })(), ['duplicate', 'Ⅴ7']);
     // 編集
@@ -1074,4 +1075,75 @@ export async function run(t) {
     t.eq('ループの指摘: 8番がドミナントでない（Ⅱm7）・8番が空き・盤が8つでない（4つの盤）ときは、出ない', [note('Ⅰ Ⅵm7 Ⅳ Ⅰ Ⅵm7 Ⅳ Ⅴ7 Ⅱm7').length, note('Ⅰ Ⅵm7 Ⅳ Ⅰ Ⅵm7 Ⅳ Ⅴ7 -').length, analyze([table.byName('Ⅰ').id, null, null, table.byName('Ⅴ7').id], table).critiques.filter((c) => c.id.startsWith('loopnote')).length], [0, 0, 0]);
     t.ok('ループの指摘: 点数に入らない（0点。得点は、指摘がないときと同じ）', (() => { const r = analyze(board('- Ⅵm7 Ⅳ Ⅰ Ⅵm7 Ⅳ Ⅱm7 Ⅴ7'), table); return r.score.senseGood === r.critiques.filter((c) => c.points > 0).reduce((a, c) => a + c.points, 0) && r.critiques.some((c) => c.id.startsWith('loopnote') && c.points === 0); })());
   }
+  // ============ 内声の半音の動き（ジャッジ G7。2026-11-23）============
+  {
+    const crit = (spec) => analyze(board(spec), table).critiques.map((c) => `${c.id.split('|')[0]}:${c.points}`);
+    const G = (spec) => crit(spec).filter((c) => c.startsWith('guide') || c.startsWith('chroma'));
+    t.eq('ガイドトーンの半音進行: Ⅱm7 → Ⅴ7（ド → シ）・Ⅴ7 → ⅠM7（ファ → ミ）= +30 が 2つ。技（ツーファイブワン）が取っているつながりにも付く', G('Ⅱm7 Ⅴ7 ⅠM7'), ['guide:30', 'guide:30']);
+    t.eq('ガイドトーン: 王道進行（ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7）は、どのつながりも、7度 → 3度が半音ではないので、付かない', G('ⅣM7 Ⅴ7 Ⅲm7 Ⅵm7'), []);
+    t.eq('ガイドトーン: 3和音（7度がない）には、付かない（Ⅴ → Ⅰ・Ⅱm → Ⅴ）', G('Ⅱm Ⅴ Ⅰ'), []);
+    t.eq('ガイドトーン: Ⅴm7 → Ⅰ7（ファ → ミ）にも付く（丸サ進行の最後。1番の Ⅴ 系は「？」なので、2番から）', G('- Ⅴm7 Ⅰ7'), ['guide:30']);
+    t.eq('ガイドトーン: 7度 → 3度が、全音のとき（Ⅲ7 → Ⅵm7: レ → ド）は、付かない', G('Ⅲ7 Ⅵm7'), []);
+    t.eq('半音で動き続ける内声: 丸サ進行 ⅣM7 → Ⅲ7 → Ⅵm7（ラ → ソ♯ → ソ）= +40', G('ⅣM7 Ⅲ7 Ⅵm7'), ['chroma:40']);
+    t.eq('半音で動き続ける内声: サブドミナントマイナー Ⅳ → Ⅳm7 → Ⅰ（ラ → ラ♭ → ソ）= +40。技が取っていても付く。Ⅳm7 → Ⅰ の（ミ♭ → ミ）は、ガイドトーン +30', G('Ⅳ Ⅳm7 Ⅰ'), ['guide:30', 'chroma:40']);
+    t.eq('半音で動き続ける内声: 2つの和音だけでは、付かない（3つ以上）', G('Ⅳ Ⅳm7'), []);
+    t.eq('内声の加点の合計は、100 まで（ツーファイブワン 60 + 丸サ 40 = 100。もう1つ足しても、ふえない）', G('Ⅱm7 Ⅴ7 ⅠM7 - ⅣM7 Ⅲ7 Ⅵm7').length, 3);
+    t.ok('内声の加点: 内声の合計は、SENSE.innerCap をこえない（無作為な盤 3000 通り）', (() => { let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; for (let n = 0; n < 3000; n++) { const bd = Array.from({ length: 8 }, () => (rnd() < 0.2 ? null : ALL[Math.floor(rnd() * ALL.length)])); const r = analyze(bd, table); const inner = r.critiques.filter((c) => /^(guide|chroma)\|/.test(c.id)).reduce((a, c) => a + c.points, 0); if (inner > SENSE.innerCap || r.score.senseGood > SENSE.goodCap) return false; } return true; })());
+    t.ok('内声の講評: 名前・理由・位置・色がある', ['Ⅱm7 Ⅴ7', 'ⅣM7 Ⅲ7 Ⅵm7'].every((spec) => analyze(board(spec), table).critiques.filter((c) => /^(guide|chroma)\|/.test(c.id)).every((c) => c.name && c.reason.length > 30 && c.positions.length >= 2 && c.color && c.kind === 'good')));
+    t.eq('内声の加点: ブロック（冒頭のドミナント「？」）をまたがない（1番 Ⅴ7 は「？」。Ⅴ7 → ⅠM7 のガイドトーンは付かない）', G('Ⅴ7 ⅠM7'), []);
+    t.ok('ヒント: ガイドトーンの半音進行は、流れの理由に出る（Ⅱm7 → Ⅴ7 以外では、Ⅲm7 → Ⅵ7 など）', (() => { const a = table.byName('Ⅲm7'), b = table.byName('Ⅵ7'); const f = SENSE_FLOW(a, b); return !!f && /ガイドトーン/.test(f.reason); })());
+  }
+
+  // ============ コードの並べ順（トレイ。2026-11-23）============
+  {
+    const mk = (root, iv) => ({ rootPc: root, pcs: iv.map((i) => (root + i) % 12), isRepeat: false });
+    const order = (root, defs) => Object.entries(defs).map(([n, iv]) => [n, CB.chordOrderKey(mk(root, iv))]).sort((a, b) => CB.compareOrderKeys(a[1], b[1])).map((x) => x[0]);
+    t.eq('並べ順（3和音。ユーザーの例）: Csus2, Cm, C, Caug, Csus4', order(0, { Csus4: [0, 5, 7], Caug: [0, 4, 8], C: [0, 4, 7], Cm: [0, 3, 7], Csus2: [0, 2, 7] }), ['Csus2', 'Cm', 'C', 'Caug', 'Csus4']);
+    t.eq('並べ順（4和音以上。ユーザーの例）: Em7-5, Em7, E7, Eaug7, EM7, Em9, E7(♭9), E11', order(4, { E11: [0, 4, 7, 10, 2, 5], 'E7(b9)': [0, 4, 7, 10, 1], Em9: [0, 3, 7, 10, 2], EM7: [0, 4, 7, 11], Eaug7: [0, 4, 8, 10], E7: [0, 4, 7, 10], Em7: [0, 3, 7, 10], 'Em7-5': [0, 3, 6, 10] }),
+      ['Em7-5', 'Em7', 'E7', 'Eaug7', 'EM7', 'Em9', 'E7(b9)', 'E11']);
+    t.eq('並べ順: 6th・dim7 は、♭7 より前（C6 < C7 < CM7）。add9 は、4和音のなかで、いちばん前', order(0, { CM7: [0, 4, 7, 11], C7: [0, 4, 7, 10], C6: [0, 4, 7, 9], Cdim7: [0, 3, 6, 9], Cadd9: [0, 4, 7, 2] }), ['Cadd9', 'Cdim7', 'C6', 'C7', 'CM7']);
+    t.eq('並べ順: 転回形・ちらばりに左右されない（同じ構成音なら、同じ鍵）', JSON.stringify(CB.chordOrderKey(mk(4, [0, 4, 7, 10, 14]))) === JSON.stringify(CB.chordOrderKey(mk(4, [0, 4, 7, 10, 2]))), true);
+    const lvOrder = (lv) => table.list.filter((c) => c.level === lv).map((c) => c.name);
+    t.eq('トレイの並び: Lv.5 は、Ⅱ♭7 が Ⅱ♭M7 の左（ユーザーの指定）。Ⅱ♭7・Ⅱ♭M7・Ⅲ♭m6・Ⅲ♭M7・Ⅳm6', lvOrder(5), ['Ⅱ♭7', 'Ⅱ♭M7', 'Ⅲ♭m6', 'Ⅲ♭M7', 'Ⅳm6']);
+    t.ok('トレイの並び: どの段（Lv.）も、ルート音（C → B）の順', [1, 2, 3, 4, 5].every((lv) => { const r = table.list.filter((c) => c.level === lv).map((c) => c.rootPc); return r.every((x, k) => k === 0 || x >= r[k - 1]); }));
+    t.eq('トレイの並び: Lv.1 は Ⅰ・Ⅳ・Ⅴ・Ⅵm（以前は Ⅰ・Ⅵm・Ⅳ・Ⅴ）', lvOrder(1), ['Ⅰ', 'Ⅳ', 'Ⅴ', 'Ⅵm']);
+    t.eq('トレイの並び: 「→」は、いちばん最後', table.list[table.list.length - 1].isRepeat, true);
+    t.eq('sortByRoot: 段を分けないトレイ（チュートリアル）は、ルート音の順だけ。Ⅵm7・Ⅴ7・ⅣM7・Ⅰ → Ⅰ・ⅣM7・Ⅴ7・Ⅵm7', table.sortByRoot(['Ⅵm7', 'Ⅴ7', 'ⅣM7', 'Ⅰ'].map((n) => table.byName(n).id)).map((id) => table.byId(id).name), ['Ⅰ', 'ⅣM7', 'Ⅴ7', 'Ⅵm7']);
+  }
+
+  // ============ 取り込み（公開ページ用。net/share.js。2026-11-23）============
+  {
+    const names = table.pieces().map((c) => c.name);
+    const PAY = { drums: [{ name: '夕焼けビート', length: 16, lanes: { K: 'x...x...x...x...', S: '....x.......x...', H: 'x.x.x.x.x.x.x.x.' } }], backings: [{ name: 'ゆったり', length: 16, cells: 'C---....C---....' }], progressions: [{ name: 'テスト進行', chords: ['Ⅰ', 'Ⅴ', 'Ⅵm'], points: 500, startAt: 'head' }] };
+    const code = SH.encodeShare(PAY);
+    t.ok('取り込み: コードは j1. で始まる・日本語の名前も、こわれずに戻る', code.startsWith('j1.') && /^[A-Za-z0-9_.-]+$/.test(code) && SH.decodeShare(code).data.drums[0].name === '夕焼けビート');
+    t.eq('取り込み: リンク（…#lib=コード）・コードだけ・JSON そのもの、どれでも読める', [SH.decodeShare(`https://x.github.io/#lib=${code}`).ok, SH.decodeShare(code).ok, SH.decodeShare(JSON.stringify({ app: SH.SHARE_APP, v: 1, ...PAY })).ok], [true, true, true]);
+    t.eq('取り込み: ことわる（空・# の付いていないリンク・別の JSON・こわれたコード・版ちがい）', [SH.decodeShare('').ok, SH.decodeShare('https://x.github.io/').ok, SH.decodeShare('{"app":"other"}').ok, SH.decodeShare('j1.@@@').ok, SH.decodeShare('{"app":"chord-lines-library","v":9}').ok], [false, false, false, false, false]);
+    const san = SH.sanitizeShared(SH.decodeShare(code).data, names);
+    t.eq('取り込み: 検査（ドラム 1・バッキング 1・進行 1・とばしたもの 0）', [san.drums.length, san.backings.length, san.progressions.length, san.skipped], [1, 1, 1, 0]);
+    const bad = SH.sanitizeShared({ drums: [{ name: 'x', length: 16, lanes: { K: 'x...' } }, { name: 'y', length: 16, lanes: { Z: 'x...............' } }, { name: 'z', length: 16, lanes: { K: '................' } }, { name: 'a\nb', length: 16, lanes: { K: 'x...............' } }, { name: 'あ'.repeat(21), length: 16, lanes: { K: 'x...............' } }],
+      backings: [{ name: 'b1', length: 16, cells: '-...............' }, { name: 'b2', length: 16, cells: '................' }, { name: 'b3', length: 16, cells: 'Cxxx............' }, { name: 'b4', length: 12, cells: 'C...........' }],
+      progressions: [{ name: 'p1', chords: ['Ⅰ'] }, { name: 'p2', chords: ['Ⅰ', 'ないコード'] }, { name: 'p3', chords: ['Ⅰ', 'Ⅴ'], points: 5 }, { name: 'p4', chords: ['Ⅰ', 'Ⅴ'], startAt: 'x' }, { name: 'p5', chords: Array(9).fill('Ⅰ') }] }, names);
+    t.eq('取り込み: 不正な内容は、全部ことわる（長さちがい・知らないレーン・空・改行・長すぎる名前・「-」の位置・空・知らない文字・知らない長さ・駒の数・知らない駒・点数・始まり）', [bad.drums.length, bad.backings.length, bad.progressions.length, bad.skipped], [0, 0, 0, 14]);
+    t.eq('取り込み: 上限（ドラム 40・バッキング 40・進行 60）をこえると、とばす', (() => { const many = { drums: Array.from({ length: 45 }, (_, i) => ({ name: `d${i}`, length: 8, lanes: { K: 'x.......' } })) }; const r = SH.sanitizeShared(many, names); return [r.drums.length, r.skipped]; })(), [40, 5]);
+    const m1 = SH.mergeIntoLibrary(null, san), m2 = SH.mergeIntoLibrary(m1.lib, san);
+    t.eq('取り込み: 保存に混ぜる（id は d1・b2・p3 のように増える）。同じ名前は、上書き（増えない・id はそのまま）', [m1.added.length, m1.lib.drums[0].id, m1.lib.backings[0].id, m1.lib.progressions[0].id, m2.added.length, m2.updated.length, m2.lib.drums[0].id], [3, 'd1', 'b2', 'p3', 0, 3, 'd1']);
+    t.eq('取り込み: 削除', (() => { const l = SH.removeFromLibrary(m1.lib, 'drum', 'd1'); return [l.drums.length, l.backings.length, SH.libraryCount(l)]; })(), [0, 1, 2]);
+    t.eq('取り込み: 保存してあった内容の、検査（こわれていても動く・id は残る・重なった名前は捨てる）', (() => { const l = SH.sanitizeLocal({ drums: [{ id: 'd7', name: 'a', length: 8, lanes: { K: 'x.......' } }, { id: 'd8', name: 'a', length: 8, lanes: { K: 'x.......' } }, { id: 'x1', name: 'b', length: 8, lanes: { K: 'x.......' } }, null], backings: 5, progressions: 'x', next: 2 }, names); return [l.drums.map((x) => x.id), l.backings.length, l.next]; })(), [['d7'], 0, 8]);
+    t.eq('取り込み: 取り込み先の入れ物は、ブリッジの内容（library.js の mergeUserPatterns）と同じ形で使える', (() => { const lib = { ...m1.lib }; const pr = { drums: [], backings: [] }; return [lib.drums[0].lanes.K.length, lib.backings[0].cells.length, typeof lib.progressions[0].points]; })(), [16, 16, 'number']);
+  }
+
+  // ============ プリセットの、分割したマス（2026-11-23）============
+  {
+    const bdl = (spec) => spec.split(' ').map((n) => (n === '-' ? null : table.byName(n).id));
+    const sp = (spec) => spec.split(' ').map((n) => (n === '-' ? null : table.byName(n).id));
+    const r = makePreset({ name: '分割', board: bdl('Ⅱm7 ⅠM7 - - - - - -'), split: sp('Ⅴ7 - - - - - - -'), from: 0, to: 1, table });
+    t.eq('プリセット: 分割したマスも保存する（half に、後半の駒の名前）', [r.ok, r.preset.chords, r.preset.half], [true, ['Ⅱm7', 'ⅠM7'], ['Ⅴ7', null]]);
+    t.eq('プリセット: 分割がなければ、half は付かない・分割だけが違えば、別のプリセット（重複ではない）', (() => { const a = makePreset({ name: 'a', board: bdl('Ⅱm7 ⅠM7 - - - - - -'), from: 0, to: 1, table }); const b = makePreset({ name: 'b', board: bdl('Ⅱm7 ⅠM7 - - - - - -'), split: sp('Ⅴ7 - - - - - - -'), from: 0, to: 1, table, existing: [a.preset] }); const c = makePreset({ name: 'c', board: bdl('Ⅱm7 ⅠM7 - - - - - -'), split: sp('Ⅴ7 - - - - - - -'), from: 0, to: 1, table, existing: [b.preset] }); return [a.preset.half, b.ok, c.reason]; })(), [undefined, true, 'duplicate']);
+    t.eq('プリセット: 駒が1つでも、分割していれば、保存できる（2つの駒）', makePreset({ name: 'x', board: bdl('Ⅱm7 - - - - - - -'), split: sp('Ⅴ7 - - - - - - -'), from: 0, to: 0, table }).ok, true);
+    const plan = placementPlan(r.preset, 2, table);
+    t.eq('プリセットの置き方: 後半の駒（second）も入る・駒の数は、後半も数える', [plan.entries.map((e) => [e.slot, e.name, e.secondName]), plan.entries[0].second === table.byName('Ⅴ7').id, plan.count], [[[2, 'Ⅱm7', 'Ⅴ7'], [3, 'ⅠM7', null]], true, 3]);
+    t.eq('プリセット: 保存の検査（half の形が合わなければ、分割を捨てる・合えば残る・前後の空きを切ると、一緒に切る）', (() => { const ok = sanitizePresets([{ id: 'p1', name: 'a', chords: [null, 'Ⅱm7', 'ⅠM7'], half: [null, 'Ⅴ7', null], at: 1 }], table); const ng = sanitizePresets([{ id: 'p2', name: 'b', chords: ['Ⅱm7', 'ⅠM7'], half: ['Ⅴ7'], at: 1 }], table); const ng2 = sanitizePresets([{ id: 'p3', name: 'c', chords: ['Ⅱm7', 'ⅠM7'], half: ['ないコード', null], at: 1 }], table); return [ok[0].chords, ok[0].half, ng[0].half, ng2.length]; })(), [['Ⅱm7', 'ⅠM7'], ['Ⅴ7', null], undefined, 1]);
+  }
+
 }

@@ -1,6 +1,6 @@
 // ゲーム全体の組み立て。部品をつなぐだけで、ルールは game/game.js、判定は core/tricks.js にある。
 //   流れ: 起動（クリックで音が使える）→ タイトル（背景で、デモが自動で進行を組み立てて鳴らす）
-//         → チュートリアル / ステージ選択 / フリープレイ / チャレンジ → 結果
+//         → チュートリアル / チュートリアルを選ぶ / メロディーにコードをつける / チャレンジステージ / フリープレイ / タイムアタック（内部の名前は 'challenge'）→ 結果
 import { ChordTable } from './core/chords.js';
 import { voiceChord, BASE_C_DEFAULT } from './core/voicing.js';
 import { SceneManager } from './render/scene.js';
@@ -8,12 +8,15 @@ import { AudioEngine, masterGainFor } from './audio/engine.js';
 import { Sfx } from './audio/sfx.js';
 import { Game } from './game/game.js';
 import { STAGES, FREE_STAGE, CHALLENGE_STAGE } from './game/stages.js';
+import { TRIAL_STAGES, nextTrialAfter } from './game/trials.js';
 import { loadSave, writeSave, resetSave } from './game/save.js';
 import { HUD } from './ui/hud.js';
 import { Screens } from './ui/screens.js';
 import { Input } from './ui/input.js';
 import { DeviceLink } from './net/device.js';
 import { LibraryLink, mergeUserPatterns, libraryChanges, isUserPatternId } from './net/library.js';
+import { decodeShare, sanitizeShared, sanitizeLocal, mergeIntoLibrary, removeFromLibrary } from './net/share.js';
+import { LibImport } from './ui/libimport.js';
 import { SoundMenu } from './ui/soundmenu.js';
 import { VolumeMenu } from './ui/volumemenu.js';
 import { MelodyView } from './ui/melodyview.js';
@@ -25,7 +28,7 @@ import { TrickDetail } from './ui/trickdetail.js';
 import { ChordStore } from './game/chordstore.js';
 import { ChordLab } from './ui/chordlab.js';
 import { ChordMenu } from './ui/chordmenu.js';
-import { watchLayout, isPhone } from './ui/layout.js';
+import { watchLayout, isPhone, isPortraitPhone } from './ui/layout.js';
 import { MELODY_STAGES } from './game/melodies.js';
 import { VERDICT } from './core/melody.js';
 import { INSTRUMENTS, instrumentName } from './audio/instruments.js';
@@ -48,7 +51,7 @@ async function main() {
   const melodyDoc = new MelodyDoc((save.userMelody || {}).notes || []);                  // フリープレイの、自分でつくった（自動でつけた）メロディ
   const canvas = $('#gl');
   const scene = new SceneManager(canvas);
-  watchLayout(({ phone, portrait }) => scene.setPhoneMode(phone, portrait));          // スマホ（縦持ち・横持ち）: 盤の位置・大きさを、見える場所のまん中に
+  watchLayout(({ phone, portrait, region }) => { scene.setPhoneMode(phone, portrait); scene.setBoardRegion(region); });          // スマホ（縦持ち・横持ち）: 盤の位置・大きさを、見える場所（上のバー・得点・メロディの帯の下〜トレイの上）のまん中に
   const chordStore = new ChordStore(save, table);                                          // 自作コード・編集したコード（フリープレイだけで見える。table.setMode）
   const game = new Game({ table, presets, save });
   const hud = new HUD({ table, save });
@@ -89,6 +92,7 @@ async function main() {
     $('#loading').classList.remove('hidden');
     await engine.load('./audio/', (p) => { $('#loading-bar').style.width = `${Math.round(p * 100)}%`; });
     engine.getBoard = () => game.board;
+    engine.getSplit = () => game.split;
     engine.wantLoopSteps = wantLoopSteps;
     engine.onStepScheduled = onStepScheduled;
     app.engine = engine; app.sfx = new Sfx(engine);
@@ -130,6 +134,7 @@ async function main() {
       if (kind === 'instrument' && app.engine && !app.muted) app.engine.audition(table.byName('Ⅰ').id);        // 音色を変えたら、すぐ聴ける
     },
     onReset: () => { save.sound = { instrument: null, drum: null, backing: null }; writeSave(save); applySound(); hud.toast('音はステージの標準にもどしました'); },
+    onImport: () => libImport.open(),                       // 公開ページ: リズム・コード編集の内容の取り込み
   });
   app.soundMenu = soundMenu;
 
@@ -145,10 +150,13 @@ async function main() {
     if (libraryFirst) { libraryFirst = false; return; }
     for (const c of libraryChanges(prev, lib).slice(0, 3)) hud.toast(`${c.label}「${c.name}」を${c.isNew ? '受け取りました' : '更新しました'}`);
   }
-  app.library = new LibraryLink({ onChange: applyLibrary });
+  // 公開ページ（https）: ブリッジがないので、リズム・コード編集の内容は、リンク・ファイル・貼り付けで「取り込んで」、ブラウザに保存する（net/share.js・ui/libimport.js）
+  const chordNames = table.baseList.filter((c) => !c.isRepeat).map((c) => c.name);
+  save.library = sanitizeLocal(save.library, chordNames);
+  app.library = new LibraryLink({ onChange: applyLibrary, local: () => save.library });
 
   // 演奏のループの長さ。チュートリアルで、お手本も、置いた駒も、4つの場所（1〜4番）におさまるあいだは、4ステップでループする（5〜8番の空きを待たない）。
-  // 5番以降に駒を置くと、次の周回から、8ステップに戻る。フリープレイ・チャレンジ・タイトルは、いつも8ステップ
+  // 5番以降に駒を置くと、次の周回から、8ステップに戻る。フリープレイ・タイムアタック・チャレンジステージ・タイトルは、いつも8ステップ
   function wantLoopSteps() {
     if (game.mode !== 'tutorial' || !game.stage) return 8;
     const need = (game.stage.solution || []).reduce((m, [slot]) => Math.max(m, slot + 1), 0);
@@ -174,27 +182,37 @@ async function main() {
       scene.setPlayhead(e.step);
       scene.glowPiece(e.step, 1);
       for (const ins of game.analysis.instances) if (!ins.generic && ins.endFirst === e.step) scene.highlightInstance(ins, 1);
-    } else if (e.type === 'beat') scene.beatPulse(e.beat === 0 ? 1 : 0.55);
+    } else if (e.type === 'half') scene.glowPiece(e.step, 1, 1);                     // 分割したマスの、2拍目（後半の駒）
+    else if (e.type === 'beat') scene.beatPulse(e.beat === 0 ? 1 : 0.55);
     else if (e.type === 'stop') scene.setPlayhead(-1);
   }
 
   // ============================================================ ゲームのイベント → 画面・音
   game.on('stage', ({ stage }) => {
-    for (let i = 0; i < 8; i++) scene.setPiece(i, null);
+    for (let i = 0; i < 8; i++) { scene.setPiece(i, null); scene.setPiece2(i, null); }
     scene.setGhosts(null, []); scene.setGuide(null);
     app.marks = { primary: [], advanced: [], guide: null };
     void stage;
   });
   game.on('board', (e) => {
-    scene.setPiece(e.slot, e.id !== null ? table.byId(e.id) : null, { animate: e.id !== null && e.source !== 'restore' });
+    scene.setPiece(e.slot, e.id !== null ? table.byId(e.id) : null, { animate: e.id !== null && e.source !== 'restore' && !e.slid, half: game.isSplit(e.slot) });
     if (app.sfx && !app.muted && e.source !== 'demo-silent' && e.source !== 'device-sync' && e.source !== 'preset' && e.source !== 'chordbook') { if (e.id !== null) app.sfx.place(); else app.sfx.remove(); }       // プリセットの呼び出しは、まとめて1回だけ鳴らす（applyPreset）
     if (presetMenu.isOpen) presetMenu.refresh();
     if (studio.isOpen) studio.refresh();
     if (e.source === 'device' && e.id !== null) previewPlaced(e.id);                // 実機の盤に駒を置いた: そのコードを、ちょっとだけ聴かせる（演奏中は、小さく）
     if (e.id !== null) { /* ヒントは、そのまま次の判定で更新される */ }
-    // チャレンジ: 最初の駒を置いたときに、タイマーが始まる（実機の盤に、もともと置いてあった駒の読み込みでは、始めない）
+    // タイムアタック（内部の名前は challenge）: 最初の駒を置いたときに、タイマーが始まる（実機の盤に、もともと置いてあった駒の読み込みでは、始めない）
     if (game.mode === 'challenge' && !game.timerRunning && !app.challengeDone && e.id !== null && (e.source === 'player' || e.source === 'device')) { game.startTimer(); hud.toast('スタート！ 90秒'); }
     if (app.device && app.device.live && e.source !== 'device') { /* 実機の盤を見ているときは、画面での操作は無効（トレイも隠している） */ }
+  });
+  // 分割したマス（前半・後半）の、後半の駒が変わった。前半の駒の大きさ（半分）を、そろえて、後半の駒を出す・取りのぞく
+  game.on('split', (e) => {
+    const first = game.board[e.slot];
+    if (!e.firstChanged && first !== null && first !== undefined) scene.setPiece(e.slot, table.byId(first), { animate: false, half: e.id !== null });
+    scene.setPiece2(e.slot, e.id !== null ? table.byId(e.id) : null, { animate: e.id !== null && e.source !== 'restore' && !e.slid });
+    if (app.sfx && !app.muted && e.source !== 'demo-silent' && e.source !== 'device-sync' && e.source !== 'preset' && e.source !== 'chordbook') { if (e.id !== null && !e.slid) app.sfx.place(); else if (e.id === null && e.prev !== null && !e.firstChanged) app.sfx.remove(); }
+    if (presetMenu.isOpen) presetMenu.refresh();
+    if (studio.isOpen) studio.refresh();
   });
   game.on('analysis', ({ result }) => {
     scene.setAnalysis([...result.instances, ...(result.oddities || [])]);         // 「？」（小節の頭の Ⅴ）も、駒を囲んで出す
@@ -237,24 +255,62 @@ async function main() {
     hud.setGoalDone(true);
     if (app.sfx && !app.muted) app.sfx.clear(app.engine.nextBeatTime(0.1));
     scene.kickBloom(1.4); scene.flashScreen('#66ffcc', 0.3);
-    app.clearPending = stage;                    // 結果の画面は、盤面を見てもらってから出す。そのあいだにメニューを開いても、「つづける」で戻ったら、出す
-    const token = ++app.demoToken;
-    setTimeout(() => { if (token === app.demoToken && app.state === 'play' && game.stage === stage) showStageClear(); }, clearDelayMs());
+    app.clearPending = stage;                    // 結果の画面は、盤面を見てもらってから出す（出す時刻 = clearDueAt）。そのあいだに、メニュー・技の詳細・編集画面などを開いても、閉じて遊ぶ画面にもどったときに、まだ出ていなければ出す（returnToPlay）
+    app.clearDueAt = performance.now() + clearDelayMs();
+    scheduleClearResult();
   });
   game.on('timer', ({ left }) => { hud.setTimer(left); if (left <= 10 && left > 0 && app.sfx && !app.muted) app.sfx.ui(); });
   game.on('challengeEnd', ({ score, stars, best }) => { app.challengeDone = true; showChallengeEnd(score, stars, best); });
   game.on('melodyEnd', (e) => showMelodyResult(e));
+  game.on('trial', ({ state }) => hud.setTrial(state));
+  game.on('trialEnd', (e) => showTrialResult(e));
   game.on('presetDone', ({ name }) => hud.toast(`プリセット「${name}」を置きました`));
 
   function applyMarks() { hud.markTray(app.marks); }
 
-  // クリアしてから、結果の画面が出るまでの時間。決まった進行を、1周ぶん聴いて、盤面を眺められるように、長めにとる（7〜14秒）
+  // クリアしてから、結果の画面が出るまでの時間。決まった進行を、だいたい1周ぶん聴いて、盤面を眺められるぶん（5〜10秒。2026-11-23 に、7〜14秒から短くした）
   function clearDelayMs() {
     if (app.clearDelayOverride !== null) return app.clearDelayOverride;
-    const sec = app.engine ? wantLoopSteps() * app.engine.stepSeconds() : 8;
-    return Math.round(Math.max(7, Math.min(14, sec + 2.5)) * 1000);
+    const sec = app.engine ? wantLoopSteps() * app.engine.stepSeconds() : 6;
+    return Math.round(Math.max(5, Math.min(10, sec * 0.7 + 1.6)) * 1000);
   }
   app.clearDelayMs = clearDelayMs;
+
+  // クリアの結果の画面: 出す時刻（clearDueAt）になったとき、遊ぶ画面（play）なら出す。メニュー・技の詳細・プリセット・編集画面などを開いている間は出さず、閉じて遊ぶ画面にもどったとき（returnToPlay）に出す
+  //   （以前は、時刻が来たときに別の画面を開いていると、閉じても、結果が出なかった）
+  function scheduleClearResult() {
+    clearTimeout(app.clearTimer);
+    if (!app.clearPending) return;
+    app.clearTimer = setTimeout(tryShowClear, Math.max(0, app.clearDueAt - performance.now()));
+  }
+  function tryShowClear() {
+    const stage = app.clearPending;
+    if (!stage || game.stage !== stage || !game.cleared) return;
+    if (app.state !== 'play') return;
+    showStageClear();
+  }
+  function returnToPlay() {                                // 開いていた画面（メニュー・技の詳細・プリセット・メロディ・編集画面）から、遊ぶ画面にもどる
+    app.state = 'play';
+    if (app.clearPending && app.clearPending === game.stage) {
+      clearTimeout(app.clearTimer);
+      if (performance.now() >= app.clearDueAt) app.clearTimer = setTimeout(tryShowClear, 500);          // 出す時刻は、すぎている: すぐ（少しおいて）出す
+      else scheduleClearResult();
+    }
+  }
+  // 結果の画面を出す前に、ほかに開いているもの（メニュー・技の詳細・編集画面・音のメニュー・持ち上げた駒・スマホのシート）を、きちんと閉じる
+  //   （以前は、結果の画面が、開いていた画面を隠すだけで、その画面は「開いたまま」と覚えられていて、あとで開けなくなった）
+  function closeOverlays() {
+    soundMenu.close(); volumeMenu.close(); chordMenu.close(); setEditPick(false);
+    if (app.input) app.input.cancel();
+    if (presetMenu.isOpen) presetMenu.close();
+    if (studio.isOpen) studio.close();
+    if (chordLab.isOpen) chordLab.close(true);
+    if (trickDetail.isOpen) trickDetail.close();
+    if (libImport.isOpen) libImport.close();
+    closeSheets();
+  }
+  function closeSheets() { document.body.classList.remove('side-open', 'guide-open'); syncSheetButtons(); }
+  screens.onOverlay = closeSheets;                          // メニュー・結果・編集画面などが出るときは、スマホのシート（技の一覧・ガイド）を閉じる
 
   // 実機の盤に駒が置かれたときの試聴。ESP32 のブザー（アルペジオ）はやめたので、こちらで、そのコードを鳴らす。
   // 演奏中は、ほかのコードとぶつからないよう、engine.audition が小さく・短くする。続けて置かれたときは、うるさくならないよう間引く
@@ -290,27 +346,28 @@ async function main() {
 
   // ============================================================ 画面の流れ
   function startStage(stage, mode) {
+    closeOverlays();
     stopDemo();
     app.clearPending = null; hideClearBar();
     app.state = 'play'; app.paused = false; app.challengeDone = false; app.demoToken++;
     scene.setShift(0);
     game.demoMode = false;
     hud.clearStamps();
-    document.body.classList.remove('side-open'); document.body.classList.toggle('guide-open', isPhone() && mode === 'tutorial'); syncSheetButtons();       // スマホ: 技の一覧・ガイドは、しまう（チュートリアルの始まりだけ、ガイドを開く）
+    document.body.classList.remove('side-open'); document.body.classList.toggle('guide-open', isPhone() && (mode === 'tutorial' || mode === 'trial')); syncSheetButtons();       // スマホ: 技の一覧・ガイドは、しまう（チュートリアルの始まりだけ、ガイドを開く）
     table.setMode(mode === 'free' ? 'user' : 'base');                // 自作コード・編集したコードは、フリープレイだけ（ほかのステージは、もとの駒だけ）
     setEditPick(false); chordMenu.close();
     enterMode(stage, mode);                       // メロディの帯・盤の見え方・メロディの音（メロディのステージだけ）
     hud.setStage(stage, mode);                    // 先に見出しを出す（loadStage が出すイベントを、画面が受けられるように）
     game.loadStage(stage, mode);
     game.setHints(mode === 'tutorial' ? false : app.hintsPref);
-    hud.buildTray(game.trayIds(), { grouped: mode !== 'tutorial', addButton: mode === 'free' });
+    hud.buildTray(game.trayIds({ grouped: mode !== 'tutorial' }), { grouped: mode !== 'tutorial', addButton: mode === 'free' });
     $('#btn-chord-edit').classList.toggle('hidden', mode !== 'free'); $('#btn-chord-new').classList.toggle('hidden', mode !== 'free');
     applyMarks();                                  // 案内・ヒントの印は、トレイを作ったあとに付ける
     hud.setCollection(game.collection());
     hud.setBpm(stage.bpm);
     hud.setToggle('#btn-hint', game.hintsOn, '#hint-state');
     if (mode === 'challenge') hud.setTimer(stage.seconds);
-    $('#btn-presets').classList.toggle('hidden', mode === 'tutorial' || mode === 'challenge');       // プリセットは、自由に組み立てるとき（フリープレイ・メロディ）だけ
+    $('#btn-presets').classList.toggle('hidden', mode === 'tutorial' || mode === 'challenge' || mode === 'trial');       // プリセットは、自由に組み立てるとき（フリープレイ・メロディ）だけ
     $('#btn-studio').classList.toggle('hidden', mode !== 'free');                                    // メロディの画面は、フリープレイだけ
     $('#tray-tools .legend').classList.toggle('hidden', mode === 'tutorial');
     $('#guide').classList.toggle('collapsed', false);
@@ -321,13 +378,14 @@ async function main() {
     }
     if (mode === 'challenge') hud.toast('最初の駒を置くとスタート！');
     if (mode === 'melody') hud.toast('メロディが流れます。合う和音を置いてみよう');
+    if (mode === 'trial') hud.toast('条件を守って、ノルマの得点をめざそう');
   }
 
   // メロディのステージに入る / 出る。帯の表示・盤の見え方（帯のぶん、盤を小さく・下へ）・メロディの音
   function enterMode(stage, mode) {
     const melody = mode === 'melody' && stage.melody;
     document.body.classList.toggle('melody-mode', !!melody);
-    if (melody) { melodyView.show(stage); scene.setView({ zoom: 1.14, down: 0.075 }); }
+    if (melody) { melodyView.show(stage); scene.setView(isPortraitPhone() ? {} : { zoom: 1.14, down: 0.075 }); }
     else { melodyView.hide(); scene.setView({}); }
     if (app.engine) app.engine.setMelody(melody ? stage.melody : (mode === 'free' && stage && save.userMelodyOn !== false && melodyDoc.count ? { notes: melodyDoc.notes() } : null));
   }
@@ -350,6 +408,7 @@ async function main() {
   }
 
   function showTitle() {
+    closeOverlays();
     app.clearPending = null; hideClearBar();
     app.state = 'title'; app.paused = false; app.demoToken++;
     table.setMode('base'); setEditPick(false); chordMenu.close();
@@ -359,12 +418,13 @@ async function main() {
     game.setHints(false);
     if (app.engine) { app.engine.setBpm(112); app.engine.setInstrument('piano'); app.engine.setPatterns({ drumId: 2, backingId: 1 }); soundMenu.refreshLabel(); if (!app.engine.playing) app.engine.start(); }
     screens.show('title');
-    scene.setShift(-1.9);
+    scene.setShift(isPortraitPhone() ? 0 : -1.9);
     renderTitleCollection();
     startDemo();
   }
 
   function showStages() {
+    closeOverlays();
     stopDemo();
     table.setMode('base');
     enterMode(null, 'free');
@@ -373,14 +433,15 @@ async function main() {
     game.loadStage(FREE_STAGE, 'free'); game.demoMode = true;        // 盤を空にして、ドラムだけ流しておく
     game.setHints(false);                                           // ヒントの候補が、背景に残らないように（遊ぶときは、startStage が好みどおりに戻す）
     scene.setShift(0);
-    $('#stages-title').textContent = 'STAGES'; $('#stages-sub').textContent = 'ステージを選ぶ';
-    screens.buildStageGrid(STAGES, [{ stage: FREE_STAGE, mode: 'free' }, { stage: null, mode: 'melody-menu' }, { stage: CHALLENGE_STAGE, mode: 'challenge' }], game, (s, m) => (m === 'melody-menu' ? showMelodies() : startStage(s, m)));
+    $('#stages-title').textContent = 'TUTORIAL'; $('#stages-sub').textContent = 'チュートリアルを選ぶ';
+    screens.buildStageGrid(STAGES, [], game, (s, m) => startStage(s, m));                  // フリープレイ・メロディー・チャレンジステージ・タイムアタックは、タイトルのメニューから
     screens.show('stages');
     app.state = 'stages';
   }
 
-  // 「合わせる」: メロディのステージを選ぶ画面（ステージ選択と、同じ画面の部品を使う）
+  // 「メロディーにコードをつける」: メロディのステージを選ぶ画面（ステージ選択と、同じ画面の部品を使う）
   function showMelodies() {
+    closeOverlays();
     stopDemo();
     table.setMode('base');
     enterMode(null, 'free');
@@ -389,15 +450,33 @@ async function main() {
     game.loadStage(FREE_STAGE, 'free'); game.demoMode = true;
     game.setHints(false);
     scene.setShift(0);
-    $('#stages-title').textContent = 'MELODY'; $('#stages-sub').textContent = '流れるメロディにコードをつける';
+    $('#stages-title').textContent = 'MELODY'; $('#stages-sub').textContent = 'メロディーにコードをつける';
     screens.buildMelodyGrid(MELODY_STAGES, game, (m) => startStage(m, 'melody'));
+    screens.show('stages');
+    app.state = 'stages';
+  }
+
+  // 「チャレンジステージ」: ステージを選ぶ画面（ステージ選択と、同じ画面の部品を使う）
+  function showTrials() {
+    closeOverlays();
+    stopDemo();
+    table.setMode('base');
+    enterMode(null, 'free');
+    app.clearPending = null; hideClearBar();
+    hud.clearStamps();
+    game.loadStage(FREE_STAGE, 'free'); game.demoMode = true;
+    game.setHints(false);
+    scene.setShift(0);
+    $('#stages-title').textContent = 'CHALLENGE STAGE'; $('#stages-sub').textContent = 'チャレンジステージを選ぶ';
+    screens.buildTrialGrid(TRIAL_STAGES, game, (t) => startStage(t, 'trial'));
     screens.show('stages');
     app.state = 'stages';
   }
 
   function showStageClear() {
     hud.clearStamps();
-    app.clearPending = null;
+    app.clearPending = null; clearTimeout(app.clearTimer);
+    closeOverlays(); app.state = 'result';
     const stage = game.stage;
     const next = nextStageAfter(stage);
     screens.showResult({
@@ -407,13 +486,13 @@ async function main() {
         { label: next ? `次へ ▶ ${next.title}` : 'フリープレイへ ▶', primary: true, onClick: () => (next ? startStage(next, 'tutorial') : startStage(FREE_STAGE, 'free')) },
         { label: '盤面を見る・編集する', onClick: () => { screens.hide('result'); app.state = 'play'; showClearBar(stage, next); } },     // 結果を閉じて、盤面を見たり、いじったりする
         { label: 'もう一度', onClick: () => startStage(stage, 'tutorial') },
-        { label: 'ステージ選択', onClick: showStages },
+        { label: 'チュートリアルを選ぶ', onClick: showStages },
       ],
     });
   }
 
-  // クリア（チャレンジの終了）のあと、結果を閉じて、盤面を見る・さわっているあいだの、小さな操作の欄（結果をもう一度見る / つぎへ・もう一度）
-  //   チャレンジのときは、記録（得点・ベスト）は、終わった時点のまま、もう変わらない。盤面は、自由にさわれる
+  // クリア（タイムアタックの終了）のあと、結果を閉じて、盤面を見る・さわっているあいだの、小さな操作の欄（結果をもう一度見る / つぎへ・もう一度）
+  //   タイムアタックのときは、記録（得点・ベスト）は、終わった時点のまま、もう変わらない。盤面は、自由にさわれる
   function showClearBar(stage, next, opts = {}) {
     $('#clear-bar-title').textContent = opts.title || '✓ ステージクリア';
     $('#clear-bar-note').textContent = opts.note || '盤面は自由にさわれます';
@@ -431,6 +510,7 @@ async function main() {
     game.finishMelody();
   }
   function showMelodyResult(e) {
+    closeOverlays(); app.state = 'result';
     const m = e.result.melody, sc = e.result.score;
     const idx = MELODY_STAGES.indexOf(e.stage), next = idx >= 0 ? MELODY_STAGES[idx + 1] || null : null;
     const signed = (n) => (n < 0 ? `−${-n}` : `+${n}`);
@@ -445,26 +525,49 @@ async function main() {
       extras: [h('div', { class: 'mr-conds' }, e.conds.map((c) => h('div', { class: c.ok ? 'ok' : '' }, `${c.ok ? '✓' : '・'} ${c.text}`))), h('div', { class: 'mr-result' }, rows), h('div', { class: 'mr-result-note' }, `お手本の一例: ${e.stage.answer.join(' → ')}（これが正解というわけではありません）`)],
       tricks: e.result.instances,
       buttons: [
-        { label: next ? '次のメロディへ ▶' : 'メロディ選択へ ▶', primary: true, onClick: () => (next ? startStage(next, 'melody') : showMelodies()) },
+        { label: next ? '次のメロディーへ ▶' : 'メロディーを選ぶ ▶', primary: true, onClick: () => (next ? startStage(next, 'melody') : showMelodies()) },
         { label: '盤面にもどる', onClick: () => { screens.hide('result'); app.state = 'play'; } },
         { label: 'もう一度', onClick: () => startStage(e.stage, 'melody') },
-        { label: 'メロディ選択', onClick: showMelodies },
+        { label: 'メロディーを選ぶ', onClick: showMelodies },
       ],
     });
   }
 
   function showChallengeEnd(score, stars, best) {
-    hud.clearStamps();
+    hud.clearStamps(); closeOverlays(); app.state = 'result';
     app.lastChallenge = { score, stars, best };
     screens.showResult({
-      kicker: 'TIME UP', title: 'チャレンジ', stars, score, scoreNote: score >= best ? 'NEW BEST!' : `ベスト ${best}`,
+      kicker: 'TIME UP', title: 'タイムアタック', stars, score, scoreNote: score >= best ? 'NEW BEST!' : `ベスト ${best}`,
       paragraphs: [stars === 3 ? 'すばらしい！ 技がしっかり連鎖しています。' : stars >= 1 ? 'いい調子です。技を連鎖させると、コンボで得点がのびます。' : '技を決めるほど、得点がのびます。「ヒント」も使ってみよう。', '得点は90秒のあいだでいちばん高かったときの盤の得点です。'],
       tricks: game.analysis.instances,
       buttons: [
         { label: 'もう一度', primary: true, onClick: () => startStage(CHALLENGE_STAGE, 'challenge') },
-        { label: '盤面を見る・編集する', onClick: () => { screens.hide('result'); app.state = 'play'; showClearBar(CHALLENGE_STAGE, null, { kind: 'challenge', title: '⏱ チャレンジ終了', note: '盤面は自由にさわれます（記録は、終わったときのまま）', nextLabel: 'もう一度 ▶' }); } },     // 結果を閉じて、盤面を見たり、いじったりする（チュートリアルと同じ）
-        { label: 'ステージ選択', onClick: showStages },
+        { label: '盤面を見る・編集する', onClick: () => { screens.hide('result'); app.state = 'play'; showClearBar(CHALLENGE_STAGE, null, { kind: 'challenge', title: '⏱ タイムアタック終了', note: '盤面は自由にさわれます（記録は、終わったときのまま）', nextLabel: 'もう一度 ▶' }); } },     // 結果を閉じて、盤面を見たり、いじったりする（チュートリアルと同じ）
         { label: 'タイトルへ', onClick: showTitle },
+      ],
+    });
+  }
+
+  // チャレンジステージ: 「提出する」を押した。条件がそろっていて、ノルマ以上ならクリア（結果の画面）。そろっていなければ、何が足りないかを、知らせる
+  function finishTrial() {
+    if (game.mode !== 'trial' || app.state !== 'play') return;
+    const r = game.finishTrial();
+    if (r && !r.ok) hud.toast(r.state.allOk ? `ノルマ ${r.state.norm}点まで、あと ${r.state.norm - r.state.score}点です` : '条件が、まだ そろっていません');
+  }
+  function showTrialResult(e) {
+    closeOverlays(); app.state = 'result'; hud.clearStamps();
+    app.lastTrial = e;
+    const next = nextTrialAfter(e.stage);
+    screens.showResult({
+      kicker: 'CHALLENGE CLEAR', title: e.stage.title, stars: e.stars, score: e.score, scoreNote: `ノルマ ${e.stage.norm}点 ／ ${e.isBest ? 'NEW BEST!' : `ベスト ${e.best}`}`,
+      paragraphs: [`条件を全部守って、ノルマ ${e.stage.norm}点に届きました。`, e.stars < 3 ? `つぎの星は ${e.stage.stars[e.stars]}点です。` : '星3つです。すばらしい！', ...e.stage.outro],
+      extras: [h('div', { class: 'mr-conds' }, e.state.rules.map((r) => h('div', { class: 'ok' }, `✓ ${r.text}`)))],
+      tricks: e.result.instances,
+      buttons: [
+        { label: next ? `次へ ▶ ${next.title}` : 'チャレンジステージを選ぶ ▶', primary: true, onClick: () => (next ? startStage(next, 'trial') : showTrials()) },
+        { label: '盤面を見る・編集する', onClick: () => { screens.hide('result'); app.state = 'play'; showClearBar(e.stage, next, { kind: 'trial', title: '✓ チャレンジクリア', note: '盤面は自由にさわれます（記録は、提出したときのまま）', nextLabel: next ? `つぎへ ▶ ${next.title}` : 'チャレンジステージを選ぶ ▶' }); } },
+        { label: 'もう一度', onClick: () => startStage(e.stage, 'trial') },
+        { label: 'チャレンジステージを選ぶ', onClick: showTrials },
       ],
     });
   }
@@ -512,29 +615,35 @@ async function main() {
       else if (a === 'stages') showStages();
       else if (a === 'free') startStage(FREE_STAGE, 'free');
       else if (a === 'melody') showMelodies();
+      else if (a === 'trial') showTrials();
       else if (a === 'challenge') startStage(CHALLENGE_STAGE, 'challenge');
     }));
     $('#stages .back').addEventListener('click', showTitle);
+    $('#btn-import').addEventListener('click', () => libImport.open());
     $('#btn-unlock').addEventListener('click', () => { save.unlockAll = !save.unlockAll; writeSave(save); hud.toast(save.unlockAll ? '全ステージを開きました（デモ用）' : '元に戻しました'); });
-    $('#btn-reset').addEventListener('click', () => { if (confirm('進み具合（クリア・図鑑・ベスト・メロディの記録）をすべてリセットしますか？\n（保存したプリセットと、つくったメロディ・自作コードは残ります）')) { const keep = { presets: save.presets, chordbook: save.chordbook, userMelody: save.userMelody, userMelodyOn: save.userMelodyOn, volume: save.volume, volumeSet: save.volumeSet }; Object.assign(save, resetSave(), keep); writeSave(save); hud.toast('リセットしました（プリセットとメロディ・自作コードは残してあります）'); showTitle(); } });
+    $('#btn-reset').addEventListener('click', () => { if (confirm('進み具合（クリア・図鑑・ベスト・メロディの記録）をすべてリセットしますか？\n（保存したプリセットと、つくったメロディ・自作コード・取り込んだリズムは残ります）')) { const keep = { presets: save.presets, library: save.library, chordbook: save.chordbook, userMelody: save.userMelody, userMelodyOn: save.userMelodyOn, volume: save.volume, volumeSet: save.volumeSet }; Object.assign(save, resetSave(), keep); writeSave(save); hud.toast('リセットしました（プリセット・メロディ・自作コード・取り込んだリズムは残してあります）'); showTitle(); } });
     $('#btn-menu').addEventListener('click', openPause);
     $$('#pause [data-act]').forEach((b) => b.addEventListener('click', () => {
+      if (app.state !== 'pause') return;                         // メニューが開いているときだけ（見えていないボタンが、押されても、何も起きない）
       const a = b.dataset.act;
       if (a === 'resume') { resumeFromPause(); return; }
       screens.hide('pause'); app.paused = false;
       if (a === 'restart') startStage(game.stage, game.mode);
-      else if (a === 'stages') showStages();
+      else if (a === 'stages') (game.mode === 'trial' ? showTrials : game.mode === 'melody' ? showMelodies : showStages)();
       else if (a === 'title') showTitle();
     }));
     $('#btn-clear-result').addEventListener('click', () => {
       if (!app.clearBarStage) return;
       const kind = app.clearBarKind; hideClearBar();
-      if (kind === 'challenge' && app.lastChallenge) showChallengeEnd(app.lastChallenge.score, app.lastChallenge.stars, app.lastChallenge.best); else showStageClear();
+      if (kind === 'challenge' && app.lastChallenge) showChallengeEnd(app.lastChallenge.score, app.lastChallenge.stars, app.lastChallenge.best);
+      else if (kind === 'trial' && app.lastTrial) showTrialResult(app.lastTrial);
+      else showStageClear();
     });
     $('#btn-clear-next').addEventListener('click', () => {
       const st = app.clearBarStage; if (!st) return;
       const kind = app.clearBarKind; hideClearBar();
       if (kind === 'challenge') { startStage(CHALLENGE_STAGE, 'challenge'); return; }
+      if (kind === 'trial') { const nt = nextTrialAfter(st); if (nt) startStage(nt, 'trial'); else showTrials(); return; }
       const nx = nextStageAfter(st); if (nx) startStage(nx, 'tutorial'); else startStage(FREE_STAGE, 'free');
     });
     $('#bpm-down').addEventListener('click', () => changeBpm(-5));
@@ -567,11 +676,18 @@ async function main() {
 
   // メニューから、ゲームにもどる。メニューを開いている間に、実機の盤の駒が変わっていたら、いまの盤にそろえる。クリアの結果が出そびれていたら、出す
   function resumeFromPause() {
+    if (app.state !== 'pause') return;
     screens.hide('pause'); app.paused = false; app.state = 'play';
     if (app.device && app.device.live && app.device.latest) game.setBoard(app.device.latest, { source: 'device-sync' });
-    if (app.clearPending && app.clearPending === game.stage && game.cleared) setTimeout(() => { if (app.state === 'play' && app.clearPending === game.stage) showStageClear(); }, 600);
+    returnToPlay();
   }
-  function openPause() { hud.clearStamps(); app.paused = true; screens.show('hud', 'pause'); app.state = 'pause'; }
+  function openPause() {
+    if (app.state !== 'play') return;                         // ほかの画面（技の詳細・編集画面・結果など）が開いているときは、開かない
+    hud.clearStamps(); app.paused = true;
+    const label = { tutorial: 'チュートリアルを選ぶ', trial: 'チャレンジステージを選ぶ', melody: 'メロディーを選ぶ' }[game.mode];        // フリープレイ・タイムアタックには、選ぶ画面がない
+    const b = $('#pause-stages'); b.classList.toggle('hidden', !label); if (label) b.textContent = label;
+    screens.show('hud', 'pause'); app.state = 'pause';
+  }
   function changeBpm(d) {
     const bpm = Math.max(50, Math.min(200, (app.engine ? app.engine.bpm : (game.stage ? game.stage.bpm : 120)) + d));
     if (app.engine) app.engine.setBpm(bpm);
@@ -608,9 +724,9 @@ async function main() {
   // ============================================================ プリセット（お気に入りの進行の保存・呼び出し）
   const presetStore = new PresetStore(save, table);
   const presetMenu = new PresetMenu({
-    root: $('#presets'), table, store: presetStore, getBoard: () => game.board, getMelody: () => (game.mode === 'free' ? melodyDoc.notes() : []), isLive: () => !!(app.device && app.device.live), onApply: applyPreset,
+    root: $('#presets'), table, store: presetStore, getBoard: () => game.board, getSplit: () => game.split, getMelody: () => (game.mode === 'free' ? melodyDoc.notes() : []), isLive: () => !!(app.device && app.device.live), onApply: applyPreset,
     onOpen: () => { if (app.input) app.input.cancel(); app.state = 'presets'; hud.clearStamps(); screens.show('hud', 'presets'); },       // 持ち上げていた駒（クリックで選んだ半透明の駒）は、もどす
-    onClose: () => { screens.hide('presets'); app.state = 'play'; },
+    onClose: () => { screens.hide('presets'); returnToPlay(); },
   });
   app.presetMenu = presetMenu; app.presetStore = presetStore;
   hud.onPresetGuideCancel = () => { game.setPresetGuide(null); hud.toast('プリセットの案内をやめました'); };
@@ -648,7 +764,7 @@ async function main() {
     const b = game.board, first = b.findIndex((x) => x !== null);
     if (first < 0) return { ok: false, reason: 'few' };
     let last = 7; while (last > first && b[last] === null) last--;
-    return presetStore.add({ name, board: b, from: first, to: last, melody: melodyDoc.notes() });
+    return presetStore.add({ name, board: b, split: game.split, from: first, to: last, melody: melodyDoc.notes() });
   }
   const studio = new MelodyStudio({
     root: $('#studio'), table, doc: melodyDoc, getBoard: () => game.board,
@@ -657,7 +773,7 @@ async function main() {
     getEnabled: () => save.userMelodyOn !== false, setEnabled: (v) => { save.userMelodyOn = !!v; writeSave(save); applyUserMelody(); },
     onSavePreset: saveMelodyPreset,
     onOpen: () => { if (app.input) app.input.cancel(); app.state = 'studio'; hud.clearStamps(); screens.show('hud', 'studio'); },
-    onClose: () => { screens.hide('studio'); app.state = 'play'; if (melodySaveTimer !== null) flushMelodySave(); },
+    onClose: () => { screens.hide('studio'); returnToPlay(); if (melodySaveTimer !== null) flushMelodySave(); },
   });
   app.studio = studio;
 
@@ -668,7 +784,7 @@ async function main() {
     root: $('#chordlab'), table, store: chordStore,
     audition: (notes, opts) => { if (app.engine && !app.muted) app.engine.auditionNotes(notes, opts); },
     onOpen: () => { if (app.input) app.input.cancel(); setEditPick(false); chordMenu.close(); app.state = 'chordlab'; hud.clearStamps(); screens.show('hud', 'chordlab'); },
-    onClose: () => { screens.hide('chordlab'); app.state = 'play'; },
+    onClose: () => { screens.hide('chordlab'); returnToPlay(); },
     onSaved: (change) => {
       const c = table.byId(change.id);
       const label = c ? `「${c.name}（${c.symbol}）」` : '';
@@ -704,11 +820,43 @@ async function main() {
     chordMenu.open({ x, y, title: `${c.name}（${c.symbol}）`, items });
   }
 
+  // ============================================================ リズム・コード編集の内容の取り込み（公開ページ。タイトルの「リズムを取り込む」・音のメニューのボタン・リンク（#lib=）から開く）
+  const countOf = (r) => ({ drums: r.drums.length, backings: r.backings.length, progressions: r.progressions.length, skipped: r.skipped });
+  const libImport = new LibImport({
+    root: $('#libimport'), getLibrary: () => save.library, canOpen: () => ['play', 'title', 'stages'].includes(app.state),
+    onPreview: (text) => { const d = decodeShare(text); return d.ok ? { ok: true, counts: countOf(sanitizeShared(d.data, chordNames)) } : d; },
+    onImport: (text) => {
+      const d = decodeShare(text);
+      if (!d.ok) return d;
+      const inc = sanitizeShared(d.data, chordNames);
+      if (!inc.drums.length && !inc.backings.length && !inc.progressions.length) return { ok: false, error: '取り込める内容が、ありませんでした' };
+      const m = mergeIntoLibrary(save.library, inc);
+      save.library = m.lib; writeSave(save); app.library.reloadLocal();
+      return { ok: true, added: m.added, updated: m.updated, full: m.full, skipped: inc.skipped };
+    },
+    onRemove: (kind, id) => { save.library = removeFromLibrary(save.library, kind, id); writeSave(save); app.library.reloadLocal(); },
+    onOpen: () => {
+      app.libPrev = app.state;
+      if (app.input) app.input.cancel();
+      if (app.state === 'play') { app.state = 'libimport'; hud.clearStamps(); screens.show('hud', 'libimport'); }
+      else screens.show(app.state === 'stages' ? 'stages' : 'title', 'libimport');          // タイトル・ステージ選択の上に重ねる（状態は、そのまま。タイトルのデモも止まらない）
+    },
+    onClose: () => { screens.hide('libimport'); if (app.libPrev === 'play') returnToPlay(); },
+  });
+  app.libImport = libImport;
+  // リンク（…/#lib=コード）から開かれたとき: 取り込みの画面を、内容を入れて開く（公開ページだけ）
+  function openSharedLink() {
+    const hash = location.hash || '';
+    if (!app.device.offline || !hash.includes('lib=')) return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 何もしない */ }
+    libImport.open({ text: hash });
+  }
+
   // ============================================================ 技の詳細（技の枠・「技」の一覧の行・「理由」の「くわしく」を押すと開く）
   const trickDetail = new TrickDetail({
     root: $('#trickdetail'),
     onOpen: () => { if (app.input) app.input.cancel(); app.state = 'trickdetail'; hud.clearStamps(); screens.show('hud', 'trickdetail'); },
-    onClose: () => { screens.hide('trickdetail'); app.state = 'play'; },
+    onClose: () => { screens.hide('trickdetail'); returnToPlay(); },
   });
   app.trickDetail = trickDetail;
   hud.onOpenDetail = (ins) => { if (app.state === 'play') trickDetail.show(ins); };
@@ -722,7 +870,7 @@ async function main() {
   game.syncSource = () => (app.device && app.device.live ? app.device.latest : null);      // 実機の盤を見ているときは、ステージが変わっても、置いてある駒を盤に出す
   app.device = new DeviceLink({
     table,
-    onBoard: (ids, opts) => { if (app.state === 'play' || app.state === 'title' || app.state === 'pause' || app.state === 'presets' || app.state === 'studio' || app.state === 'trickdetail' || app.state === 'chordlab') game.setBoard(ids, { source: opts && opts.sync ? 'device-sync' : 'device' }); },   // sync = 最初に、盤の全体をそろえるとき（試聴は鳴らさない）
+    onBoard: (ids, opts) => { if (['play', 'title', 'pause', 'presets', 'studio', 'trickdetail', 'chordlab', 'libimport', 'result'].includes(app.state)) game.setBoard(ids, { source: opts && opts.sync ? 'device-sync' : 'device' }); },   // sync = 最初に、盤の全体をそろえるとき（試聴は鳴らさない）
     onStatus: (st) => {
       $('#device-state').textContent = st.label; $('#btn-device').classList.toggle('on', st.live);
       document.body.classList.toggle('device-live', st.live);
@@ -747,10 +895,12 @@ async function main() {
     app.device.start();
     app.library.start();
     showTitle();
+    openSharedLink();
   }
   app.begin = begin; app.startStage = startStage; app.showTitle = showTitle; app.showStages = showStages;
   window.__stages = STAGES; window.__free = () => FREE_STAGE; window.__challenge = () => CHALLENGE_STAGE; window.__melodies = MELODY_STAGES;
-  app.showMelodies = showMelodies;
+  app.showMelodies = showMelodies; app.showTrials = showTrials; window.__trials = TRIAL_STAGES;
+  hud.onTrialDone = finishTrial;
 
   bindButtons();
   hud.setCollection(game.collection());

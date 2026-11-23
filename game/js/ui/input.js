@@ -1,7 +1,8 @@
 // 駒の操作（ドラッグ・クリック）。マウスでも、タッチでも、同じ動き。
 //   ・トレイの駒を、盤にドラッグして置く / クリックで「選んで」から、盤をクリックして置く
 //   ・盤の上の駒を、ドラッグして動かす（空きへ移動・駒と入れ替え・盤の外に出すとはずす）
-//   ・盤の駒をダブルクリック / Delete で、はずす。Esc で取りやめ
+//   ・駒のあるマスの、左がわ・右がわに駒を重ねると、そのマスが、前半・後半（1拍ずつ）の2つに分かれる（2026-11-23）。まん中に置くと、これまでどおり置きかえ
+//   ・盤の駒をダブルクリック / Delete で、はずす（分割したマスは、指した側の半分だけ）。Esc で取りやめ
 //   ・トレイの駒を、ダブルクリック（ダブルタップ）すると、いま盤に置いてある駒の、次の場所に置く（2026-11-23）
 //   ・駒を押した（クリック）と、その和音が鳴る（試聴）
 import { $ } from './dom.js';
@@ -25,10 +26,28 @@ export class Input {
     this.pending = null;        // ボタンを押したが、まだドラッグが始まっていない
     this.drag = null;           // ドラッグ中
     this.armed = null;          // クリックで選んだ駒（ID）
-    this.hoverSlot = -1;
+    this.hoverSlot = -1; this.hoverZone = 'C';
     this.ghost = $('#drag-ghost');
     this._move = (e) => this.onMove(e);
     this._up = (e) => (e.type === 'pointercancel' ? this.abort() : this.onUp(e));          // 指で、トレイをなぞって動かした（ブラウザが、スクロールとして取った）ときは、クリックにしない
+  }
+
+  // 画面の位置 → { slot, zone, dx }。zone: 'C' = そのマスに置く（置きかえ）/ 'L'・'R' = マスの左・右（駒のあるマスでは、2つに分ける）。
+  //   分割したマスは、まん中（C）をなくして、中心の左・右で、前半（L）・後半（R）にする。空きのマス・分割できないとき（チュートリアルなど）は、いつも C
+  zoneAt(x, y) {
+    const r = this.scene.pickSlotZone(x, y);
+    if (r.slot < 0) return r;
+    const g = this.game, cur = g.board[r.slot];
+    const own = this.drag && this.drag.from === 'board' && this.drag.slot === r.slot && !g.isSplit(r.slot);       // 持ち上げている駒の、もとのマス（分割していない）: 駒をぬいたあとは、空き
+    if (!g.splitAllowed() || cur === null || cur === undefined || cur === this.table.repeatId || own) r.zone = 'C';
+    else if (g.isSplit(r.slot) && r.zone === 'C') r.zone = r.dx < 0 ? 'L' : 'R';
+    return r;
+  }
+  // ドラッグの落とし先: 盤の上のときだけ。トレイなど、ほかの部品の上は、slot = -1
+  dropTarget(e) {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (!el || el.id !== 'gl') return { slot: -1, zone: 'C', dx: 0 };
+    return this.zoneAt(e.clientX, e.clientY);
   }
 
   attach() {
@@ -42,7 +61,7 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isEditPick() && this.onEditPickCancel) { this.onEditPickCancel(); e.preventDefault(); return; }       // 「コードを編集」の選びをやめる
       if (e.key === 'Escape' && (this.drag || this.pending || this.armed !== null)) { this.cancel(); e.preventDefault(); }       // 取りやめだけ（メニューは開かない）
-      if ((e.key === 'Delete' || e.key === 'Backspace') && this.hoverSlot >= 0 && this.enabled()) { e.preventDefault(); this.removeAt(this.hoverSlot); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.hoverSlot >= 0 && this.enabled()) { e.preventDefault(); this.removeAt(this.hoverSlot, this.hoverZone); }
     });
   }
 
@@ -77,8 +96,8 @@ export class Input {
     clearTimeout(this._lp);
     if (card) { this.pending = null; this.unlisten(); this.onContext({ id: Number(card.dataset.id), slot: -1, x: e.clientX, y: e.clientY }); return; }
     if (e.target === this.canvas) {
-      const slot = this.scene.pickSlot(e.clientX, e.clientY);
-      if (slot >= 0 && this.game.board[slot] !== null) { this.pending = null; this.unlisten(); this.onContext({ id: this.game.board[slot], slot, x: e.clientX, y: e.clientY }); }
+      const z = this.zoneAt(e.clientX, e.clientY), slot = z.slot;
+      if (slot >= 0 && this.game.board[slot] !== null) { this.pending = null; this.unlisten(); this.onContext({ id: this.game.pieceAt(slot, this.game.isSplit(slot) && z.zone === 'R' ? 1 : 0), slot, x: e.clientX, y: e.clientY }); }
     }
   }
 
@@ -93,14 +112,15 @@ export class Input {
       const gh = this.scene.pickGhost(e.clientX, e.clientY);
       if (gh) { this.scene.setGhostHover(-1); this.audition(gh.id); this.game.place(gh.slot, gh.id); return; }
     }
-    const slot = this.scene.pickSlot(e.clientX, e.clientY);
-    if (this.armed !== null) {                                     // 選んである駒を、ここに置く
-      if (slot >= 0) { const id = this.armed; this.setArmed(null); this.game.place(slot, id); }
+    const z = this.zoneAt(e.clientX, e.clientY), slot = z.slot;
+    if (this.armed !== null) {                                     // 選んである駒を、ここに置く（駒のあるマスの、左・右なら、マスを2つに分ける）
+      if (slot >= 0) { const id = this.armed; this.setArmed(null); this.game.placeAt(slot, z.zone, id); }
       else this.setArmed(null);
       return;
     }
     if (slot >= 0 && this.game.board[slot] !== null) {
-      this.pending = { id: this.game.board[slot], from: 'board', slot, x0: e.clientX, y0: e.clientY, t0: performance.now() };
+      const half = this.game.isSplit(slot) ? (z.zone === 'R' ? 1 : 0) : null;          // 分割したマスは、指した側の半分を、持ち上げる
+      this.pending = { id: this.game.pieceAt(slot, half === 1 ? 1 : 0), from: 'board', slot, half, x0: e.clientX, y0: e.clientY, t0: performance.now() };
       this.listen();
       this.armLongPress(e);
     }
@@ -125,9 +145,9 @@ export class Input {
     }
     if (!this.drag) return;
     this.ghost.style.left = `${e.clientX}px`; this.ghost.style.top = `${e.clientY}px`;
-    const slot = this.slotUnder(e);
-    this.setHoverSlot(slot);
-    this.ghost.style.opacity = slot >= 0 ? '0' : '0.92';       // 盤の上では、3D の透けた駒を見せる
+    const t = this.dropTarget(e);
+    this.setHoverSlot(t.slot, t.zone);
+    this.ghost.style.opacity = t.slot >= 0 ? '0' : '0.92';       // 盤の上では、3D の透けた駒を見せる
     this.markEditDrop(this.onEditDrop ? this.overEditButton(e) : false);
   }
 
@@ -142,13 +162,13 @@ export class Input {
     this._lastTap = null;
     clearTimeout(this._lp);
     const p = this.pending;
-    this.drag = { id: p.id, from: p.from, slot: p.slot };
+    this.drag = { id: p.id, from: p.from, slot: p.slot, half: p.half === undefined ? null : p.half };
     this.pending = null;
     if (this.armed !== null) this.setArmed(null);
     this.ghost.replaceChildren(this.hud.makeCard(p.id));
     this.ghost.classList.remove('hidden');
     this.ghost.style.left = `${e.clientX}px`; this.ghost.style.top = `${e.clientY}px`;
-    if (p.from === 'board') this.scene.setPieceVisible(p.slot, false);
+    if (p.from === 'board') this.scene.setPieceVisible(p.slot, false, p.half === 1 ? 1 : 0);
     if (this.sfx()) this.sfx().pickup();
     this.audition(p.id);
   }
@@ -160,19 +180,19 @@ export class Input {
     return this.scene.pickSlot(e.clientX, e.clientY);
   }
 
-  setHoverSlot(slot) {
-    this.hoverSlot = slot;
+  setHoverSlot(slot, zone = 'C') {
+    this.hoverSlot = slot; this.hoverZone = zone;
     this.scene.setHover(slot, true);
     const chord = this.drag ? this.table.byId(this.drag.id) : (this.armed !== null ? this.table.byId(this.armed) : null);
-    this.scene.setPreview(slot, slot >= 0 ? chord : null);
+    this.scene.setPreview(slot, slot >= 0 ? chord : null, zone);
   }
 
   onCanvasHover(e) {
     if (this.drag || this.pending) return;
     if (this.armed === null && this.onLabel && this.canInspect() && this.scene.pickLabel(e.clientX, e.clientY)) { this.scene.setHover(-1, false); this.canvas.style.cursor = 'pointer'; return; }       // 技の枠の上: 押すと詳しい説明
-    const slot = this.scene.pickSlot(e.clientX, e.clientY);
-    this.hoverSlot = slot;
-    if (this.armed !== null) { this.setHoverSlot(slot); this.canvas.style.cursor = slot >= 0 ? 'copy' : 'default'; return; }
+    const z = this.zoneAt(e.clientX, e.clientY), slot = z.slot;
+    this.hoverSlot = slot; this.hoverZone = z.zone;
+    if (this.armed !== null) { this.setHoverSlot(slot, z.zone); this.canvas.style.cursor = slot >= 0 ? 'copy' : 'default'; return; }
     const gh = this.enabled() ? this.scene.pickGhost(e.clientX, e.clientY) : null;       // ヒントの候補の上: クリックで置ける
     this.scene.setGhostHover(gh ? gh.index : -1);
     this.scene.setHover(slot >= 0 && this.game.board[slot] !== null ? slot : -1, false);
@@ -208,33 +228,35 @@ export class Input {
 
   drop(e) {
     const d = this.drag;
-    const slot = this.slotUnder(e);
+    const t = this.dropTarget(e), slot = t.slot;
     const toEdit = !!this.onEditDrop && this.overEditButton(e);
     this.drag = null;
     this.markEditDrop(false);
     this.ghost.classList.add('hidden'); this.ghost.style.opacity = '0.92';
     this.scene.setPreview(-1, null); this.scene.setHover(-1, false);
     if (toEdit) {                                                  // 「コードを編集」のボタンに投げ入れた: その駒を、編集する（盤の駒は、そのまま）
-      if (d.from === 'board') this.scene.setPieceVisible(d.slot, true);
+      if (d.from === 'board') this.showBoardPieces(d.slot);
       this.onEditDrop(d.id);
       return;
     }
     if (d.from === 'tray') {
-      if (slot >= 0) this.game.place(slot, d.id);
+      if (slot >= 0) this.game.placeAt(slot, t.zone, d.id);          // 駒のあるマスの、左・右なら、マスを2つに分ける
     } else {
-      this.scene.setPieceVisible(d.slot, true);
-      if (slot === d.slot) { /* もとの場所: 何もしない */ }
-      else if (slot >= 0) { if (this.game.board[slot] === null) this.game.move(d.slot, slot); else this.game.swap(d.slot, slot); }
-      else this.game.remove(d.slot);                              // 盤の外に出したら、はずす
+      this.showBoardPieces(d.slot);
+      if (slot >= 0) this.game.moveFromBoard(d.slot, d.half, slot, t.zone);          // 空きへ移動・入れ替え・左右に重ねて分ける・（同じマスなら）前半と後半の入れかえ。もとの場所は、何も起きない
+      else this.game.remove(d.slot, { half: d.half });             // 盤の外に出したら、はずす（分割したマスは、持ち上げた半分だけ）
     }
   }
+
+  // 持ち上げて隠していた駒（前半・後半とも）を、元にもどす
+  showBoardPieces(slot) { this.scene.setPieceVisible(slot, true, 0); this.scene.setPieceVisible(slot, true, 1); }
 
   // 指の操作が、取りやめになった（トレイのスクロール・電話の着信など）: 押しかけの駒・ドラッグを、なかったことにする
   abort() {
     clearTimeout(this._lp);
     this.unlisten();
     this.pending = null;
-    if (this.drag) { if (this.drag.from === 'board') this.scene.setPieceVisible(this.drag.slot, true); this.drag = null; this.ghost.classList.add('hidden'); this.scene.setPreview(-1, null); this.scene.setHover(-1, false); }
+    if (this.drag) { if (this.drag.from === 'board') this.showBoardPieces(this.drag.slot); this.drag = null; this.ghost.classList.add('hidden'); this.scene.setPreview(-1, null); this.scene.setHover(-1, false); }
     this.markEditDrop(false);
   }
 
@@ -242,7 +264,7 @@ export class Input {
     clearTimeout(this._lp);
     this.markEditDrop(false);
     if (this.drag) {
-      if (this.drag.from === 'board') this.scene.setPieceVisible(this.drag.slot, true);
+      if (this.drag.from === 'board') this.showBoardPieces(this.drag.slot);
       this.drag = null; this.ghost.classList.add('hidden');
       this.scene.setPreview(-1, null); this.scene.setHover(-1, false);
       this.unlisten();
@@ -281,12 +303,14 @@ export class Input {
 
   onDouble(e) {
     if (!this.enabled()) return;
-    const slot = this.scene.pickSlot(e.clientX, e.clientY);
-    if (slot >= 0) this.removeAt(slot);
+    const z = this.zoneAt(e.clientX, e.clientY);
+    if (z.slot >= 0) this.removeAt(z.slot, z.zone);
   }
 
-  removeAt(slot) {
-    if (this.game.board[slot] !== null) this.game.remove(slot);
+  // 駒をはずす。分割したマスは、指した側（zone が 'R' なら後半・それ以外は前半）の半分だけ。残った半分は、マスぜんたいに広がる
+  removeAt(slot, zone = 'C') {
+    if (this.game.board[slot] === null) return;
+    this.game.remove(slot, { half: this.game.isSplit(slot) ? (zone === 'R' ? 1 : 0) : null });
   }
 
   // いま盤に置いてある駒の、次の場所に、駒を置く（トレイのダブルクリック）。置けたら true

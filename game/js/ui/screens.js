@@ -2,11 +2,12 @@
 import { $, $$, h, clear } from './dom.js';
 import { trickTitle, trickSub } from './hud.js';
 
-const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'result'];
+const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'result'];
 
 export class Screens {
   constructor() {
     this.current = 'splash';
+    this.onOverlay = null;                    // 上に重ねる画面（メニュー・結果・編集画面など）が出るとき、呼ぶ（app.js が、スマホのシートを閉じるのに使う）
   }
 
   // name: 表示する主な画面。overlay: その上に重ねる画面（例: HUD の上に、メニューや結果）
@@ -15,6 +16,8 @@ export class Screens {
     $(`#${name}`).classList.remove('hidden');
     if (overlay) $(`#${overlay}`).classList.remove('hidden');
     this.current = overlay || name;
+    document.body.dataset.screen = this.current;          // CSS が、いまの画面で、見せるもの・隠すものを決められるように（例: タイトルの背景では、技のスタンプを出さない）
+    if (overlay && this.onOverlay) this.onOverlay(overlay);
   }
 
   hide(name) { $(`#${name}`).classList.add('hidden'); }
@@ -36,20 +39,35 @@ export class Screens {
       if (sp.mode === 'melody-menu') {                              // 「メロディにコードをつける」の、入り口（メロディを選ぶ画面へ）
         const done = Object.keys(game.save.melody || {}).length;
         grid.append(h('button', { class: 'stage-card special', dataset: { stage: 'melody-menu' }, style: { '--c': '#6fb7d9' }, onclick: () => onPick(null, 'melody-menu') },
-          h('span', { class: 'no' }, 'MELODY'), h('span', { class: 'ttl' }, 'メロディにコードをつける'), h('span', { class: 'sub' }, '流れるメロディに和音を合わせる'),
+          h('span', { class: 'no' }, 'MELODY'), h('span', { class: 'ttl' }, 'メロディーにコードをつける'), h('span', { class: 'sub' }, '流れるメロディーに和音を合わせる'),
           h('span', { class: 'st' }, done ? `${done}つ 挑戦ずみ` : 'メロディを選ぶ')));
         continue;
       }
       const bestKey = sp.mode === 'challenge' ? game.save.best.challenge : game.save.best.free;
       grid.append(h('button', { class: 'stage-card special', style: { '--c': sp.mode === 'challenge' ? '#e2573c' : '#86c79a' }, onclick: () => onPick(sp.stage, sp.mode) },
-        h('span', { class: 'no' }, sp.mode === 'challenge' ? 'CHALLENGE' : 'FREE PLAY'),
+        h('span', { class: 'no' }, sp.mode === 'challenge' ? 'TIME ATTACK' : 'FREE PLAY'),
         h('span', { class: 'ttl' }, sp.stage.title),
         h('span', { class: 'sub' }, sp.stage.sub),
         h('span', { class: 'st' }, bestKey ? `ベスト ${bestKey}` : 'すぐに遊べる')));
     }
   }
 
-  // メロディのステージのカード（「合わせる」の画面）。ステージ選択と同じ見た目。記録（最高得点・星）も出す
+  // チャレンジステージのカード（「チャレンジステージ」の画面）。ステージ選択と同じ見た目。前のステージをクリア（提出）すると開く。星・ベストも出す
+  buildTrialGrid(stages, game, onPick) {
+    const grid = clear($('#stage-grid'));
+    stages.forEach((s, i) => {
+      const unlocked = game.isTrialUnlocked(stages, i);
+      const rec = (game.save.trial || {})[s.id];
+      const stars = rec ? '★'.repeat(rec.stars || 0) + '☆'.repeat(3 - (rec.stars || 0)) : '';
+      grid.append(h('button', { class: `stage-card trial${unlocked ? '' : ' locked'}${rec ? ' cleared' : ''}`, dataset: { stage: s.id }, style: { '--c': s.color || '#6c7a96' }, onclick: () => { if (unlocked) onPick(s); } },
+        h('span', { class: 'no' }, `CHALLENGE ${String(s.no).padStart(2, '0')}`),
+        h('span', { class: 'ttl' }, s.title),
+        h('span', { class: 'sub' }, s.sub),
+        h('span', { class: 'st' }, !unlocked ? '🔒 ひとつ前をクリアで開く' : rec ? `${stars}  ベスト ${rec.best}（ノルマ ${s.norm}）` : `NEW ／ ノルマ ${s.norm}点`)));
+    });
+  }
+
+  // メロディのステージのカード（「メロディーにコードをつける」の画面）。ステージ選択と同じ見た目。記録（最高得点・星）も出す
   buildMelodyGrid(melodies, game, onPick) {
     const grid = clear($('#stage-grid'));
     melodies.forEach((m) => {

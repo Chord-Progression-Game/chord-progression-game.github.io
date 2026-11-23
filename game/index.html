@@ -50,14 +50,16 @@
       <div class="logo small"><div class="logo-main"><span>CHORD</span><span>LINES<i>.</i></span></div><div class="logo-sub"></div></div>
       <nav class="menu">
         <button data-act="tutorial"><b>学ぶ</b><span>チュートリアル<em>技をひとつずつ覚える</em></span></button>
-        <button data-act="stages"><b>選ぶ</b><span>ステージを選ぶ<em>好きな技から練習する</em></span></button>
+        <button data-act="stages"><b>選ぶ</b><span>チュートリアルを選ぶ<em>好きな技から練習する</em></span></button>
+        <button data-act="melody"><b>合わせる</b><span>メロディーにコードをつける<em>流れるメロディーに和音を合わせる</em></span></button>
+        <button data-act="trial"><b>挑む</b><span>チャレンジステージ<em>条件を守って、ノルマの得点をめざす</em></span></button>
         <button data-act="free"><b>遊ぶ</b><span>フリープレイ<em>全部の駒で自由に</em></span></button>
-        <button data-act="melody"><b>合わせる</b><span>メロディにコードをつける<em>流れるメロディに和音を合わせる</em></span></button>
-        <button data-act="challenge"><b>競う</b><span>チャレンジ<em>90秒で高得点を狙う</em></span></button>
+        <button data-act="challenge"><b>競う</b><span>タイムアタック<em>90秒で高得点を狙う</em></span></button>
         <button data-act="versus" disabled><b>—</b><span>対戦<em>準備中</em></span></button>
       </nav>
       <div class="title-foot">
         <button id="btn-device" class="chip" title="実機（駒を読み取る盤）につなぐ">実機: <span id="device-state">確認中…</span></button>
+        <button id="btn-import" class="chip subtle web-only-show" title="リズム・コード編集の画面で作った、ドラム・バッキング・進行を、取り込む">リズムを取り込む</button>
         <button id="btn-unlock" class="chip subtle">ぜんぶ開く（デモ用）</button>
         <button id="btn-reset" class="chip subtle">進み具合をリセット</button>
       </div>
@@ -67,7 +69,7 @@
 
   <!-- ステージ選択 -->
   <section id="stages" class="screen hidden">
-    <header><button class="back" data-act="title">◀ もどる</button><h2><span id="stages-title">STAGES</span> <small id="stages-sub">ステージを選ぶ</small></h2></header>
+    <header><button class="back" data-act="title">◀ もどる</button><h2><span id="stages-title">TUTORIAL</span> <small id="stages-sub">チュートリアルを選ぶ</small></h2></header>
     <div id="stage-grid"></div>
   </section>
 
@@ -140,7 +142,7 @@
       <h3>MENU</h3>
       <button data-act="resume">つづける</button>
       <button data-act="restart">このステージをやりなおす</button>
-      <button data-act="stages">ステージ選択</button>
+      <button data-act="stages" id="pause-stages">チュートリアルを選ぶ</button>
       <button data-act="title">タイトルへ</button>
     </div>
   </section>
@@ -156,6 +158,9 @@
 
   <!-- 技の詳細（技の枠・一覧の行を押すと開く）。中身は ui/trickdetail.js が作る -->
   <section id="trickdetail" class="screen modal hidden"></section>
+
+  <!-- リズム・コード編集の内容の取り込み（公開ページ用）。中身は ui/libimport.js が作る -->
+  <section id="libimport" class="screen modal hidden"></section>
 
   <!-- 結果 -->
   <section id="result" class="screen modal hidden">

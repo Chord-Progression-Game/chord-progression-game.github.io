@@ -353,12 +353,14 @@ export const PATTERNS = [
 // ------------------------------------------------------------
 // 盤 → 時間の順に並んだコード（イベント）
 //   board: 長さ numSteps の配列。null（空き）か、コードID（「→」= 99 を含む）
+//   split: 分割したマス（1つのマスに、前半・後半の2つのコード）の、後半のコードの ID（分割していなければ null）の配列。省いてもよい（2026-11-23）
 //   ・空きは休み。つながりが切れる（前後は、つながらない）
 //   ・「→」は、前のコードを、もう1ステップのばす（前が空きなら休み）
-//   戻り値: segments = 休みで区切った、コードの並び。各イベントは { chord, first, last, positions, blocked }
+//   戻り値: segments = 休みで区切った、コードの並び。各イベントは { chord, first, last, positions, blocked, half }
 //   ・blocked: 冒頭（1番）のドミナント系の駒（例外を除く）。技には使わない（？）
+//   ・half: 分割したマスの、前半 = 0・後半 = 1（分割していなければ null）。前半と後半は、同じマスの番号（first・last）を持つ。技の位置の決まり（固有進行は、1番・5番の頭から / 終止は、フレーズの終わりの、いちばん最後のコード）は、この half を見る
 // ------------------------------------------------------------
-export function buildSegments(board, table) {
+export function buildSegments(board, table, split = null) {
   const segments = [];
   let cur = null;
   for (let pos = 0; pos < board.length; pos++) {
@@ -372,9 +374,11 @@ export function buildSegments(board, table) {
     const chord = table.byId(id);
     if (!chord) { cur = null; continue; }               // 知らないコード（未登録）は休み
     if (!cur) { cur = []; segments.push(cur); }
-    const ev = { chord, first: pos, last: pos, positions: [pos], blocked: false };
+    const second = split && split[pos] !== null && split[pos] !== undefined ? table.byId(split[pos]) : null;
+    const ev = { chord, first: pos, last: pos, positions: [pos], blocked: false, half: second ? 0 : null };
     ev.blocked = isHeadV(ev);
     cur.push(ev);
+    if (second && !second.isRepeat) cur.push({ chord: second, first: pos, last: pos, positions: [pos], blocked: false, half: 1 });       // 分割したマスの、後半のコード（前半と同じマスの番号）
   }
   const head = segments.find((s) => s[0].first === 0);
   if (head && head[0].blocked && headExempt(head)) head[0].blocked = false;      // ラグタイム進行・ブルースなどは、冒頭のドミナントを認める
@@ -386,7 +390,7 @@ export function instanceKey(ins) { return `${ins.id}|${ins.startPos}|${ins.endPo
 
 // 並びのイベント seg[idx] が、フレーズの終わりか（4番・8番に着いている。または、その後に続く駒がない）
 function endsPhrase(seg, idx) {
-  return idx === seg.length - 1 || seg[idx].last % PHRASE === PHRASE - 1;
+  return idx === seg.length - 1 || (seg[idx].last % PHRASE === PHRASE - 1 && seg[idx].half !== 0);       // 分割したマスの前半は、そのマスの終わりではない（後半が続く）
 }
 
 // ------------------------------------------------------------
@@ -445,7 +449,7 @@ function seamPass(n, segments, claimed, claimedKinds, instances) {
 // ------------------------------------------------------------
 export function analyze(board, table, opts = {}) {
   const ctx = { phrase: opts.slotsPerPhrase || PHRASE };
-  const segments = buildSegments(board, table);
+  const segments = buildSegments(board, table, opts.split);
   const claimed = new Set();                        // 取られたつながり "セグメント番号:イベント番号"（その番号のイベントから、次のイベントへ）
   const claimedKinds = new Map();                   // 取られたつながり → 'generic'（ふつうの強進行・弱進行・半音下）か 'named'（名前のついた技）。ジャッジの「解決」が使う
   const instances = [];
@@ -472,7 +476,7 @@ export function analyze(board, table, opts = {}) {
         for (let i = 0; i + len <= seg.length; i++) {
           const evs = seg.slice(i, i + len);
           if (evs.some((e) => e.blocked)) continue;                         // 冒頭のドミナント系の駒（？）は、技に使わない
-          if (pat.startAt && !pat.startAt.includes(evs[0].first)) continue;   // 固有進行: 1番か5番から始まっていること
+          if (pat.startAt && (!pat.startAt.includes(evs[0].first) || evs[0].half === 1)) continue;   // 固有進行: 1番か5番の頭から始まっていること（分割したマスの後半からは、始まらない）
           if (!pat.steps.every((m, k) => m(evs[k].chord))) continue;
           if (pat.check && !pat.check(evs, ctx)) continue;
           let total = len;

@@ -2,11 +2,13 @@
 //   画面の部品だけ。いまの値は、呼ぶ側（app.js）が getModel() で渡す。変えたら onVolume(%) / onMute() を呼ぶ。
 //   バーをつかんでいる間に作りなおすと、つかんだ手がはずれるので、開いたときに1回だけ作って、あとは refresh() で、文字だけ更新する。
 import { h, clear } from './dom.js';
+import { mountPopup } from './layout.js';
 
 export class VolumeMenu {
   constructor({ root, button, getModel, onVolume, onMute, onRelease = () => {} }) {
     Object.assign(this, { root, button, getModel, onVolume, onMute, onRelease });
     this.isOpen = false;
+    this.home = root.parentElement;                      // スマホでは、開くときに、画面の直下へ移す（soundmenu.js と同じ理由）
     button.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
     root.addEventListener('click', (e) => e.stopPropagation());
     document.addEventListener('click', () => this.close());
@@ -14,7 +16,7 @@ export class VolumeMenu {
   }
 
   toggle() { this.isOpen ? this.close() : this.open(); }
-  open() { this.isOpen = true; this.root.classList.remove('hidden'); this.button.classList.add('menu-open'); this.build(); }
+  open() { this.isOpen = true; mountPopup(this.root, this.home); this.root.classList.remove('hidden'); this.button.classList.add('menu-open'); this.build(); }
   close() { this.isOpen = false; this.root.classList.add('hidden'); this.button.classList.remove('menu-open'); }
 
   build() {
@@ -26,7 +28,7 @@ export class VolumeMenu {
     this.readout = h('b', { class: 'vm-readout', id: 'vm-readout' });
     this.muteBtn = h('button', { class: 'vm-mute', id: 'vm-mute', onclick: () => this.onMute() });
     clear(this.root).append(
-      h('div', { class: 'sm-head' }, h('b', {}, '音量'), h('span', {}, '全体の大きさ')),
+      h('div', { class: 'sm-head' }, h('b', {}, '音量'), h('span', {}, '全体の大きさ'), h('button', { class: 'sm-close', 'aria-label': '閉じる', onclick: () => this.close() }, '閉じる')),
       h('div', { class: 'vm-row' }, h('span', { class: 'vm-lo', 'aria-hidden': 'true' }, '小'), this.slider, h('span', { class: 'vm-hi', 'aria-hidden': 'true' }, '大'), this.readout),
       h('div', { class: 'sm-foot' }, this.muteBtn, h('span', {}, 'M キーでもミュートできます')));
     this.refresh();

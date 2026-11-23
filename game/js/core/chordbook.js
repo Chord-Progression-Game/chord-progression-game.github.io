@@ -209,6 +209,53 @@ export function semitonesOf(notes, rootPc) {
   return [...new Set(notes.map((n) => Math.round(n)))].sort((a, b) => a - b).map((m) => m - (HOME_C + rootPc));
 }
 
+// ---------- 並べ順（トレイ・コード一覧）----------
+// 同じ段（Lv.）の中の、駒の並べ順（2026-11-23。ユーザーの指定）。プリセットのコードが増えても、自作コードを足しても、この決まりで並ぶ:
+//   ① ルート音（C → B。主音からの半音数 0 → 11）
+//   ② 実質的な構成音の数が、少ない順（3和音 → 4和音 → 5和音…。オクターブちがいの重なりは、数えない）
+//   ③ 4和音以上は、7th（6th・dim7 の 6 を含む）の音の、ルートからの近さ（6th / dim7 → ♭7 → M7）
+//   ④ そのあと、2音目・3音目・4音目…の、ルートからの近さ（同じなら、次の音で決める）
+//   例: Csus2 < Cm < C < Caug < Csus4（3和音）/ Em7♭5 < Em7 < E7 < Eaug7 < EM7 < Em9 < E7(♭9) < E11（4和音以上）
+//   音の高さは、和音の「積み方」（ルート・3度・5度・7度・9度・11度・13度）に直して比べる（転回形・ちらばりに、左右されない。9th は、14 のように、ルートの上のオクターブ）
+const ROLE_STACK = { R: 0, sus2: 2, b3: 3, '3': 4, sus4: 5, b5: 6, '5': 7, '#5': 8, '6': 9, bb7: 9, b7: 10, '7': 11, b9: 13, '9': 14, '#9': 15, '11': 17, '#11': 18, b13: 20, '13': 21 };
+const SEVENTH_ROLES = ['6', 'bb7', 'b7', '7'];
+// pcs: 構成音の高さ（主音からの半音。0〜11）。戻り値: [ルートからの積み方の半音数（小さい順）, 7th の位置（なければ 0）]
+export function chordStack(rootPc, pcs) {
+  const I = new Set((pcs || []).map((p) => mod12(p - rootPc)));
+  I.add(0);
+  const parsed = parseTones(I);
+  const stack = parsed.tones.map((t) => (ROLE_STACK[t.role] !== undefined ? ROLE_STACK[t.role] : t.iv + 12));
+  for (const iv of parsed.extra) stack.push(iv + 12);
+  const sev = parsed.tones.find((t) => SEVENTH_ROLES.includes(t.role));
+  return { stack: stack.sort((a, b) => a - b), seventh: sev ? ROLE_STACK[sev.role] : 0 };
+}
+// 構成音の役割（ルート・3度・5度・7度・テンション）。ジャッジの「内声の半音の動き」が、3度・7度の音を探すのに使う。戻り値: [{ pc（主音からの半音。0〜11）, iv（ルートからの半音）, role }]
+//   role: R / sus2 / b3 / 3 / sus4 / b5 / 5 / #5 / 6 / bb7 / b7 / 7 / b9 / 9 / #9 / 11 / #11 / b13 / 13（parseTones の読み方）。同じ和音（同じオブジェクト）では、一度だけ作る
+export function chordRoles(c) {
+  if (!c || c.isRepeat) return [];
+  if (c._roles) return c._roles;
+  const I = new Set((c.pcs || []).map((p) => mod12(p - c.rootPc)));
+  I.add(0);
+  const out = parseTones(I).tones.map((t) => ({ pc: mod12(c.rootPc + t.iv), iv: t.iv, role: t.role }));
+  Object.defineProperty(c, '_roles', { value: out, enumerable: false });
+  return out;
+}
+export { rootName as pcName };
+
+// 並べ順の鍵（数の並び。小さい順に並べる）: [ルート, 構成音の数, 7th の位置, 2音目, 3音目, …]
+export function chordOrderKey(c) {
+  if (!c || c.isRepeat) return [99];
+  const { stack, seventh } = chordStack(c.rootPc, c.pcs);
+  return [mod12(c.rootPc), stack.length, seventh, ...stack.slice(1)];
+}
+export function compareOrderKeys(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] === undefined ? -1 : a[i], y = b[i] === undefined ? -1 : b[i];       // 同じところまで同じなら、短いほうが先
+    if (x !== y) return x - y;
+  }
+  return 0;
+}
+
 // ---------- 保存の形 ----------
 // 保存する1つのコード（record）: { id?, notes, rootPc, symbol, name, level（null = 未設定）, color（null = 働きの色）, shape, at }
 //   type・semitones・pcs などの性質は、保存せず、構成音とルートから、読み込むたびに作り直す（判定の決まりが変わっても、古いデータが、ずれない）

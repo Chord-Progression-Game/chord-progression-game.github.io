@@ -1,4 +1,4 @@
-// ステージの定義（チュートリアル・フリープレイ・チャレンジ）。
+// ステージの定義（チュートリアル・フリープレイ・タイムアタック。チャレンジステージは trials.js）。
 //   チュートリアルは、「技」を1つずつ覚えるステージ。solution（お手本）から、「N番に〇〇を置こう」の案内を自動で作る。
 //   ゲームの流れ（遊びの順番）は、ここを読めば分かる。文章は、音楽の用語を知らない人に向けて書いている。
 //
@@ -139,9 +139,9 @@ export const FREE_STAGE = {
   pieces: null, bpm: 120, drumId: 2, backingId: 1, goal: null, solution: [], intro: [], outro: [],
 };
 
-// チャレンジ: 制限時間のなかで、できるだけ高い得点を狙う
+// タイムアタック（もとの名前は「チャレンジ」。内部の名前は 'challenge' のまま）: 制限時間のなかで、できるだけ高い得点を狙う
 export const CHALLENGE_STAGE = {
-  id: 'challenge', no: null, title: 'チャレンジ', sub: '90秒で高得点を狙え', goalText: '90秒のあいだに技を決めて得点をのばそう',
+  id: 'challenge', no: null, title: 'タイムアタック', sub: '90秒で高得点を狙え', goalText: '90秒のあいだに技を決めて得点をのばそう',
   pieces: null, bpm: 120, drumId: 2, backingId: 1, goal: null, solution: [], intro: [], outro: [],
   seconds: 90, stars: [500, 1000, 1800],         // 星1・2・3 に必要な得点（仮）
 };

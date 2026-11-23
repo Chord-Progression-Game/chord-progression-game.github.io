@@ -1,7 +1,7 @@
 // 自作コード・編集したコードの、出し入れ（保存・追加・変更・削除・もとにもどす）。画面とゲームが、同じものを見る。DOM には触れない。
 //   ・保存先は、ブラウザ（save.chordbook。localStorage）。ゲームを立ち上げ直しても、そのまま残る（右クリックで削除するか、編集画面から削除しない限り）
 //   ・性質（種類・ルート・構成音の相対位置）は、保存せず、コード表（chords.js の ChordTable.setLayer）が、読み込むたびに作る
-//   ・自作コードは、フリープレイだけで使える（チュートリアル・チャレンジ・メロディのステージは、もとの駒だけ。ChordTable の mode）
+//   ・自作コードは、フリープレイだけで使える（チュートリアル・タイムアタック・チャレンジステージ・メロディのステージは、もとの駒だけ。ChordTable の mode）
 import { writeSave } from './save.js';
 import { detectChord, makeRecord, normalizeNotes, semitonesOf, sanitizeChordbook, uniqueName, HOME_C, MIN_TONES, MAX_CUSTOM, CUSTOM_ID_BASE } from '../core/chordbook.js';
 
