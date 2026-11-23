@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="700" viewBox="0 0 1900 700" font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Helvetica Neue',Arial,sans-serif">
+<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1019"/><stop offset="1" stop-color="#07080c"/></linearGradient><marker id="mffe27a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ffe27a"/></marker><marker id="m66ffcc" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#66ffcc"/></marker></defs>
+<rect width="1900" height="700" fill="url(#bg)"/>
+<text x="40" y="56" font-size="30" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">CHORD LINES（仮題）  システムの構成</text>
+<text x="40" y="88" font-size="16" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">物理的な駒（入力）と、PC のゲーム。これまでに作った 8台の駒認識システムを、そのまま入力装置として使う</text>
+<rect x="40" y="150" width="250" height="150" rx="14" fill="#151a28" stroke="#ffe27a" stroke-width="2"/>
+<text x="56" y="174" font-size="12" fill="#ffe27a" font-weight="900" text-anchor="start" opacity="1">PIECES</text>
+<text x="56" y="200" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">コード駒</text>
+<text x="56" y="224" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">RFID タグ入り</text>
+<text x="56" y="244" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">31種のコード + 「→」</text>
+<text x="56" y="264" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（新しい3つは、書き込み待ち）</text>
+<text x="56" y="284" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（デザインは、別に進行中）</text>
+<rect x="340" y="150" width="280" height="150" rx="14" fill="#151a28" stroke="#ffe27a" stroke-width="2"/>
+<text x="356" y="174" font-size="12" fill="#ffe27a" font-weight="900" text-anchor="start" opacity="1">BOARD</text>
+<text x="356" y="200" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">盤（4×2 = 8か所）</text>
+<text x="356" y="224" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">RC522 リーダー ×8</text>
+<text x="356" y="244" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">駒の置き・外し・入れ替えを</text>
+<text x="356" y="264" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">約0.3秒で検出（影の対策つき）</text>
+<rect x="670" y="150" width="250" height="150" rx="14" fill="#151a28" stroke="#5aa9ff" stroke-width="2"/>
+<text x="686" y="174" font-size="12" fill="#5aa9ff" font-weight="900" text-anchor="start" opacity="1">DEVICE</text>
+<text x="686" y="200" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ESP32-S3</text>
+<text x="686" y="224" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">駒 → コード → 位置の表</text>
+<text x="686" y="244" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（登録した駒の ID）</text>
+<text x="686" y="264" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">状態を、文字で送る（USB）</text>
+<rect x="970" y="150" width="280" height="150" rx="14" fill="#151a28" stroke="#5aa9ff" stroke-width="2"/>
+<text x="986" y="174" font-size="12" fill="#5aa9ff" font-weight="900" text-anchor="start" opacity="1">BRIDGE</text>
+<text x="986" y="200" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ブリッジ</text>
+<text x="986" y="224" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">midi_bridge.py（常駐できる）</text>
+<text x="986" y="244" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">文字 → 通知（SSE）</text>
+<text x="986" y="264" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ブラウザ向けの窓口 /api/</text>
+<rect x="1300" y="150" width="280" height="150" rx="14" fill="#151a28" stroke="#66ffcc" stroke-width="2"/>
+<text x="1316" y="174" font-size="12" fill="#66ffcc" font-weight="900" text-anchor="start" opacity="1">SERVER</text>
+<text x="1316" y="200" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ゲームを配るサーバー</text>
+<text x="1316" y="224" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">game_server.py</text>
+<text x="1316" y="244" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ゲームのファイルを配り、</text>
+<text x="1316" y="264" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">/api/ をブリッジへ中継</text>
+<rect x="1620" y="120" width="240" height="210" rx="14" fill="#151a28" stroke="#66ffcc" stroke-width="2" filter="url(#glow)"/>
+<text x="1636" y="144" font-size="12" fill="#66ffcc" font-weight="900" text-anchor="start" opacity="1">GAME</text>
+<text x="1636" y="170" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ブラウザ（Chrome）</text>
+<text x="1636" y="194" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ゲーム本体</text>
+<text x="1636" y="214" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">3D 表示（three.js）</text>
+<text x="1636" y="234" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">技の判定・得点・ヒント</text>
+<text x="1636" y="254" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ピアノ + ドラムを鳴らす</text>
+<text x="1636" y="274" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（Web Audio）</text>
+<path d="M290,225 L340,225" fill="none" stroke="#ffe27a" stroke-width="2.5" marker-end="url(#mffe27a)"/>
+<path d="M620,225 L670,225" fill="none" stroke="#ffe27a" stroke-width="2.5" marker-end="url(#mffe27a)"/>
+<path d="M920,225 L970,225" fill="none" stroke="#ffe27a" stroke-width="2.5" marker-end="url(#mffe27a)"/>
+<path d="M1250,225 L1300,225" fill="none" stroke="#ffe27a" stroke-width="2.5" marker-end="url(#mffe27a)"/>
+<path d="M1580,225 L1620,225" fill="none" stroke="#ffe27a" stroke-width="2.5" marker-end="url(#mffe27a)"/>
+<text x="655" y="134" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="middle" opacity="1">※ ゲームの間、ESP32 は駒を読んで送るだけ。音はゲームが鳴らす</text>
+<rect x="1300" y="400" width="560" height="130" rx="14" fill="#151a28" stroke="#66ffcc" stroke-width="2"/>
+<text x="1316" y="424" font-size="12" fill="#66ffcc" font-weight="900" text-anchor="start" opacity="1">VIRTUAL BOARD</text>
+<text x="1316" y="450" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">画面の仮の盤（マウス・タッチ）</text>
+<text x="1316" y="474" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">駒を、画面でドラッグ。実機がなくても、同じゲームが遊べる</text>
+<text x="1316" y="494" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（実機の盤が、つながっていれば、自動で切り替わる）</text>
+<text x="1316" y="514" font-size="14" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">展示の予備にもなる</text>
+<path d="M1740,400 L1740,330" fill="none" stroke="#66ffcc" stroke-width="2.5" stroke-dasharray="6 5" marker-end="url(#m66ffcc)"/>
+<rect x="40" y="400" width="1200" height="230" rx="14" fill="#151a28" stroke="#b48cff" stroke-width="2"/>
+<text x="56" y="424" font-size="12" fill="#b48cff" font-weight="900" text-anchor="start" opacity="1">AUDIO</text>
+<text x="56" y="450" font-size="19" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">音の仕組み（ゲームの中）</text>
+<text x="60" y="500" font-size="16" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">ピアノ: Salamander Grand Piano のサンプル（CC BY 3.0）を、音の高さに合わせて鳴らす</text>
+<text x="60" y="527" font-size="16" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">ドラム: GM のドラムキット（GeneralUser GS）。8種類の音（キック・スネア・ハイハット…）</text>
+<text x="60" y="554" font-size="16" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">和音の高さ・リズムの鳴らし方: 実機ファーム（groove.cpp / voicing.cpp）と同じ規則。自動テストで、全組み合わせを照合済み</text>
+<text x="60" y="581" font-size="16" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">技の効果音: そのときの和音の構成音を、高い音域で「きらっ」と鳴らす（音楽に、いつも調和する）。拍に合わせて予約</text>
+<text x="60" y="608" font-size="16" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">時計: 画面ではなく、音の時計（AudioContext）。少し先まで予約するので、ずれない（1ステップ 1000ms ±1ms 以内を確認）</text>
+<text x="40" y="672" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">※ ESP32 の内蔵音源・アンプ・Wi-Fi 画面は、PC につなぐ前提になったため、優先度を下げました（docs/standalone_plan.md は、参考として残してあります）。</text>
+</svg>

@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1860" height="988" viewBox="0 0 1860 988" font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Helvetica Neue',Arial,sans-serif">
+<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1019"/><stop offset="1" stop-color="#07080c"/></linearGradient><marker id="mffe27a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ffe27a"/></marker></defs>
+<rect width="1860" height="988" fill="url(#bg)"/>
+<text x="40" y="56" font-size="30" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">CHORD LINES（仮題）  1回の操作で、起きること — フィードバックの設計</text>
+<text x="40" y="88" font-size="16" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">「選んだ後にフィードバックがあるのでは、判断材料がない」への答え: 置く前の手がかり → 置いた瞬間 → 拍に合わせて → 演奏中 → 結果</text>
+<rect x="40" y="130" width="340" height="742" rx="14" fill="#10141f" stroke="#5aa9ff" stroke-width="2"/>
+<text x="60" y="168" font-size="24" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">置く前</text>
+<text x="60" y="196" font-size="14" fill="#5aa9ff" font-weight="800" text-anchor="start" opacity="1">手がかり（FEEDFORWARD）</text>
+<rect x="60" y="222" width="300" height="130" rx="10" fill="#171d2e" stroke="#5aa9ff" stroke-width="1.5"/>
+<text x="74" y="248" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">駒のかたち・色（働き）</text>
+<text x="74" y="272" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">球 = 安定（トニック系）</text>
+<text x="74" y="292" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">立方体 = 広がり（サブドミナント系）</text>
+<text x="74" y="312" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">三角錐 = 緊張（ドミナント系）</text>
+<text x="74" y="332" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">八面体 = 色づけ・借用</text>
+<rect x="60" y="366" width="300" height="70" rx="10" fill="#171d2e" stroke="#5aa9ff" stroke-width="1.5"/>
+<text x="74" y="392" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">駒を押すと、和音が鳴る</text>
+<text x="74" y="416" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">置く前に、その駒の響きを聴ける</text>
+<rect x="60" y="450" width="300" height="130" rx="10" fill="#171d2e" stroke="#5aa9ff" stroke-width="1.5"/>
+<text x="74" y="476" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ヒント（選んで ON/OFF）</text>
+<text x="74" y="500" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">次の候補が、盤の上と駒の置き場に</text>
+<text x="74" y="520" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">うっすら出る。おすすめ4つ・発展5つ</text>
+<text x="74" y="540" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（例: Ⅵm7 の次 → 5番に Ⅱm7 / 発展: Ⅳm7）</text>
+<text x="74" y="560" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">メロディのステージ: 合う和音だけ</text>
+<rect x="60" y="594" width="300" height="70" rx="10" fill="#171d2e" stroke="#5aa9ff" stroke-width="1.5"/>
+<text x="74" y="620" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">案内（チュートリアル）</text>
+<text x="74" y="644" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">「N番に〇〇を置こう」と、矢印で示す</text>
+<path d="M380,501 L400,501" fill="none" stroke="#ffe27a" stroke-width="3" marker-end="url(#mffe27a)"/>
+<rect x="400" y="130" width="340" height="742" rx="14" fill="#10141f" stroke="#ffe27a" stroke-width="2"/>
+<text x="420" y="168" font-size="24" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">置いた瞬間</text>
+<text x="420" y="196" font-size="14" fill="#ffe27a" font-weight="800" text-anchor="start" opacity="1">すぐ見える・分かる</text>
+<rect x="420" y="222" width="300" height="70" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="248" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">駒が盤に落ちる</text>
+<text x="434" y="272" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">木のコツッという音 + 衝撃の輪</text>
+<rect x="420" y="306" width="300" height="90" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="332" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">技を判定（すぐ）</text>
+<text x="434" y="356" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">つながりを、前後の駒との関係で見る</text>
+<text x="434" y="376" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">判定は度数。キーを変えても同じ</text>
+<rect x="420" y="410" width="300" height="90" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="436" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">囲む + 名前を表示</text>
+<text x="434" y="460" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">技の部分を、色つきの枠と流れる線で囲み</text>
+<text x="434" y="480" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">名前・点数・コンボを、ラベルで出す</text>
+<rect x="420" y="514" width="300" height="90" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="540" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">技にならなかったつながり</text>
+<text x="434" y="564" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">性質で描写（ORIGINAL）</text>
+<text x="434" y="584" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">例: 「全音上・共通音が多く、なめらか」</text>
+<rect x="420" y="618" width="300" height="110" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="644" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">ジャッジ（講評）</text>
+<text x="434" y="668" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">耳に馴染む並びは加点</text>
+<text x="434" y="688" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">進行感のない並びは減点</text>
+<text x="434" y="708" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">階段 +60〜 / 進行感なし −40 など</text>
+<rect x="420" y="742" width="300" height="110" rx="10" fill="#171d2e" stroke="#ffe27a" stroke-width="1.5"/>
+<text x="434" y="768" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">メロディとの相性</text>
+<text x="434" y="792" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">メロディの音を、和音ごとに色分け</text>
+<text x="434" y="812" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">コードの音・テンション・アヴォイド</text>
+<text x="434" y="832" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">相性の点が、得点に足される</text>
+<path d="M740,501 L760,501" fill="none" stroke="#ffe27a" stroke-width="3" marker-end="url(#mffe27a)"/>
+<rect x="760" y="130" width="340" height="742" rx="14" fill="#10141f" stroke="#ff6a3d" stroke-width="2"/>
+<text x="780" y="168" font-size="24" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">次の拍（0〜0.5秒）</text>
+<text x="780" y="196" font-size="14" fill="#ff6a3d" font-weight="800" text-anchor="start" opacity="1">音と演出</text>
+<rect x="780" y="222" width="300" height="90" rx="10" fill="#171d2e" stroke="#ff6a3d" stroke-width="1.5"/>
+<text x="794" y="248" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">スタンプ（TRICK!）</text>
+<text x="794" y="272" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">技の名前・点数・「なぜ」の説明</text>
+<text x="794" y="292" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">初めての技には NEW</text>
+<rect x="780" y="326" width="300" height="110" rx="10" fill="#171d2e" stroke="#ff6a3d" stroke-width="1.5"/>
+<text x="794" y="352" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">効果音（拍に合わせる）</text>
+<text x="794" y="376" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">その和音の音を、高い音域で「きらっ」</text>
+<text x="794" y="396" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（いつも、音楽と調和する）</text>
+<text x="794" y="416" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">コンボのときは、さらに音が重なる</text>
+<rect x="780" y="450" width="300" height="90" rx="10" fill="#171d2e" stroke="#ff6a3d" stroke-width="1.5"/>
+<text x="794" y="476" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">演出</text>
+<text x="794" y="500" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">光の粒・衝撃波・画面の光・少しスロー</text>
+<text x="794" y="520" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">カメラが、ぐっと寄る</text>
+<rect x="780" y="554" width="300" height="90" rx="10" fill="#171d2e" stroke="#ff6a3d" stroke-width="1.5"/>
+<text x="794" y="580" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">得点・図鑑</text>
+<text x="794" y="604" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">スコアが増える。コンボ ×1.5 / ×2 …</text>
+<text x="794" y="624" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">23個の技の図鑑が、色で点灯する</text>
+<path d="M1100,501 L1120,501" fill="none" stroke="#ffe27a" stroke-width="3" marker-end="url(#mffe27a)"/>
+<rect x="1120" y="130" width="340" height="742" rx="14" fill="#10141f" stroke="#66ffcc" stroke-width="2"/>
+<text x="1140" y="168" font-size="24" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">演奏中（ループ）</text>
+<text x="1140" y="196" font-size="14" fill="#66ffcc" font-weight="800" text-anchor="start" opacity="1">再生位置が通る</text>
+<rect x="1140" y="222" width="300" height="90" rx="10" fill="#171d2e" stroke="#66ffcc" stroke-width="1.5"/>
+<text x="1154" y="248" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">再生位置が、位置1→8を進む</text>
+<text x="1154" y="272" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">1ステップ = 2拍（BPM 120 で 1周 8秒）</text>
+<text x="1154" y="292" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ドラムは、駒がなくても鳴る</text>
+<rect x="1140" y="326" width="300" height="90" rx="10" fill="#171d2e" stroke="#66ffcc" stroke-width="1.5"/>
+<text x="1154" y="352" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">技の最後のコードで、光る</text>
+<text x="1154" y="376" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">通るたびに、枠が光り、小さく「きらっ」</text>
+<text x="1154" y="396" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（初めて決まったときほど、大きくはない）</text>
+<rect x="1140" y="430" width="300" height="90" rx="10" fill="#171d2e" stroke="#66ffcc" stroke-width="1.5"/>
+<text x="1154" y="456" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">和音は、前の音に近い高さで</text>
+<text x="1154" y="480" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ボイスリーディング。実機の演奏と同じ規則</text>
+<text x="1154" y="500" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ピアノ + ドラム（GM）</text>
+<path d="M1460,501 L1480,501" fill="none" stroke="#ffe27a" stroke-width="3" marker-end="url(#mffe27a)"/>
+<rect x="1480" y="130" width="340" height="742" rx="14" fill="#10141f" stroke="#b48cff" stroke-width="2"/>
+<text x="1500" y="168" font-size="24" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">組み替える</text>
+<text x="1500" y="196" font-size="14" fill="#b48cff" font-weight="800" text-anchor="start" opacity="1">スコアを伸ばす</text>
+<rect x="1500" y="222" width="300" height="110" rx="10" fill="#171d2e" stroke="#b48cff" stroke-width="1.5"/>
+<text x="1514" y="248" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">得点の組み立て</text>
+<text x="1514" y="272" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">技の点 × 同じ技の繰り返し（2回目 ×0.6…）</text>
+<text x="1514" y="292" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">× コンボ（つながる数 ×1.5〜）</text>
+<text x="1514" y="312" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">× 種類の多さ（+10%ずつ）</text>
+<rect x="1500" y="346" width="300" height="90" rx="10" fill="#171d2e" stroke="#b48cff" stroke-width="1.5"/>
+<text x="1514" y="372" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">定番だけでは、伸びにくい</text>
+<text x="1514" y="396" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">同じ技の繰り返しは、点が下がる</text>
+<text x="1514" y="416" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">違う種類を、つなげるほど高得点</text>
+<rect x="1500" y="450" width="300" height="90" rx="10" fill="#171d2e" stroke="#b48cff" stroke-width="1.5"/>
+<text x="1514" y="476" font-size="16" fill="#eef2fb" font-weight="800" text-anchor="start" opacity="1">パー（目標点）</text>
+<text x="1514" y="500" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">ミッションごとの目標を、星で示す予定</text>
+<text x="1514" y="520" font-size="13" fill="#98a3bb" font-weight="500" text-anchor="start" opacity="1">（チャレンジは ★ 500 / 1000 / 1800）</text>
+<text x="40" y="918" font-size="17" fill="#ffe27a" font-weight="800" text-anchor="start" opacity="1">判定の考え方</text>
+<text x="40" y="946" font-size="15" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">名前の付いた技の一覧だけでは、一覧にない進行が「何も起きない」になる → つながりを「性質」（ルートの動き・共通音・色）で見て、</text>
+<text x="40" y="970" font-size="15" fill="#eef2fb" font-weight="600" text-anchor="start" opacity="1">性質のパターンに名前を付けたものが「技」。技にならないつながりも、描写する。そのうえで「ジャッジ」（ルールの審判）が、耳に馴染む並びを加点、進行感のない並びを減点・指摘する（sus4 の解決も加点）。</text>
+</svg>

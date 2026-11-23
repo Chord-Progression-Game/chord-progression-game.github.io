@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../ESP32_FirstTest"
+		},
+		{
+			"path": "../ESP32_DualTest_01"
+		},
+		{
+			"path": "../ESP32_Quad_01"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}

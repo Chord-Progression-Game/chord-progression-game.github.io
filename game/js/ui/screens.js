@@ -1,0 +1,87 @@
+// 画面の切り替え（起動・タイトル・ステージ選択・メニュー・結果）。
+import { $, $$, h, clear } from './dom.js';
+import { trickTitle, trickSub } from './hud.js';
+
+const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'result'];
+
+export class Screens {
+  constructor() {
+    this.current = 'splash';
+  }
+
+  // name: 表示する主な画面。overlay: その上に重ねる画面（例: HUD の上に、メニューや結果）
+  show(name, overlay = null) {
+    for (const n of NAMES) $(`#${n}`).classList.add('hidden');
+    $(`#${name}`).classList.remove('hidden');
+    if (overlay) $(`#${overlay}`).classList.remove('hidden');
+    this.current = overlay || name;
+  }
+
+  hide(name) { $(`#${name}`).classList.add('hidden'); }
+
+  // ステージ選択のカード
+  buildStageGrid(stages, specials, game, onPick) {
+    const grid = clear($('#stage-grid'));
+    stages.forEach((s, i) => {
+      const unlocked = game.isUnlocked(stages, i);
+      const rec = game.save.cleared[s.id];
+      const card = h('button', { class: `stage-card${unlocked ? '' : ' locked'}${rec ? ' cleared' : ''}`, style: { '--c': s.color || '#6c7a96' }, onclick: () => { if (unlocked) onPick(s, 'tutorial'); } },
+        h('span', { class: 'no' }, `STAGE ${String(s.no).padStart(2, '0')}`),
+        h('span', { class: 'ttl' }, s.title),
+        h('span', { class: 'sub' }, s.sub),
+        h('span', { class: 'st' }, !unlocked ? '🔒 ひとつ前をクリアで開く' : rec ? `✓ クリア ／ ベスト ${rec.best}` : 'NEW'));
+      grid.append(card);
+    });
+    for (const sp of specials) {
+      if (sp.mode === 'melody-menu') {                              // 「メロディにコードをつける」の、入り口（メロディを選ぶ画面へ）
+        const done = Object.keys(game.save.melody || {}).length;
+        grid.append(h('button', { class: 'stage-card special', dataset: { stage: 'melody-menu' }, style: { '--c': '#6fb7d9' }, onclick: () => onPick(null, 'melody-menu') },
+          h('span', { class: 'no' }, 'MELODY'), h('span', { class: 'ttl' }, 'メロディにコードをつける'), h('span', { class: 'sub' }, '流れるメロディに和音を合わせる'),
+          h('span', { class: 'st' }, done ? `${done}つ 挑戦ずみ` : 'メロディを選ぶ')));
+        continue;
+      }
+      const bestKey = sp.mode === 'challenge' ? game.save.best.challenge : game.save.best.free;
+      grid.append(h('button', { class: 'stage-card special', style: { '--c': sp.mode === 'challenge' ? '#e2573c' : '#86c79a' }, onclick: () => onPick(sp.stage, sp.mode) },
+        h('span', { class: 'no' }, sp.mode === 'challenge' ? 'CHALLENGE' : 'FREE PLAY'),
+        h('span', { class: 'ttl' }, sp.stage.title),
+        h('span', { class: 'sub' }, sp.stage.sub),
+        h('span', { class: 'st' }, bestKey ? `ベスト ${bestKey}` : 'すぐに遊べる')));
+    }
+  }
+
+  // メロディのステージのカード（「合わせる」の画面）。ステージ選択と同じ見た目。記録（最高得点・星）も出す
+  buildMelodyGrid(melodies, game, onPick) {
+    const grid = clear($('#stage-grid'));
+    melodies.forEach((m) => {
+      const rec = (game.save.melody || {})[m.id];
+      const stars = rec ? '★'.repeat(rec.stars || 0) + '☆'.repeat(3 - (rec.stars || 0)) : '';
+      grid.append(h('button', { class: `stage-card melody${rec ? ' cleared' : ''}`, dataset: { stage: m.id }, style: { '--c': m.color }, onclick: () => onPick(m) },
+        h('span', { class: 'no' }, `MELODY ${String(m.no).padStart(2, '0')}`),
+        h('span', { class: 'ttl' }, m.title),
+        h('span', { class: 'sub' }, m.sub),
+        h('span', { class: 'st' }, rec ? `${stars}  ベスト ${rec.best}（相性 ${Math.round((rec.match || 0) * 100)}%）` : 'NEW')));
+    });
+  }
+
+  // 結果
+  showResult({ kicker, title, stars = null, score = null, scoreNote = '', paragraphs = [], extras = [], tricks = [], buttons = [] }) {
+    $('#result-kicker').textContent = kicker;
+    $('#result-title').textContent = title;
+    const st = $('#result-stars');
+    if (stars === null) st.classList.add('hidden');
+    else { st.classList.remove('hidden'); st.innerHTML = [0, 1, 2].map((i) => (i < stars ? '<b>★</b>' : '☆')).join(''); }
+    const sc = $('#result-score');
+    if (score === null) sc.classList.add('hidden'); else { sc.classList.remove('hidden'); sc.innerHTML = `${score}<small>${scoreNote}</small>`; }
+    const body = clear($('#result-body'));
+    for (const p of paragraphs) body.append(h('p', {}, p));
+    for (const x of extras) body.append(x);                     // 追加の部品（メロディの、ステップごとの結果の表など）
+    const box = clear($('#result-tricks'));
+    for (const ins of tricks) {
+      const sub = trickSub(ins);
+      box.append(h('div', { class: 'rt', style: { '--c': ins.color } }, h('b', {}, `${trickTitle(ins)}`, sub ? h('small', {}, sub) : null, h('small', {}, `+${ins.total}`)), h('span', { style: { color: 'var(--dim)', fontWeight: '700' } }, ins.chords.join(' → ')), h('span', {}, ins.reason)));
+    }
+    const btns = clear($('#result-btns'));
+    for (const b of buttons) btns.append(h('button', { class: b.primary ? 'primary' : '', onclick: b.onClick }, b.label));
+    this.show('hud', 'result');
+  }
+}

@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>リズム編集</title>
+<style>
+  :root {
+    --bg: #fafaf7; --fg: #1d1d1b; --muted: #6b6b66; --line: #d9d8d0; --card: #ffffff;
+    --accent: #2f6fdb; --accent-fg: #ffffff; --ok: #1f7a3d; --err: #b3261e;
+    --lv1: #bcd2f5; --lv2: #4f86e0; --lv3: #1c3f8f; --off: #eeeee8; --beat: #c9c8bf; --play: #ffb020;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a; --fg: #ececea; --muted: #a0a09a; --line: #3a3b3e; --card: #212225;
+      --accent: #6a9bf0; --accent-fg: #101114; --ok: #66c183; --err: #ff8a80;
+      --lv1: #35507f; --lv2: #5b8de6; --lv3: #a9c6ff; --off: #2b2c30; --beat: #55565b; --play: #ffb020;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  p.lead { margin: 0 0 16px; color: var(--muted); }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button { padding: 8px 18px; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 8px; cursor: pointer; font: inherit; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 12px; }
+  label { display: inline-flex; gap: 8px; align-items: center; }
+  select, input[type="text"], input[type="number"] { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  input[type="text"] { width: 14em; }
+  button.primary { padding: 10px 22px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary:disabled { opacity: .4; cursor: not-allowed; }
+  button.plain { padding: 6px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .grid { overflow-x: auto; padding-bottom: 6px; }
+  table.seq { border-collapse: separate; border-spacing: 3px; }
+  table.seq th { font-weight: normal; text-align: right; padding-right: 8px; white-space: nowrap; font-size: 14px; }
+  table.seq th.num { text-align: center; color: var(--muted); font-size: 12px; padding: 0; }
+  table.seq td { padding: 0; }
+  .cell { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--off); cursor: pointer; padding: 0; color: transparent; font: 600 13px/1 monospace; }
+  .cell.lv1 { background: var(--lv1); }
+  .cell.lv2 { background: var(--lv2); }
+  .cell.lv3 { background: var(--lv3); }
+  .cell.beat { margin-left: 0; border-left: 3px solid var(--beat); }
+  .cell.playing { outline: 3px solid var(--play); outline-offset: 1px; }
+  .cell.bk { color: var(--fg); background: var(--off); }
+  .cell.bk.hit { background: var(--lv2); color: var(--accent-fg); }
+  .cell.bk.hold { background: var(--lv1); }
+  .cell.bk.bad { outline: 3px solid var(--err); }
+  .legend { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+  .brushes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .brushes button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-size: 14px; cursor: pointer; }
+  .brushes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .brushes b { font-family: monospace; font-size: 16px; }
+  #message { min-height: 1.6em; margin-top: 8px; }
+  #message.ok { color: var(--ok); }
+  #message.err { color: var(--err); }
+  details { margin-top: 8px; color: var(--muted); }
+  pre { margin: 6px 0 0; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  .hidden { display: none; }
+  /* 操作パネル */
+  .conn { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; border: 1px solid var(--line); color: var(--muted); }
+  .conn.on { color: var(--ok); border-color: var(--ok); }
+  .conn.off { color: var(--err); border-color: var(--err); }
+  .bridge-bar { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px; line-height: 1.7; }
+  .bridge-bar.ok { color: var(--ok); border-color: var(--ok); }
+  .bridge-bar.hold { color: var(--fg); border-color: #e0a030; background: rgba(224, 160, 48, .10); }
+  .bridge-bar.hold b { color: #e0a030; }
+  .bridge-bar.ok button, .bridge-bar.hold button { margin-left: 10px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .bridge-bar.warn { color: var(--fg); border-color: var(--err); background: rgba(255, 90, 90, .08); }
+  .bridge-bar b { color: var(--err); }
+  .bridge-bar button { margin-left: 10px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--err); background: var(--card); color: var(--fg); font: inherit; font-weight: 700; cursor: pointer; }
+  .bigrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .bpmnum { font: 700 44px/1 -apple-system, "Hiragino Sans", sans-serif; min-width: 3.2ch; text-align: center; }
+  .step { padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .step:disabled { opacity: .4; cursor: not-allowed; }
+  input[type="range"] { width: min(420px, 90%); accent-color: var(--accent); }
+  .keys { display: grid; grid-template-columns: repeat(6, minmax(52px, 1fr)); gap: 6px; max-width: 560px; }
+  .keys button { padding: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-weight: 600; cursor: pointer; }
+  .keys button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toggle { padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .pcard { text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .pcard[aria-pressed="true"] { border-color: var(--accent); outline: 2px solid var(--accent); }
+  .pcard .nm { font-weight: 600; display: block; }
+  .pcard .id { color: var(--muted); font-size: 12px; }
+  .strip { display: flex; gap: 2px; margin-top: 6px; }
+  .strip i { flex: 1; height: 8px; border-radius: 2px; background: var(--off); }
+  .strip i.h { background: var(--lv2); }
+  .strip i.l { background: var(--lv1); }
+  .strip i.sep { margin-left: 4px; }
+  .pcard .edit { margin-top: 6px; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+  .prog { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile { text-align: center; padding: 12px 6px; border: 2px solid var(--line); border-radius: 12px; background: var(--card); }
+  .tile.now { border-color: var(--play); background: color-mix(in srgb, var(--play) 18%, var(--card)); }
+  .tile .deg { font-size: 22px; font-weight: 700; }
+  .tile .sym { color: var(--muted); }
+  .tile .pos { color: var(--muted); font-size: 12px; }
+  .tile.learn { border-color: var(--accent); border-style: dashed; }
+  button.start { padding: 12px 30px; border: 0; border-radius: 10px; font: inherit; font-size: 18px; font-weight: 700; cursor: pointer; background: var(--ok); color: #fff; }
+  button.start.playing { background: var(--err); }
+  .sec { margin-bottom: 20px; }
+  .note { color: var(--muted); font-size: 14px; }
+  /* ゲームに送る・進行を作る */
+  h3 { font-size: 15px; margin: 16px 0 6px; }
+  .game-list { display: grid; gap: 6px; }
+  .game-item { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .game-item .nm { font-weight: 600; }
+  .game-item .sub { color: var(--muted); font-size: 13px; flex: 1; min-width: 12em; }
+  .game-item button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  .game-item button.del { color: var(--err); }
+  #game-message { min-height: 1.6em; margin-top: 8px; }
+  #game-message.ok { color: var(--ok); }
+  #game-message.err { color: var(--err); }
+  .seqline { display: flex; flex-wrap: wrap; gap: 8px; min-height: 76px; padding: 8px; border: 1px dashed var(--line); border-radius: 10px; margin-bottom: 12px; align-items: stretch; }
+  .seqline .tile { width: 84px; padding: 8px 4px; cursor: pointer; }
+  .seqline .tile:hover { border-color: var(--err); }
+  .seqline .empty { color: var(--muted); align-self: center; padding: 0 8px; }
+  .chordpick { display: grid; gap: 8px; }
+  .chordpick .lv { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chordpick .lv > span { color: var(--muted); font-size: 13px; width: 4em; }
+  .chordpick button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+  .chordpick button small { color: var(--muted); margin-left: 4px; }
+  .chordpick button:disabled { opacity: .4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<main>
+  <h1>コード進行マシン　操作・リズム編集</h1>
+  <p class="lead">「操作」で、BPM・キー・パターンをその場で変えられます。「作る」で、マス目をクリックして新しいパターンを作れます（文字を打つ必要はありません。1マス = 16分音符、4マス = 1拍）。作ったドラム・バッキング・進行には、名前をつけて、ゲームに送れます（「ゲームに送る」）。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-control" aria-selected="true">操作</button>
+    <button role="tab" id="tab-drum" aria-selected="false">ドラムを作る</button>
+    <button role="tab" id="tab-backing" aria-selected="false">バッキングを作る</button>
+    <button role="tab" id="tab-prog" aria-selected="false">進行を作る</button>
+  </div>
+
+  <!-- ===== 操作（リアルタイム）===== -->
+  <section id="panel-control" class="card">
+    <div class="bridge-bar hidden" id="c-bridge"></div>
+    <div class="sec bigrow">
+      <button class="start" id="c-play">▶ START</button>
+      <span class="conn" id="c-conn">ESP32 と未接続</span>
+      <span class="note" id="c-rt" style="margin-left:10px"></span>
+      <span class="note" id="c-midi"></span>
+    </div>
+
+    <div class="sec">
+      <h2>進行（位置ごとのコード）</h2>
+      <div class="prog" id="c-prog"></div>
+      <p class="note">上段の左から 位置1〜4、下段の左から 位置5〜8 の並びです。いま鳴っている位置が、オレンジの枠で光ります。駒を置き換えると、次にその位置が来たときに反映されます。</p>
+      <div class="bigrow" style="margin-top:8px">
+        <button class="step" id="map-learn">配置を覚えさせる</button>
+        <button class="step" id="map-done">途中で終える</button>
+        <button class="step" id="map-cancel">やめる</button>
+        <button class="step" id="map-reset">標準に戻す</button>
+      </div>
+      <p class="note" id="c-map-note"></p>
+    </div>
+
+    <div class="sec">
+      <h2>BPM（テンポ）</h2>
+      <div class="bigrow">
+        <button class="step" id="bpm-m5">−5</button><button class="step" id="bpm-m1">−1</button>
+        <span class="bpmnum" id="c-bpm">120</span>
+        <button class="step" id="bpm-p1">+1</button><button class="step" id="bpm-p5">+5</button>
+      </div>
+      <input type="range" id="c-bpm-range" min="30" max="240" value="120" aria-label="BPM">
+    </div>
+
+    <div class="sec">
+      <h2>キー（調）</h2>
+      <div class="bigrow" style="margin-bottom:8px"><button class="step" id="key-m">− 半音</button><button class="step" id="key-p">+ 半音</button><span class="note">いま: <b id="c-key">C</b></span></div>
+      <div class="keys" id="c-keys"></div>
+    </div>
+
+    <div class="sec">
+      <h2>ドラム</h2>
+      <div class="cards" id="c-drums"></div>
+    </div>
+    <div class="sec">
+      <h2>バッキング（和音の鳴らし方）</h2>
+      <div class="cards" id="c-backings"></div>
+    </div>
+
+    <div class="sec">
+      <h2>和音の鳴らし方</h2>
+      <div class="pills">
+        <button class="toggle" id="c-lead">ボイスリーディング</button>
+        <button class="toggle" id="c-voicing">3和音にオクターブ上を足す（4音）</button>
+      </div>
+      <p class="note">ボイスリーディング: 前のコードから一番近い高さで鳴らします（位置1に戻ると、本来の高さに戻ります）。</p>
+      <h2 style="margin-top:14px">和音の高さ（オクターブ）</h2>
+      <div class="bigrow">
+        <button class="step" id="oct-m">− 低く</button>
+        <span>高さ <b id="c-oct">+1</b>　<span class="note" id="c-octrange"></span></span>
+        <button class="step" id="oct-p">+ 高く</button>
+      </div>
+      <p class="note">音が低すぎる・高すぎるときに使います。1回で1オクターブ（12半音）動きます。ドラムには関係しません。</p>
+    </div>
+    <p class="note" id="c-hint"></p>
+  </section>
+
+  <!-- ===== ドラム ===== -->
+  <section id="panel-drum" class="card hidden">
+    <div class="row">
+      <label>プリセットから始める
+        <select id="drum-preset"><option value="">（選ぶ）</option></select>
+      </label>
+      <label>長さ
+        <select id="drum-length"><option value="8">8マス（半小節）</option><option value="16" selected>16マス（1小節）</option><option value="32">32マス（2小節）</option></select>
+      </label>
+      <button class="plain" id="drum-clear">全部消す</button>
+    </div>
+    <div class="grid"><table class="seq" id="drum-table" aria-label="ドラムのマス目"></table></div>
+    <p class="legend">クリックするたびに: なし → <b>ふつう</b> → <b>強い</b> → <b>弱い</b> → なし。右クリックで、そのマスを消します。</p>
+    <div class="row" style="margin-top:14px">
+      <button class="plain" id="drum-play">▶ 聴く（この画面の簡易な音）</button>
+      <label>BPM <input type="number" id="drum-bpm" min="40" max="220" value="120" style="width:5em"></label>
+      <span class="legend">※ 実際の音は、GM音源（ドラムキット）で鳴ります。ここでは、リズムの雰囲気を確かめるための音です。</span>
+    </div>
+  </section>
+
+  <!-- ===== バッキング ===== -->
+  <section id="panel-backing" class="card hidden">
+    <div class="row">
+      <label>プリセットから始める
+        <select id="backing-preset"><option value="">（選ぶ）</option></select>
+      </label>
+      <label>長さ
+        <select id="backing-length"><option value="8">8マス（1つの位置）</option><option value="16" selected>16マス（2つの位置）</option><option value="32">32マス（4つの位置）</option></select>
+      </label>
+      <button class="plain" id="backing-clear">全部消す</button>
+    </div>
+    <p class="legend" style="margin-top:0">ブラシ（置く音）を選んで、マスをクリックします。右クリックで消します。<b>8マス = 1つの位置（2拍）</b>で、コードは位置ごとに変わります。</p>
+    <div class="brushes" id="brushes"></div>
+    <div class="grid"><table class="seq" id="backing-table" aria-label="バッキングのマス目"></table></div>
+    <p class="legend" id="backing-text"></p>
+  </section>
+
+  <!-- ===== 進行（固有進行）===== -->
+  <section id="panel-prog" class="card hidden">
+    <p class="legend" style="margin-top:0">コードの駒（Ⅰ・Ⅴ7 など）を、順番に選ぶと、ゲームの「固有進行」の技になります。ゲームの盤に、この順番で並べると決まります（「→」は、とばして数えます）。キーが違っても、度数（Ⅰ・Ⅴ など）で決まります。</p>
+    <h3>いまの並び（クリックすると、その駒を外します）</h3>
+    <div class="seqline" id="prog-seq"></div>
+    <div class="row">
+      <label>点数 <input type="number" id="prog-points" min="50" max="3000" step="10" value="300" style="width:6em"></label>
+      <label>始まりの場所
+        <select id="prog-start"><option value="head">1番か5番から（固有進行の標準）</option><option value="any">どこからでも</option></select>
+      </label>
+      <button class="plain" id="prog-clear">全部消す</button>
+    </div>
+    <h3>駒をえらぶ（クリックすると、末尾に足されます。8つまで）</h3>
+    <div class="chordpick" id="prog-chords"></div>
+    <p class="legend" id="prog-note"></p>
+  </section>
+
+  <!-- ===== 送る ===== -->
+  <section class="card hidden" id="panel-send">
+    <div class="row">
+      <label>保存先
+        <select id="slot"></select>
+      </label>
+      <label>名前 <input type="text" id="name" maxlength="20" placeholder="マイ・ビート"></label>
+      <label><input type="checkbox" id="select" checked> 送ったあと、すぐ選ぶ</label>
+      <button class="primary" id="send">ESP32 に送る</button>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="live" checked> <b>ライブ編集</b>: マスをクリックするたびに、すぐ ESP32 に反映する</label>
+      <span class="conn" id="live-status">ライブ編集 ON</span>
+    </div>
+    <p class="legend" style="margin-top:0">ライブ編集が ON のとき、最初の1回は、保存先に作って選びます（上書きの確認が出ることがあります）。そのあとは、変えたところだけを送ります。再生中に編集すると、次のマスから音が変わります。OFF のときは、「ESP32 に送る」を押すまで反映されません。</p>
+    <div id="message" role="status"></div>
+    <details><summary>ESP32 に送るコマンド（確認用）</summary><pre id="preview-commands"></pre></details>
+    <p class="legend">保存先 11〜20 は「自分のパターン」の置き場です。送ると、その番号の中身は<b>上書き</b>されます（電源を切っても残ります）。</p>
+  </section>
+
+  <!-- ===== ゲームに送る ===== -->
+  <section class="card hidden" id="panel-game">
+    <h2>ゲームに送る</h2>
+    <div class="row">
+      <label>名前 <input type="text" id="game-name" maxlength="20" placeholder="例: 夕焼けビート"></label>
+      <button class="primary" id="game-send">ゲームに送る</button>
+      <label><input type="checkbox" id="game-live" checked> 送ったあとは、変えるたびに、自動で送り直す</label>
+    </div>
+    <div id="game-message" role="status"></div>
+    <p class="legend" style="margin-top:0">名前をつけて送ると、ゲームの「♪」のメニュー（ドラム・バッキング）や、図鑑（進行）に、すぐ増えます。ゲームを開いたままでも届きます。同じ名前で送り直すと、上書きされます。ESP32 には送りません。</p>
+    <h3>ゲームに入っているもの</h3>
+    <div class="game-list" id="game-list"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const PRESETS = __PRESETS__;
+
+const LANES = [
+  ["K", "キック"], ["S", "スネア"], ["P", "サイドスティック"], ["H", "ハイハット(閉)"],
+  ["O", "ハイハット(開)"], ["C", "クラップ"], ["R", "ライド"], ["X", "クラッシュ"],
+];
+const NEXT_LEVEL = { ".": "x", "x": "X", "X": "o", "o": "." };
+const BRUSHES = [
+  [".", "なし"], ["-", "のばす"], ["C", "和音"], ["c", "弱い和音"], ["B", "ベース"], ["b", "弱いベース"],
+  ["D", "ベース＋和音"], ["d", "弱い"], ["1", "1音目"], ["2", "2音目"], ["3", "3音目"], ["4", "4音目"],
+];
+const HITS = "CcBbDd1234";
+
+const state = {
+  kind: "control",
+  drum: { length: 16, lanes: {} },
+  backing: { length: 16, cells: [] },
+  brush: "C",
+  slot: 11,
+  name: "",
+  select: true,
+  live: true,
+  loadedSlot: null,
+  gameNames: { drum: "", backing: "", prog: "" },      // 「ゲームに送る」の名前（種類ごとに覚えておく）
+};
+const $ = (id) => document.getElementById(id);
+
+function emptyLanes(length) {
+  const lanes = {};
+  for (const [k] of LANES) lanes[k] = new Array(length).fill(".");
+  return lanes;
+}
+function resize(arr, length, fill) {
+  const out = arr.slice(0, length);
+  while (out.length < length) out.push(fill);
+  return out;
+}
+
+// ---------- 保存（ブラウザの中。使えなければ何もしない）----------
+function saveLocal() {
+  try { localStorage.setItem("rhythm-editor", JSON.stringify(state)); } catch (e) { /* 保存できなくても動く */ }
+}
+function loadLocal() {
+  try {
+    const s = JSON.parse(localStorage.getItem("rhythm-editor") || "null");
+    if (!s || !s.drum || !s.backing) return;
+    for (const L of [8, 16, 32]) if (s.drum.length === L) state.drum.length = L;
+    for (const L of [8, 16, 32]) if (s.backing.length === L) state.backing.length = L;
+    for (const [k] of LANES) state.drum.lanes[k] = resize((s.drum.lanes[k] || []).map(String), state.drum.length, ".");
+    state.backing.cells = resize((s.backing.cells || []).map(String), state.backing.length, ".");
+    if (typeof s.name === "string") state.name = s.name.slice(0, 20);
+    if (typeof s.live === "boolean") state.live = s.live;
+    if (s.slot >= 11 && s.slot <= 20) state.slot = s.slot;
+    if (s.kind === "backing" || s.kind === "drum" || s.kind === "prog") state.kind = s.kind;
+    if (s.gameNames && typeof s.gameNames === "object") for (const k of Object.keys(state.gameNames)) state.gameNames[k] = String(s.gameNames[k] || "").slice(0, 20);
+  } catch (e) { /* 読めなければ最初から */ }
+}
+
+// ---------- ドラムのマス目 ----------
+function drawDrum() {
+  const t = $("drum-table");
+  t.textContent = "";
+  const L = state.drum.length;
+  const head = document.createElement("tr");
+  head.appendChild(document.createElement("th"));
+  for (let i = 0; i < L; i++) {
+    const th = document.createElement("th");
+    th.className = "num";
+    th.textContent = i % 4 === 0 ? String((i / 4) % 4 + 1) : "";
+    head.appendChild(th);
+  }
+  t.appendChild(head);
+  for (const [k, label] of LANES) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = k + " " + label;
+    tr.appendChild(th);
+    for (let i = 0; i < L; i++) {
+      const td = document.createElement("td");
+      const b = document.createElement("button");
+      const v = state.drum.lanes[k][i];
+      b.className = "cell" + (i % 4 === 0 && i > 0 ? " beat" : "") + (v === "o" ? " lv1" : v === "x" ? " lv2" : v === "X" ? " lv3" : "");
+      b.dataset.lane = k;
+      b.dataset.i = String(i);
+      b.setAttribute("aria-label", label + " " + (i + 1) + "マス目");
+      b.addEventListener("click", () => { state.drum.lanes[k][i] = NEXT_LEVEL[state.drum.lanes[k][i]] || "x"; drawDrum(); edited(); if (!playing) auditionCell(k, state.drum.lanes[k][i]); });
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); state.drum.lanes[k][i] = "."; drawDrum(); edited(); });
+      td.appendChild(b);
+      tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  }
+}
+
+// ---------- バッキングのマス目 ----------
+function backingProblem() {
+  let afterHit = false;
+  for (let i = 0; i < state.backing.cells.length; i++) {
+    const c = state.backing.cells[i];
+    if (c === "-") {
+      if (!afterHit) return i;
+    } else {
+      afterHit = HITS.includes(c);
+    }
+  }
+  return -1;
+}
+function drawBackingBrushes() {
+  const box = $("brushes");
+  box.textContent = "";
+  for (const [c, label] of BRUSHES) {
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed", state.brush === c ? "true" : "false");
+    const sym = document.createElement("b");
+    sym.textContent = c;
+    b.appendChild(sym);
+    b.appendChild(document.createTextNode(" " + label));
+    b.addEventListener("click", () => { state.brush = c; drawBackingBrushes(); saveLocal(); });
+    box.appendChild(b);
+  }
+}
+function drawBacking() {
+  const t = $("backing-table");
+  t.textContent = "";
+  const L = state.backing.length;
+  const bad = backingProblem();
+  const head = document.createElement("tr");
+  for (let i = 0; i < L; i++) {
+    const th = document.createElement("th");
+    th.className = "num";
+    th.textContent = i % 8 === 0 ? "位置" + (i / 8 + 1) : (i % 4 === 0 ? String((i / 4) % 2 + 1) : "");
+    head.appendChild(th);
+  }
+  t.appendChild(head);
+  const tr = document.createElement("tr");
+  for (let i = 0; i < L; i++) {
+    const td = document.createElement("td");
+    const b = document.createElement("button");
+    const c = state.backing.cells[i];
+    b.className = "cell bk" + (HITS.includes(c) ? " hit" : c === "-" ? " hold" : "") + (i % 8 === 0 && i > 0 ? " beat" : "") + (i === bad ? " bad" : "");
+    b.textContent = c;
+    b.setAttribute("aria-label", (i + 1) + "マス目 " + c);
+    b.addEventListener("click", () => { state.backing.cells[i] = state.brush; drawBacking(); edited(); });
+    b.addEventListener("contextmenu", (e) => { e.preventDefault(); state.backing.cells[i] = "."; drawBacking(); edited(); });
+    td.appendChild(b);
+    tr.appendChild(td);
+  }
+  t.appendChild(tr);
+  $("backing-text").textContent = "パターン: " + state.backing.cells.join("") + (bad >= 0 ? "   ← 赤いマスの「-」は、音（C B D 1〜4）か「-」の直後にだけ置けます" : "");
+}
+
+// ---------- ESP32 に送る内容 ----------
+function currentRequest() {
+  const base = { slot: state.slot, name: state.name, select: state.select };
+  if (state.kind === "drum") {
+    const lanes = {};
+    for (const [k] of LANES) lanes[k] = state.drum.lanes[k].join("");
+    return Object.assign(base, { kind: "drum", length: state.drum.length, lanes });
+  }
+  return Object.assign(base, { kind: "backing", length: state.backing.length, cells: state.backing.cells.join("") });
+}
+function localProblem() {
+  if (state.kind === "drum") {
+    const any = LANES.some(([k]) => state.drum.lanes[k].some((c) => c !== "."));
+    return any ? "" : "音が1つもありません。マスをクリックして、音を入れてください";
+  }
+  if (backingProblem() >= 0) return "赤いマスを直してください";
+  return state.backing.cells.some((c) => HITS.includes(c)) ? "" : "音が1つもありません。マスに音を入れてください";
+}
+function commandPreview() {
+  const r = currentRequest();
+  const n = r.slot;
+  const name = (r.name || "").trim() || "マイ・パターン";
+  const lines = [];
+  if (r.kind === "drum") {
+    lines.push("DRUM CLEAR " + n, "DRUM LEN " + n + " " + r.length);
+    for (const [k] of LANES) if (/[^.]/.test(r.lanes[k])) lines.push("DRUM SET " + n + " " + k + " " + r.lanes[k]);
+    lines.push("DRUM NAME " + n + " " + name);
+    if (r.select) lines.push("DRUM " + n);
+  } else {
+    lines.push("BACKING CLEAR " + n, "BACKING LEN " + n + " " + r.length, "BACKING SET " + n + " " + r.cells, "BACKING NAME " + n + " " + name);
+    if (r.select) lines.push("BACKING " + n);
+  }
+  return lines;
+}
+function changed() {
+  const problem = localProblem();
+  $("send").disabled = problem !== "";
+  if (problem) setMessage(problem, "err"); else if ($("message").className === "err") setMessage("", "");
+  $("preview-commands").textContent = commandPreview().join("\n");
+  saveLocal();
+}
+function setMessage(text, cls) {
+  const m = $("message");
+  m.textContent = text;
+  m.className = cls;
+}
+async function send() {
+  setMessage("送っています…", "");
+  try {
+    const res = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(currentRequest()) });
+    const data = await res.json();
+    if (!data.ok) { setMessage("送れませんでした: " + data.error, "err"); return; }
+    lastSent = snapshot(); state.loadedSlot = state.slot; setSync("synced");
+    const sel = state.select ? "選びました。" : "";
+    setMessage("ESP32 に送りました（" + (state.kind === "drum" ? "ドラム " : "バッキング ") + state.slot + "）。" + sel +
+      "保存には数秒かかります。ブリッジの画面に「保存しました」と出れば完了です。", "ok");
+  } catch (e) {
+    setMessage("送れませんでした。ブリッジ（midi_bridge.py）が動いているか確かめてください。", "err");
+  }
+}
+
+// ---------- プリセット ----------
+function fillPresets() {
+  for (const p of PRESETS.drums) {
+    const o = document.createElement("option");
+    o.value = String(p.id);
+    o.textContent = p.id + " " + p.name;
+    $("drum-preset").appendChild(o);
+  }
+  for (const p of PRESETS.backings) {
+    const o = document.createElement("option");
+    o.value = String(p.id);
+    o.textContent = p.id + " " + p.name + "（" + p.cells + "）";
+    $("backing-preset").appendChild(o);
+  }
+}
+function applyDrumPreset(id) {
+  const p = PRESETS.drums.find((x) => String(x.id) === id);
+  if (!p) return;
+  state.drum.length = p.length;
+  $("drum-length").value = String(p.length);
+  state.drum.lanes = emptyLanes(p.length);
+  for (const k of Object.keys(p.lanes)) state.drum.lanes[k] = p.lanes[k].split("");
+  if (!state.name) { state.name = p.name + "（改）"; $("name").value = state.name; }
+  drawDrum(); edited();
+}
+function applyBackingPreset(id) {
+  const p = PRESETS.backings.find((x) => String(x.id) === id);
+  if (!p) return;
+  state.backing.length = p.length;
+  $("backing-length").value = String(p.length);
+  state.backing.cells = p.cells.split("");
+  if (!state.name) { state.name = p.name + "（改）"; $("name").value = state.name; }
+  drawBacking(); edited();
+}
+
+// ---------- 簡易な試聴（ブラウザの中で音を作る。実機の音とは違う）----------
+let audio = null, playing = false, timer = null, nextTime = 0, step = 0;
+function ctx() {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === "suspended") audio.resume();
+  return audio;
+}
+function noiseBuffer(a, seconds) {
+  const buf = a.createBuffer(1, Math.max(1, Math.floor(a.sampleRate * seconds)), a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+function hitSound(lane, level, when) {
+  const a = ctx();
+  const vel = level === "o" ? 0.3 : level === "X" ? 1.0 : 0.65;
+  const out = a.createGain();
+  out.gain.value = vel * 0.6;
+  out.connect(a.destination);
+  const env = (g, dur, peak) => { g.gain.setValueAtTime(peak, when); g.gain.exponentialRampToValueAtTime(0.001, when + dur); };
+  const noise = (dur, type, freq, peak) => {
+    const s = a.createBufferSource(); s.buffer = noiseBuffer(a, dur);
+    const f = a.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = a.createGain(); env(g, dur, peak);
+    s.connect(f); f.connect(g); g.connect(out); s.start(when); s.stop(when + dur);
+  };
+  const tone = (freq0, freq1, dur, type, peak) => {
+    const o = a.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(freq0, when); o.frequency.exponentialRampToValueAtTime(freq1, when + dur);
+    const g = a.createGain(); env(g, dur, peak);
+    o.connect(g); g.connect(out); o.start(when); o.stop(when + dur);
+  };
+  switch (lane) {
+    case "K": tone(150, 45, 0.18, "sine", 1.2); break;
+    case "S": noise(0.16, "bandpass", 1800, 0.9); tone(220, 160, 0.1, "triangle", 0.5); break;
+    case "P": tone(900, 700, 0.04, "square", 0.4); break;
+    case "H": noise(0.05, "highpass", 7000, 0.6); break;
+    case "O": noise(0.30, "highpass", 6500, 0.55); break;
+    case "C": noise(0.04, "bandpass", 1500, 0.8); noise(0.12, "bandpass", 1500, 0.7); break;
+    case "R": noise(0.5, "highpass", 5500, 0.4); tone(3000, 2900, 0.3, "sine", 0.15); break;
+    case "X": noise(0.9, "highpass", 4500, 0.7); break;
+  }
+}
+function auditionCell(lane, level) {
+  if (level === ".") return;
+  try { hitSound(lane, level, ctx().currentTime + 0.01); } catch (e) { /* 音が出せなくても編集はできる */ }
+}
+function schedule() {
+  const a = ctx();
+  const bpm = Math.min(220, Math.max(40, Number($("drum-bpm").value) || 120));
+  const stepSec = 60 / bpm / 4;
+  while (nextTime < a.currentTime + 0.15) {
+    const i = step % state.drum.length;
+    for (const [k] of LANES) { const v = state.drum.lanes[k][i]; if (v !== ".") hitSound(k, v, nextTime); }
+    const when = nextTime, idx = i;
+    setTimeout(() => highlight(idx), Math.max(0, (when - a.currentTime) * 1000));
+    nextTime += stepSec;
+    step++;
+  }
+}
+function highlight(idx) {
+  document.querySelectorAll("#drum-table .cell.playing").forEach((e) => e.classList.remove("playing"));
+  if (!playing) return;
+  document.querySelectorAll('#drum-table .cell[data-i="' + idx + '"]').forEach((e) => e.classList.add("playing"));
+}
+function togglePlay() {
+  if (playing) {
+    playing = false; clearInterval(timer); highlight(-1);
+    $("drum-play").textContent = "▶ 聴く（この画面の簡易な音）";
+    return;
+  }
+  const a = ctx();
+  playing = true; step = 0; nextTime = a.currentTime + 0.05;
+  timer = setInterval(schedule, 40);
+  $("drum-play").textContent = "■ 止める";
+}
+
+// ======================================================================
+// ライブ編集: マスをクリックするたびに、変えたところだけを ESP32 に送る
+// ======================================================================
+let lastSent = null;        // 最後に ESP32 へ送った内容（これとの差だけを送る）
+let liveTimer = null;
+let liveChain = Promise.resolve();
+
+function snapshot() {
+  const r = currentRequest();
+  return { kind: r.kind, slot: r.slot, length: r.length, lanes: r.lanes, cells: r.cells, name: (r.name || "").trim() || "マイ・パターン" };
+}
+function setSync(kind, text) {
+  const el = $("live-status");
+  const map = {
+    idle: ["ライブ編集 ON（クリックすると、すぐ反映）", ""],
+    sending: ["反映中…", ""],
+    synced: ["ESP32 に反映済み ✓", "on"],
+    dirty: ["まだ ESP32 に反映されていません（「ESP32 に送る」を押してください）", "off"],
+    problem: [text || "", "off"],
+    error: [text || "送れませんでした", "off"],
+  };
+  const m = map[kind] || map.idle;
+  el.textContent = m[0];
+  el.className = "conn " + m[1];
+}
+function markUnsent() { if (!state.live || (lastSent && lastSent.slot !== state.slot)) setSync("dirty"); }
+function edited() {
+  changed();
+  gameAuto();
+  if (!state.live) { setSync("dirty"); return; }
+  setSync("sending");
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => { liveChain = liveChain.then(pushLive); }, 250);   // 続けてクリックしている間は、まとめて1回で送る
+}
+function confirmOverwrite(snap) {
+  const existing = (live.patterns[snap.kind] || {})[snap.slot];
+  if (!existing || !existing.exists || state.loadedSlot === snap.slot) return true;
+  return window.confirm("保存先 " + snap.slot + " には「" + existing.name + "」が入っています。上書きしますか?");
+}
+async function postJson(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return res.json();
+}
+async function pushLive() {
+  if (!state.live) return;
+  const problem = localProblem();
+  if (problem) { setSync("problem", problem); return; }
+  const snap = snapshot();
+  const full = !lastSent || lastSent.kind !== snap.kind || lastSent.slot !== snap.slot || lastSent.length !== snap.length;
+  let url, body;
+  if (full) {
+    if (!confirmOverwrite(snap)) { setSync("dirty"); return; }
+    url = "/api/save"; body = currentRequest();
+  } else {
+    body = { kind: snap.kind, slot: snap.slot, length: snap.length };
+    let any = false;
+    if (snap.kind === "drum") {
+      const lanes = {};
+      for (const k of Object.keys(snap.lanes)) if (snap.lanes[k] !== lastSent.lanes[k]) { lanes[k] = snap.lanes[k]; any = true; }
+      body.lanes = lanes;
+    } else if (snap.cells !== lastSent.cells) { body.cells = snap.cells; any = true; }
+    if (snap.name !== lastSent.name) { body.name = snap.name; any = true; }
+    if (!any) { setSync("synced"); return; }
+    url = "/api/live";
+  }
+  try {
+    const data = await postJson(url, body);
+    if (!data.ok) { setSync("error", "送れませんでした: " + data.error); return; }
+    lastSent = snap; state.loadedSlot = snap.slot;
+    setSync("synced");
+  } catch (e) {
+    setSync("error", "送れませんでした。ブリッジ（midi_bridge.py）が動いているか確かめてください。");
+  }
+}
+
+// ======================================================================
+// 操作（リアルタイム）: ESP32 の状態を見て、BPM・キー・パターンなどをすぐ変える
+// ======================================================================
+const KEYS = [["C", "C"], ["Db", "D♭"], ["D", "D"], ["Eb", "E♭"], ["E", "E"], ["F", "F"], ["F#", "F#"], ["G", "G"], ["Ab", "A♭"], ["A", "A"], ["Bb", "B♭"], ["B", "B"]];
+const live = { connected: false, s: null, patterns: { drum: {}, backing: {} }, stepSeq: 0 };   // stepSeq: 反映したステップの合図・状態の順番（古い返事で新しい表示を戻さない）
+const locks = {};            // 操作した直後の項目は、少しのあいだ、画面の値を優先する（ESP32 の返事が来るまでの、ちらつき防止）
+const sigs = {};             // 一覧の中身が変わったときだけ、作り直す
+let pollTimer = null, polling = false, sliderDragging = false, sliderSendAt = 0;
+
+function lockField(name, ms) { locks[name] = Date.now() + (ms || 1500); }
+function locked(name) { return (locks[name] || 0) > Date.now(); }
+
+// 操作は、押した順に1つずつ送る（速く連続して押しても、順番が入れ替わらない）
+let controlChain = Promise.resolve();
+function control(action, value) {
+  controlChain = controlChain.then(() => sendControl(action, value));
+  return controlChain;
+}
+async function sendControl(action, value) {
+  try {
+    const res = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, value }) });
+    const data = await res.json();
+    if (!data.ok) $("c-hint").textContent = "操作できませんでした: " + data.error;
+  } catch (e) {
+    $("c-hint").textContent = "ブリッジに届きませんでした。midi_bridge.py が動いているか確かめてください。";
+  }
+  setTimeout(pollNow, 150);
+}
+
+function setLocal(field, value) {
+  if (live.s) live.s[field] = value;
+  lockField(field);
+  renderControl();
+}
+
+function stripFor(kind, p) {
+  const strip = document.createElement("div");
+  strip.className = "strip";
+  const n = p.length;
+  for (let i = 0; i < n; i++) {
+    const cell = document.createElement("i");
+    let cls = "";
+    if (kind === "drum") {
+      let level = "";
+      for (const lane of Object.keys(p.lanes || {})) { const c = (p.lanes[lane] || "")[i]; if (c === "x" || c === "X") level = "h"; else if (c === "o" && level === "") level = "l"; }
+      cls = level;
+      if (i % 4 === 0 && i > 0) cls += " sep";
+    } else {
+      const c = (p.cells || "")[i];
+      if ("CBD1234".includes(c)) cls = "h"; else if ("cbd-".includes(c)) cls = "l";
+      if (i % 8 === 0 && i > 0) cls += " sep";
+    }
+    cell.className = cls.trim();
+    strip.appendChild(cell);
+  }
+  return strip;
+}
+
+function firstFreeSlot(kind) {
+  for (let n = 11; n <= 20; n++) if (!(live.patterns[kind][n] && live.patterns[kind][n].exists)) return n;
+  return 11;
+}
+function editPattern(kind, p, isPreset) {
+  const slot = isPreset ? firstFreeSlot(kind) : p.id;
+  state.slot = slot; $("slot").value = String(slot);
+  state.loadedSlot = isPreset ? null : p.id; lastSent = null;
+  state.name = isPreset ? p.name + "（改）" : p.name; $("name").value = state.name;
+  if (kind === "drum") {
+    state.drum.length = p.length; $("drum-length").value = String(p.length);
+    state.drum.lanes = emptyLanes(p.length);
+    for (const k of Object.keys(p.lanes || {})) state.drum.lanes[k] = p.lanes[k].split("");
+    drawDrum();
+  } else {
+    state.backing.length = p.length; $("backing-length").value = String(p.length);
+    state.backing.cells = p.cells.split("");
+    drawBacking();
+  }
+  showKind(kind);
+  setSync(state.live ? "idle" : "dirty");
+}
+
+function renderCards(kind, boxId, currentId) {
+  const box = $(boxId);
+  const items = [{ id: 0, name: "なし", length: 0, preset: true, none: true }];
+  const presets = kind === "drum" ? PRESETS.drums : PRESETS.backings;
+  for (const p of presets) items.push(Object.assign({ preset: true }, p));
+  for (let n = 11; n <= 20; n++) {
+    const p = live.patterns[kind][n];
+    if (p && p.exists) items.push(Object.assign({ preset: false }, p));
+  }
+  const sig = JSON.stringify([items.map((p) => [p.id, p.name, p.lanes || p.cells]), currentId]);
+  if (sigs[boxId] === sig) return;
+  sigs[boxId] = sig;
+  box.textContent = "";
+  for (const p of items) {
+    const b = document.createElement("button");
+    b.className = "pcard";
+    b.setAttribute("aria-pressed", p.id === currentId ? "true" : "false");
+    b.dataset.id = String(p.id);
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = p.none ? "なし" : p.name;
+    const id = document.createElement("span"); id.className = "id"; id.textContent = p.none ? (kind === "drum" ? "ドラムを鳴らさない" : "和音を鳴らさない（ドラムだけ）") : (p.preset ? "プリセット " : "自分の ") + p.id + "・" + p.length + "マス";
+    b.appendChild(nm); b.appendChild(id);
+    if (!p.none) {
+      b.appendChild(stripFor(kind, p));
+      const e = document.createElement("span"); e.className = "edit"; e.textContent = p.preset ? "コピーして編集" : "編集";
+      e.addEventListener("click", (ev) => { ev.stopPropagation(); editPattern(kind, p, p.preset); });
+      b.appendChild(e);
+    }
+    b.addEventListener("click", () => { lockField(kind); if (live.s) live.s[kind] = p.id; control(kind, p.id); renderControl(); });
+    box.appendChild(b);
+  }
+}
+
+function renderControl() {
+  const s = live.s;
+  const conn = $("c-conn");
+  conn.className = "conn " + (live.connected ? "on" : "off");
+  conn.textContent = live.connected ? "ESP32 と接続中" : "ESP32 の返事がありません（ブリッジ・USB を確認）";
+  renderBridge();
+  if (!s) return;
+  const playingNow = s.playing === 1;
+  const play = $("c-play");
+  play.textContent = playingNow ? "■ STOP" : "▶ START";
+  play.className = "start" + (playingNow ? " playing" : "");
+  $("c-bpm").textContent = String(s.bpm);
+  const range = $("c-bpm-range");
+  if (!sliderDragging && String(range.value) !== String(s.bpm)) range.value = String(s.bpm);
+  $("c-key").textContent = s.key;
+  document.querySelectorAll("#c-keys button").forEach((b) => {
+    const norm = (x) => x.replace("♭", "b");
+    b.setAttribute("aria-pressed", norm(b.dataset.label) === norm(s.key) ? "true" : "false");
+  });
+  const oct = s.octave === undefined ? 0 : s.octave;
+  $("c-oct").textContent = (oct >= 0 ? "+" : "") + oct;
+  $("c-octrange").textContent = "コードのルートが C" + (3 + oct) + "〜B" + (3 + oct);
+  $("oct-m").disabled = oct <= -1;
+  $("oct-p").disabled = oct >= 3;
+  $("c-lead").setAttribute("aria-pressed", s.lead === 1 ? "true" : "false");
+  $("c-voicing").setAttribute("aria-pressed", s.voicing === 4 ? "true" : "false");
+  renderCards("drum", "c-drums", s.drum);
+  renderCards("backing", "c-backings", s.backing);
+  const prog = $("c-prog");
+  const sig = JSON.stringify([s.chords, s.map || []]);
+  if (sigs.prog !== sig) {
+    sigs.prog = sig;
+    prog.textContent = "";
+    s.chords.forEach((c, i) => {
+      const t = document.createElement("div");
+      t.className = "tile"; t.dataset.i = String(i);
+      const pos = document.createElement("div"); pos.className = "pos";
+      pos.textContent = "位置" + (i + 1) + (s.map && s.map[i] ? "・リーダー" + s.map[i] : "");
+      t.appendChild(pos);
+      const deg = document.createElement("div"); deg.className = "deg";
+      deg.textContent = c.name === "-" ? "（空）" : c.name === "?" ? "未登録" : c.name;
+      const sym = document.createElement("div"); sym.className = "sym";
+      sym.textContent = (c.name === "→" ? "前と同じ" : c.symbol) + " ";
+      t.appendChild(deg); t.appendChild(sym);
+      prog.appendChild(t);
+    });
+  }
+  prog.querySelectorAll(".tile").forEach((t) => {
+    t.classList.toggle("now", playingNow && Number(t.dataset.i) === s.step % s.chords.length);
+    t.classList.toggle("learn", s.learn > 0 && Number(t.dataset.i) === s.learn - 1);
+  });
+  const learning = s.learn > 0;
+  $("map-learn").disabled = learning || playingNow;
+  $("map-done").disabled = !learning;
+  $("map-cancel").disabled = !learning;
+  $("c-map-note").textContent = learning ? "配置を覚えさせています: 位置" + s.learn + " の場所のリーダーに、駒を1つ置いてください（点線の枠）。駒を1つだけ使って、外して次の場所に置き直してもOKです。" : "";
+  $("c-midi").textContent = "音の出力先: " + (s.midi === "NONE" ? "なし" : s.midi === "USB" ? "USB-MIDI" : "ブリッジ") + "　止め方: " + s.idle + "　受信感度: " + s.gain + " dB";
+  $("c-hint").textContent = s.midi === "NONE" ? "※ 音の出力先が「なし」です。MIDI は送られません（MIDI BRIDGE を実行）。" :
+    s.drum > 0 ? "※ ドラムは MIDI チャンネル10 で出ます。GarageBand のピアノでは低い音になるので、tools/gm_synth（sh tools/run.sh --gm）で鳴らしてください。" : "";
+}
+
+const PAGE_VERSION = "2026-11-15c";   // この画面の版。リアルタイム接続の表示に出る（古い画面が開いたままでないかの確認用）
+
+// ブリッジを作り直すと、順番号が 0 から数え直しになる。「別のブリッジだ」と分かったら、覚えている順番を捨てる。
+// 画面の部品（JavaScript）も古いままかもしれないので、操作画面を見ているときは、読み込み直す
+function checkSession(sid) {
+  if (sid === undefined || sid === live.sid) return;
+  const first = live.sid === undefined;
+  live.sid = sid; live.stepSeq = 0;
+  if (!first && state.kind === "control" && !location.hash) setTimeout(() => location.reload(), 300);
+}
+// リアルタイム接続の状態を表示する。「OFF」なら、約0.7秒おきの更新になるので、進行の表示が遅れる
+function showRealtime() {
+  const el = $("c-rt");
+  if (!el) return;
+  const es = live.events;
+  const on = !!es && es.readyState === 1;
+  el.textContent = "リアルタイム接続: " + (on ? "ON" : "OFF（0.7秒おきの更新）") +
+    (on && typeof live.lagMs === "number" ? "（直近の遅れ " + live.lagMs + " ms）" : "") + "　画面の版 " + PAGE_VERSION;
+}
+
+// ブリッジが ESP32 につながっているか。つながっていないと、Mac から音が鳴らない（音は、ブリッジが GarageBand などへ MIDI で送って鳴る）
+function renderBridge() {
+  const box = $("c-bridge");
+  if (!box) return;
+  const ser = live.serial;
+  if (!ser || !ser.daemon) { box.className = "bridge-bar hidden"; return; }   // 常駐でないブリッジ（sh tools/run.sh）は、端末で見る
+  box.textContent = "";
+  if (ser.open) {
+    box.className = "bridge-bar ok";
+    box.appendChild(document.createTextNode("✓ ブリッジは ESP32 につながっています。Mac から音を鳴らせます（GarageBand の MIDI 入力: 「ESP32 Chord Prototype」）。 Serial Monitor で確認・操作・駒の登録をするときは、先に「解除」を押してください。"));
+    const rel = document.createElement("button");
+    rel.textContent = "ブリッジを解除する（Serial Monitor を使う）";
+    rel.addEventListener("click", () => bridgeAction("release"));
+    box.appendChild(rel);
+    return;
+  }
+  if (ser.released) {
+    box.className = "bridge-bar hold";
+    const hb = document.createElement("b");
+    hb.textContent = "ブリッジを解除中です。";
+    box.appendChild(hb);
+    box.appendChild(document.createTextNode("ESP32 のポートは空いています（Serial Monitor などが使えます）。解除中は、Mac から音が鳴りません。使い終わったら、Serial Monitor を閉じて、つないでください。"));
+    const con = document.createElement("button");
+    con.textContent = "ブリッジをつなぐ";
+    con.addEventListener("click", () => bridgeAction("connect"));
+    box.appendChild(con);
+    return;
+  }
+  box.className = "bridge-bar warn";
+  const busy = ser.busy || [];
+  const b = document.createElement("b");
+  b.textContent = "ブリッジが ESP32 につながっていません。このままでは、Mac から音が鳴りません。";
+  box.appendChild(b);
+  box.appendChild(document.createElement("br"));
+  let why;
+  if (busy.length) why = "ほかのプログラムが ESP32 のポートを使っています: " + busy.map((h) => (h.monitor ? "PlatformIO の Serial Monitor" : h.command.split("/").pop().slice(0, 40)) + "（PID " + h.pid + "）").join("、");
+  else if (!ser.port) why = "ESP32 が見つかりません。USB ケーブルのつなぎ方を確かめてください（UART 側のポート）。";
+  else why = "つなぎ直しています…";
+  box.appendChild(document.createTextNode(why));
+  const btn = document.createElement("button");
+  btn.textContent = busy.some((h) => h.monitor) ? "Serial Monitor を閉じて、つなぐ" : "つなぎ直す";
+  btn.addEventListener("click", () => bridgeAction("connect"));
+  box.appendChild(btn);
+}
+async function bridgeAction(action) {
+  const box = $("c-bridge");
+  if (box) box.querySelectorAll("button").forEach((x) => { x.disabled = true; x.textContent = action === "release" ? "解除しています…" : "つないでいます…"; });
+  try {
+    await fetch("/api/bridge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+  } catch (e) { /* 届かなかった: 下の更新で、状態が出る */ }
+  setTimeout(pollNow, 600);
+  setTimeout(pollNow, 2500);
+}
+
+function applyIncoming(data) {
+  checkSession(data.sid);
+  live.connected = !!data.connected;
+  if (data.serial !== undefined) live.serial = data.serial;
+  if (data.patterns) live.patterns = data.patterns;
+  if (data.s) {
+    // 問い合わせの返事が、すでに反映した ESP32 からの合図（ステップ・状態）より古いときは、返事の中身を使わない
+    const stale = typeof data.seq === "number" && data.seq < live.stepSeq && live.s;
+    if (!stale) {
+      const keep = live.s || {};
+      const s = data.s;
+      for (const f of Object.keys(locks)) if (locked(f) && keep[f] !== undefined) s[f] = keep[f];
+      if (typeof data.seq === "number") live.stepSeq = data.seq;
+      live.s = s;
+    }
+  }
+}
+
+// ESP32 が「ステップが始まった／止まった」と知らせてきた（ブリッジから Server-Sent Events で即時に届く）。
+// 約0.7秒おきの問い合わせ（STATE）を待たずに、進行の表示を動かす。表示は、音と同時に動く
+function applyStep(ev) {
+  if (ev) checkSession(ev.sid);
+  if (!ev || typeof ev.seq !== "number" || ev.seq <= live.stepSeq || !live.s) return;
+  live.stepSeq = ev.seq;
+  live.s.step = ev.step;
+  if (!locked("playing")) live.s.playing = ev.playing;
+  renderControl();
+  if (typeof ev.t === "number") { live.stepLagMs = Date.now() - ev.t; live.lagMs = live.stepLagMs; }   // 診断用: ブリッジが合図を受けてから、表示を変えるまでの遅れ（ms）
+  showRealtime();
+}
+
+// ESP32 が自分から状態（~S）を送ってきた（駒が置かれた・外れた、など）。問い合わせを待たずに、すぐ反映する
+function applyStateEvent(ev) {
+  if (!ev || !ev.s) return;
+  applyIncoming({ connected: true, s: ev.s, seq: ev.seq, sid: ev.sid });
+  if (typeof ev.t === "number") live.lagMs = Date.now() - ev.t;
+  renderControl();
+  showRealtime();
+}
+function startEvents() {
+  if (typeof EventSource === "undefined") return;
+  // 自己検査（ヘッドレス Chrome の仮想時間）は、つなぎっぱなしの通信があると進まなくなるので、開かない（実時間のテストは test_ui_realtime.py）
+  if (location.hash.startsWith("#selftest")) return;
+  const es = new EventSource("/api/events");
+  es.onmessage = (m) => {
+    try {
+      const ev = JSON.parse(m.data);
+      if (ev.type === "state") applyStateEvent(ev); else applyStep(ev);
+    } catch (e) { /* 読めない行は、無視する */ }
+  };
+  es.onopen = showRealtime;
+  es.onerror = showRealtime;
+  // 切れたら、ブラウザが自動でつなぎ直す。つながらない間は、約0.7秒おきの問い合わせが代わりをする
+  live.events = es;
+}
+async function pollNow() {
+  if (polling) return;
+  polling = true;
+  try {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    applyIncoming(await res.json());
+  } catch (e) {
+    live.connected = false;
+  }
+  polling = false;
+  renderControl();
+  showRealtime();
+}
+
+function initControl() {
+  const keys = $("c-keys");
+  for (const [val, label] of KEYS) {
+    const b = document.createElement("button");
+    b.textContent = label; b.dataset.label = label; b.dataset.key = val;
+    b.addEventListener("click", () => { setLocal("key", label); control("key", val); });
+    keys.appendChild(b);
+  }
+  $("key-m").addEventListener("click", () => control("key_shift", -1));
+  $("key-p").addEventListener("click", () => control("key_shift", 1));
+  const bpmStep = (d) => { const cur = (live.s && live.s.bpm) || 120; const v = Math.min(240, Math.max(30, cur + d)); setLocal("bpm", v); control("bpm", v); };
+  $("bpm-m5").addEventListener("click", () => bpmStep(-5)); $("bpm-m1").addEventListener("click", () => bpmStep(-1));
+  $("bpm-p1").addEventListener("click", () => bpmStep(1)); $("bpm-p5").addEventListener("click", () => bpmStep(5));
+  const range = $("c-bpm-range");
+  range.addEventListener("pointerdown", () => { sliderDragging = true; });
+  range.addEventListener("pointerup", () => { sliderDragging = false; });
+  range.addEventListener("input", () => {
+    const v = Number(range.value);
+    setLocal("bpm", v);
+    const now = Date.now();
+    if (now - sliderSendAt > 90) { sliderSendAt = now; control("bpm", v); }   // ドラッグ中も、すぐ追従する（送りすぎないよう間引く）
+  });
+  range.addEventListener("change", () => { sliderDragging = false; control("bpm", Number(range.value)); });   // 最後の値は、必ず送る
+  $("c-play").addEventListener("click", () => { const now = !(live.s && live.s.playing === 1); setLocal("playing", now ? 1 : 0); control("play", now); });
+  $("c-lead").addEventListener("click", () => { const on = !(live.s && live.s.lead === 1); setLocal("lead", on ? 1 : 0); control("lead", on); });
+  $("c-voicing").addEventListener("click", () => { const four = !(live.s && live.s.voicing === 4); setLocal("voicing", four ? 4 : 3); control("voicing", four ? 4 : 3); });
+  $("map-learn").addEventListener("click", () => control("map_learn", true));
+  $("map-done").addEventListener("click", () => control("map_done", true));
+  $("map-cancel").addEventListener("click", () => control("map_cancel", true));
+  $("map-reset").addEventListener("click", () => control("map_reset", true));
+  const octStep = (d) => { const cur = (live.s && live.s.octave) || 0; const v = Math.min(3, Math.max(-1, cur + d)); if (v === cur) return; setLocal("octave", v); control("octave", v); };
+  $("oct-m").addEventListener("click", () => octStep(-1));
+  $("oct-p").addEventListener("click", () => octStep(1));
+  pollTimer = setInterval(() => { if (state.kind === "control" && document.visibilityState === "visible") pollNow(); }, 700);
+  startEvents();
+}
+
+// ======================================================================
+// ゲームに送る: 名前をつけて、ゲームの「ライブラリ」に入れる（ブリッジの /api/library。ゲームには、すぐ届く）
+//   ドラム・バッキング → ゲームの「♪」のメニューに増える / 進行 → ゲームの図鑑に、新しい技として増える
+// ======================================================================
+const game = { lib: null, chords: [], seq: [], pointsAuto: true, sent: {}, timer: null, chain: Promise.resolve() };
+const GAME_KINDS = { drum: ["drum", "ドラム"], backing: ["backing", "バッキング"], prog: ["progression", "進行"] };
+const gameKind = () => (GAME_KINDS[state.kind] ? GAME_KINDS[state.kind][0] : null);
+function gameMessage(text, cls) { const m = $("game-message"); m.textContent = text; m.className = cls || ""; }
+
+function gameItem() {
+  const name = $("game-name").value.trim();
+  if (state.kind === "drum") {
+    const lanes = {};
+    for (const [k] of LANES) lanes[k] = state.drum.lanes[k].join("");
+    return { name, length: state.drum.length, lanes };
+  }
+  if (state.kind === "backing") return { name, length: state.backing.length, cells: state.backing.cells.join("") };
+  return { name, chords: game.seq.slice(), points: Number($("prog-points").value), startAt: $("prog-start").value };
+}
+function gameProblem() {
+  if (!$("game-name").value.trim()) return "名前をつけてください（ゲームの中で、この名前で呼ばれます）";
+  if (state.kind === "prog") return game.seq.length >= 2 ? "" : "駒を、2つ以上、選んでください";
+  return localProblem();
+}
+async function sendGame(auto) {
+  const kind = gameKind();
+  if (!kind) return;
+  const problem = gameProblem();
+  if (problem) { if (!auto) gameMessage(problem, "err"); return; }
+  const item = gameItem();
+  const label = GAME_KINDS[state.kind][1];
+  if (!auto) gameMessage("送っています…", "");
+  try {
+    const data = await postJson("/api/library", { op: "put", kind, item });
+    if (!data.ok) { gameMessage("送れませんでした: " + data.error, "err"); return; }
+    game.sent[state.kind] = item.name;
+    gameMessage(auto ? "ゲームに反映しました ✓（" + label + "「" + item.name + "」）"
+      : "ゲームに送りました: " + label + "「" + item.name + "」。ゲームを開いていれば、すぐ使えます。このあとは、変えるたびに、自動で送り直します。", "ok");
+    await loadLibrary();
+  } catch (e) {
+    gameMessage("送れませんでした。ブリッジ（midi_bridge.py）が動いているか確かめてください。", "err");
+  }
+}
+// 1回「ゲームに送る」を押した名前だけ、変えるたびに自動で送り直す（名前を打っている途中で、いくつも作らないように）
+function gameAuto() {
+  if (!$("game-live").checked || !gameKind()) return;
+  const name = $("game-name").value.trim();
+  if (!name || game.sent[state.kind] !== name) return;
+  clearTimeout(game.timer);
+  game.timer = setTimeout(() => { game.chain = game.chain.then(() => sendGame(true)); }, 400);
+}
+async function loadLibrary() {
+  try {
+    const res = await fetch("/api/library", { cache: "no-store" });
+    const d = await res.json();
+    game.lib = d.ok ? d.library : null;
+  } catch (e) { game.lib = null; }
+  renderLibrary();
+}
+function librarySummary(kind, it) {
+  if (kind === "drum") return it.length + "マス・" + Object.keys(it.lanes || {}).length + "レーン";
+  if (kind === "backing") return it.length + "マス";
+  return (it.chords || []).join(" → ") + "・" + it.points + "点・" + (it.startAt === "any" ? "どこからでも" : "1番か5番から");
+}
+function renderLibrary() {
+  const box = $("game-list");
+  if (!box) return;
+  box.textContent = "";
+  const note = (text) => { const p = document.createElement("p"); p.className = "legend"; p.textContent = text; box.appendChild(p); };
+  if (!game.lib) { note("ゲームの保存場所（ブリッジ）につながっていません。常駐ブリッジを動かしてから、開き直してください。"); return; }
+  const groups = [["drum", "ドラム", game.lib.drums], ["backing", "バッキング", game.lib.backings], ["progression", "進行", game.lib.progressions]];
+  let total = 0;
+  for (const [kind, label, items] of groups) {
+    for (const it of items || []) {
+      total++;
+      const row = document.createElement("div"); row.className = "game-item"; row.dataset.kind = kind; row.dataset.id = it.id;
+      const tag = document.createElement("span"); tag.className = "id"; tag.textContent = label;
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name;
+      const sub = document.createElement("span"); sub.className = "sub"; sub.textContent = librarySummary(kind, it);
+      const open = document.createElement("button"); open.textContent = "読み込む"; open.className = "open";
+      open.addEventListener("click", () => loadFromLibrary(kind, it));
+      const del = document.createElement("button"); del.textContent = "削除"; del.className = "del";
+      del.addEventListener("click", () => deleteFromLibrary(kind, it));
+      row.append(tag, nm, sub, open, del);
+      box.appendChild(row);
+    }
+  }
+  if (!total) note("まだ、ありません。名前をつけて「ゲームに送る」を押すと、ここに入ります。");
+}
+function loadFromLibrary(kind, it) {
+  if (kind === "drum") {
+    state.drum.length = it.length; $("drum-length").value = String(it.length);
+    state.drum.lanes = emptyLanes(it.length);
+    for (const k of Object.keys(it.lanes || {})) state.drum.lanes[k] = it.lanes[k].split("");
+    drawDrum(); state.gameNames.drum = it.name; game.sent.drum = it.name; showKind("drum"); changed();
+  } else if (kind === "backing") {
+    state.backing.length = it.length; $("backing-length").value = String(it.length);
+    state.backing.cells = it.cells.split("");
+    drawBacking(); state.gameNames.backing = it.name; game.sent.backing = it.name; showKind("backing"); changed();
+  } else {
+    game.seq = (it.chords || []).slice(); game.pointsAuto = false;
+    $("prog-points").value = String(it.points); $("prog-start").value = it.startAt === "any" ? "any" : "head";
+    state.gameNames.prog = it.name; game.sent.prog = it.name; showKind("prog");
+  }
+  $("game-name").value = it.name;
+  saveLocal();
+  gameMessage("「" + it.name + "」を読み込みました。直して、「ゲームに送る」を押すと、上書きされます。", "ok");
+}
+async function deleteFromLibrary(kind, it) {
+  if (!window.confirm("「" + it.name + "」を、ゲームから削除します。よろしいですか?")) return;
+  try {
+    const data = await postJson("/api/library", { op: "delete", kind, id: it.id });
+    if (!data.ok) { gameMessage("削除できませんでした: " + data.error, "err"); return; }
+    for (const k of Object.keys(game.sent)) if (game.sent[k] === it.name) delete game.sent[k];
+    gameMessage("「" + it.name + "」を、ゲームから削除しました。", "ok");
+    await loadLibrary();
+  } catch (e) {
+    gameMessage("削除できませんでした。ブリッジが動いているか確かめてください。", "err");
+  }
+}
+
+// ---------- 進行を作る ----------
+async function loadGameChords() {
+  try {
+    const res = await fetch("/game/data/chords.json", { cache: "no-store" });
+    const d = await res.json();
+    game.chords = (d.chords || []).filter((c) => c.type !== "repeat");
+  } catch (e) { game.chords = []; }
+  drawProgChords();
+  renderProg();
+}
+function drawProgChords() {
+  const box = $("prog-chords");
+  box.textContent = "";
+  if (!game.chords.length) { const p = document.createElement("p"); p.className = "legend"; p.textContent = "ゲームの駒の一覧を読めませんでした（ブリッジ経由で、この画面を開いてください）。"; box.appendChild(p); return; }
+  for (const lv of [1, 2, 3, 4, 5]) {
+    const list = game.chords.filter((c) => c.level === lv);
+    if (!list.length) continue;
+    const row = document.createElement("div"); row.className = "lv";
+    const lab = document.createElement("span"); lab.textContent = "Lv." + lv; row.appendChild(lab);
+    for (const c of list) {
+      const b = document.createElement("button"); b.dataset.name = c.name; b.textContent = c.name;
+      const s = document.createElement("small"); s.textContent = c.symbol; b.appendChild(s);
+      b.addEventListener("click", () => { if (game.seq.length >= 8) return; game.seq.push(c.name); renderProg(); gameAuto(); });
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  }
+}
+function renderProg() {
+  const seq = $("prog-seq");
+  seq.textContent = "";
+  if (!game.seq.length) { const e = document.createElement("span"); e.className = "empty"; e.textContent = "下の駒を、クリックして、順番に足してください"; seq.appendChild(e); }
+  game.seq.forEach((name, i) => {
+    const c = game.chords.find((x) => x.name === name);
+    const t = document.createElement("div"); t.className = "tile"; t.dataset.i = String(i); t.title = "クリックで外す";
+    const deg = document.createElement("div"); deg.className = "deg"; deg.textContent = name;
+    const sym = document.createElement("div"); sym.className = "sym"; sym.textContent = c ? "（Cなら " + c.symbol + "）" : "";
+    const pos = document.createElement("div"); pos.className = "pos"; pos.textContent = (i + 1) + "つ目";
+    t.append(deg, sym, pos);
+    t.addEventListener("click", () => { game.seq.splice(i, 1); renderProg(); gameAuto(); });
+    seq.appendChild(t);
+  });
+  if (game.pointsAuto) $("prog-points").value = String(Math.min(3000, Math.max(50, 150 * Math.max(2, game.seq.length))));
+  for (const b of $("prog-chords").querySelectorAll("button")) b.disabled = game.seq.length >= 8;
+  $("prog-note").textContent = game.seq.length >= 8 ? "8つまで並べられます（盤の広さ）。" : (game.seq.length < 2 ? "2つ以上で、進行になります。例: Ⅱm7 → Ⅴ7 → ⅠM7" : game.seq.length + "つの駒の進行です。ゲームの盤に、この順番で並べると、技として決まります。");
+}
+
+// ---------- 画面のつなぎ ----------
+function showKind(kind) {
+  state.kind = kind;
+  $("panel-control").classList.toggle("hidden", kind !== "control");
+  $("panel-drum").classList.toggle("hidden", kind !== "drum");
+  $("panel-backing").classList.toggle("hidden", kind !== "backing");
+  $("panel-prog").classList.toggle("hidden", kind !== "prog");
+  $("panel-send").classList.toggle("hidden", kind !== "drum" && kind !== "backing");      // ESP32 に送る欄は、ドラム・バッキングだけ
+  $("panel-game").classList.toggle("hidden", kind === "control");
+  for (const k of ["control", "drum", "backing", "prog"]) $("tab-" + k).setAttribute("aria-selected", kind === k ? "true" : "false");
+  if (kind !== "drum" && playing) togglePlay();
+  if (kind === "control") { pollNow(); return; }
+  $("game-name").value = state.gameNames[kind] || "";
+  if (kind === "prog") renderProg(); else changed();
+  loadLibrary();
+}
+
+function init() {
+  fillPresets();
+  state.drum.lanes = emptyLanes(16);
+  state.backing.cells = new Array(16).fill(".");
+  loadLocal();
+  for (const [k] of LANES) state.drum.lanes[k] = resize(state.drum.lanes[k] || [], state.drum.length, ".");
+  state.backing.cells = resize(state.backing.cells, state.backing.length, ".");
+  if (state.backing.cells.every((c) => c === ".")) state.backing.cells = (PRESETS.backings[0].cells).split("");
+
+  for (let n = 11; n <= 20; n++) {
+    const o = document.createElement("option");
+    o.value = String(n); o.textContent = String(n);
+    $("slot").appendChild(o);
+  }
+  $("slot").value = String(state.slot);
+  $("name").value = state.name;
+  $("select").checked = state.select;
+  $("live").checked = state.live;
+  setSync(state.live ? "idle" : "dirty");
+  $("drum-length").value = String(state.drum.length);
+  $("backing-length").value = String(state.backing.length);
+
+  $("tab-control").addEventListener("click", () => showKind("control"));
+  $("tab-drum").addEventListener("click", () => showKind("drum"));
+  $("tab-backing").addEventListener("click", () => showKind("backing"));
+  $("tab-prog").addEventListener("click", () => showKind("prog"));
+  $("game-name").addEventListener("input", (e) => { state.gameNames[state.kind] = e.target.value.slice(0, 20); saveLocal(); gameAuto(); });
+  $("game-send").addEventListener("click", () => sendGame(false));
+  $("prog-clear").addEventListener("click", () => { game.seq = []; renderProg(); gameAuto(); });
+  $("prog-points").addEventListener("input", () => { game.pointsAuto = false; gameAuto(); });
+  $("prog-start").addEventListener("change", () => gameAuto());
+  $("drum-preset").addEventListener("change", (e) => { applyDrumPreset(e.target.value); e.target.value = ""; });
+  $("backing-preset").addEventListener("change", (e) => { applyBackingPreset(e.target.value); e.target.value = ""; });
+  $("drum-length").addEventListener("change", (e) => {
+    state.drum.length = Number(e.target.value);
+    for (const [k] of LANES) state.drum.lanes[k] = resize(state.drum.lanes[k], state.drum.length, ".");
+    drawDrum(); edited();
+  });
+  $("backing-length").addEventListener("change", (e) => {
+    state.backing.length = Number(e.target.value);
+    state.backing.cells = resize(state.backing.cells, state.backing.length, ".");
+    drawBacking(); edited();
+  });
+  $("drum-clear").addEventListener("click", () => { state.drum.lanes = emptyLanes(state.drum.length); drawDrum(); edited(); });
+  $("backing-clear").addEventListener("click", () => { state.backing.cells = new Array(state.backing.length).fill("."); drawBacking(); edited(); });
+  $("drum-play").addEventListener("click", togglePlay);
+  $("slot").addEventListener("change", (e) => { state.slot = Number(e.target.value); changed(); markUnsent(); });
+  $("name").addEventListener("input", (e) => { state.name = e.target.value; edited(); });
+  $("select").addEventListener("change", (e) => { state.select = e.target.checked; changed(); });
+  $("live").addEventListener("change", (e) => { state.live = e.target.checked; saveLocal(); if (state.live) edited(); else markUnsent(); });
+  $("send").addEventListener("click", send);
+
+  drawBackingBrushes();
+  drawDrum();
+  drawBacking();
+  initControl();
+  loadGameChords();
+  showKind(state.kind);
+}
+init();
+
+// ---------- 自己検査（アドレスの末尾に #selftest / #selftest-control / #selftest-live を付けて開くと、実際にクリックして確かめる。開発用）----------
+function writeResult(out) {
+  const pre = document.createElement("pre");
+  pre.id = "selftest-result";
+  pre.textContent = out.join("\n");
+  document.body.appendChild(pre);
+}
+async function runSelfTest() {
+  const out = [];
+  const ok = (name, cond) => out.push((cond ? "PASS " : "FAIL ") + name);
+  const click = (sel) => document.querySelector(sel).click();
+  try {
+    state.live = false;   // この検査では、クリックのたびに送らない（ライブ編集は #selftest-live で検査）
+    showKind("drum");
+    click("#drum-clear");
+    ok("ドラムのマスが 8レーン×16 = 128個", document.querySelectorAll("#drum-table .cell").length === 128);
+    const k0 = '#drum-table .cell[data-lane="K"][data-i="0"]';
+    click(k0); ok("1回クリック → ふつう(lv2)", document.querySelector(k0).classList.contains("lv2"));
+    click(k0); ok("2回 → 強い(lv3)", document.querySelector(k0).classList.contains("lv3"));
+    click(k0); ok("3回 → 弱い(lv1)", document.querySelector(k0).classList.contains("lv1"));
+    click(k0); ok("4回 → なし", !document.querySelector(k0).className.match(/lv[123]/));
+    ok("音がないと送れない", $("send").disabled === true);
+    $("drum-preset").value = "2"; $("drum-preset").dispatchEvent(new Event("change"));
+    ok("プリセット2: キックのレーン", state.drum.lanes.K.join("") === "x.......x.x.....");
+    ok("プリセット2: 送るコマンドに DRUM SET 11 K", $("preview-commands").textContent.includes("DRUM SET 11 K x.......x.x....."));
+    ok("音があれば送れる", $("send").disabled === false);
+    $("drum-length").value = "8"; $("drum-length").dispatchEvent(new Event("change"));
+    ok("8マスにするとマスが 64個", document.querySelectorAll("#drum-table .cell").length === 64);
+    ok("8マスのコマンド", $("preview-commands").textContent.includes("DRUM LEN 11 8"));
+    $("name").value = "テスト"; $("name").dispatchEvent(new Event("input"));
+    ok("名前がコマンドに入る", $("preview-commands").textContent.includes("DRUM NAME 11 テスト"));
+
+    click("#tab-backing");
+    ok("バッキングの画面に切り替わる", !$("panel-backing").classList.contains("hidden") && $("panel-drum").classList.contains("hidden"));
+    $("backing-preset").value = "6"; $("backing-preset").dispatchEvent(new Event("change"));
+    ok("バッキング6: アルペジオ", state.backing.cells.join("") === "1-2-3-4-1-2-3-4-");
+    ok("バッキングのマスが16個", document.querySelectorAll("#backing-table .cell").length === 16);
+    state.brush = "-";
+    const first = document.querySelector("#backing-table td:nth-child(1) .cell");
+    first.click();
+    ok("先頭に「-」を置くと赤くなり、送れない", document.querySelector("#backing-table .cell.bad") !== null && $("send").disabled === true);
+    state.brush = "C"; document.querySelector("#backing-table td:nth-child(1) .cell").click();
+    ok("直すと送れる", document.querySelector("#backing-table .cell.bad") === null && $("send").disabled === false);
+    ok("バッキングのコマンド", $("preview-commands").textContent.includes("BACKING SET 11 C"));
+
+    // 実際に送る（サーバーが受けて、OK を返す）
+    $("send").click();
+    for (let i = 0; i < 30 && !$("message").className; i++) await new Promise((r) => setTimeout(r, 100));
+    ok("送信が成功(緑のメッセージ)", $("message").className === "ok");
+    $("select").checked = true;
+  } catch (e) {
+    out.push("FAIL 例外: " + e);
+  }
+  writeResult(out);
+}
+
+async function runControlSelfTest() {
+  const out = [];
+  const ok = (name, cond) => out.push((cond ? "PASS " : "FAIL ") + name);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    showKind("control");
+    for (let i = 0; i < 40 && !(live.connected && live.s); i++) await wait(100);
+    ok("接続中と表示される", $("c-conn").classList.contains("on"));
+    ok("BPM が表示される", $("c-bpm").textContent === "120");
+    const pressed = (sel) => Array.from(document.querySelectorAll(sel)).filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.label || b.dataset.id);
+    ok("いまのキー(E♭)が押された状態", pressed("#c-keys button").join() === "E♭");
+    ok("いまのドラム(2)が押された状態", pressed("#c-drums .pcard").join() === "2");
+    ok("いまのバッキング(6)が押された状態", pressed("#c-backings .pcard").join() === "6");
+    ok("進行が4つ", document.querySelectorAll("#c-prog .tile").length === 4);
+    ok("いまのステップ(2番目)が光る", document.querySelector("#c-prog .tile.now") && document.querySelector("#c-prog .tile.now").dataset.i === "1");
+    ok("自分のドラム11が一覧に出る", !!document.querySelector('#c-drums .pcard[data-id="11"]') && document.querySelector('#c-drums .pcard[data-id="11"] .nm').textContent === "マイ・ビート");
+    ok("プリセットのドラム7種 + なし + 自分の1つ", document.querySelectorAll("#c-drums .pcard").length === 9);
+    ok("バッキング: なし + 9種", document.querySelectorAll("#c-backings .pcard").length === 10);
+    ok("STOP と表示（再生中）", $("c-play").textContent.includes("STOP"));
+
+    // ステップの合図（ESP32 → ブリッジ → 画面）: 問い合わせ(約0.7秒おき)を待たずに、進行の表示がすぐ動く
+    const nowTile = () => { const t = document.querySelector("#c-prog .tile.now"); return t ? t.dataset.i : null; };
+    applyStep({ type: "step", step: 2, playing: 1, seq: 100, sid: 1 });
+    ok("ステップの合図で、進行の表示がすぐ動く（3番目）", nowTile() === "2");
+    applyStep({ type: "step", step: 0, playing: 1, seq: 50, sid: 1 });
+    ok("古い合図（順番が前）は無視される", nowTile() === "2");
+    await wait(1000);   // この間に、問い合わせ(step=1 の古い状態)の返事が来る
+    ok("古い状態の返事で、進行の表示を戻さない", nowTile() === "2");
+    applyStep({ type: "step", step: 3, playing: 1, seq: 101, sid: 1 });
+    ok("次の合図で、次のステップに進む（4番目）", nowTile() === "3");
+    applyStep({ type: "step", step: 0, playing: 1, seq: 3, sid: 2 });
+    ok("ブリッジが作り直された（別の sid）ときは、順番を数え直して受け取る", nowTile() === "0");
+
+    $("bpm-p5").click(); await wait(50);
+    ok("BPM +5 をすぐ画面に反映(125)", $("c-bpm").textContent === "125");
+    document.querySelector('#c-keys button[data-key="D"]').click(); await wait(50);
+    ok("キー D をすぐ反映", pressed("#c-keys button").join() === "D" && $("c-key").textContent === "D");
+    document.querySelector('#c-drums .pcard[data-id="3"]').click(); await wait(50);
+    ok("ドラム3 をすぐ反映", pressed("#c-drums .pcard").join() === "3");
+    document.querySelector('#c-backings .pcard[data-id="0"]').click(); await wait(50);
+    ok("バッキングなし をすぐ反映", pressed("#c-backings .pcard").join() === "0");
+    $("c-play").click(); await wait(50);
+    ok("START に切り替わる", $("c-play").textContent.includes("START"));
+    ok("高さが表示される（+1、C4〜B4）", $("c-oct").textContent === "+1" && $("c-octrange").textContent.includes("C4〜B4"));
+    $("c-lead").click(); $("c-voicing").click(); $("key-p").click();
+    $("oct-p").click(); await wait(50);
+    ok("高さ +1 をすぐ反映（+2）", $("c-oct").textContent === "+2");
+    ok("進行のタイルに、位置とリーダーの番号が出る", document.querySelector('#c-prog .tile[data-i="0"] .pos').textContent === "位置1・リーダー4");
+    ok("覚えさせ中でないとき、「途中で終える」は押せない", $("map-done").disabled === true && $("map-learn").disabled === false);
+    $("map-learn").click(); await wait(50);
+    const r = $("c-bpm-range"); r.value = "150"; r.dispatchEvent(new Event("change"));
+    await wait(600);
+    document.querySelector('#c-drums .pcard[data-id="11"] .edit').click();
+    ok("「編集」で、ドラムを作る画面に、自分のパターンが読み込まれる", state.kind === "drum" && state.slot === 11 && state.drum.lanes.K.join("") === "x.......x.x....." && state.name === "マイ・ビート");
+  } catch (e) {
+    out.push("FAIL 例外: " + e);
+  }
+  writeResult(out);
+}
+
+async function runLiveSelfTest() {
+  const out = [];
+  const ok = (name, cond) => out.push((cond ? "PASS " : "FAIL ") + name);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const status = () => $("live-status").textContent;
+  window.confirm = () => true;
+  try {
+    state.live = true; $("live").checked = true;
+    showKind("drum");
+    state.slot = 12; $("slot").value = "12"; state.name = "ライブ"; $("name").value = "ライブ";
+    document.querySelector("#drum-clear").click();
+    await wait(500);
+    ok("音がないうちは送らない（問題の表示）", status().includes("音が1つもありません"));
+    const cell = (k, i) => document.querySelector('#drum-table .cell[data-lane="' + k + '"][data-i="' + i + '"]');
+    cell("K", 0).click();
+    await wait(700);
+    ok("最初のクリックで、保存先に作って選ぶ（全部送る）→ 反映済み", status().includes("反映済み"));
+    cell("K", 4).click(); cell("S", 4).click();
+    await wait(700);
+    ok("続けてクリックすると、変えたレーンだけが反映される", status().includes("反映済み"));
+    cell("K", 8).click(); await wait(700);
+    $("name").value = "ライブ2"; $("name").dispatchEvent(new Event("input")); await wait(700);
+    ok("名前の変更も反映される", status().includes("反映済み"));
+    $("live").checked = false; $("live").dispatchEvent(new Event("change"));
+    cell("H", 2).click(); await wait(700);
+    ok("ライブ編集 OFF では、反映されない", status().includes("まだ ESP32 に反映されていません"));
+    $("live").checked = true; $("live").dispatchEvent(new Event("change")); await wait(700);
+    ok("ON に戻すと、たまっていた変更が反映される", status().includes("反映済み"));
+    $("drum-length").value = "8"; $("drum-length").dispatchEvent(new Event("change")); await wait(700);
+    ok("長さを変えると、全部送り直して反映される", status().includes("反映済み"));
+    showKind("backing");
+    state.slot = 13; $("slot").value = "13"; state.name = "ライブB"; $("name").value = "ライブB";
+    state.brush = "C"; document.querySelector("#backing-table td:nth-child(1) .cell").click(); await wait(700);
+    document.querySelector("#backing-table td:nth-child(5) .cell").click(); await wait(700);
+    ok("バッキングも、クリックで反映される", status().includes("反映済み"));
+  } catch (e) {
+    out.push("FAIL 例外: " + e);
+  }
+  writeResult(out);
+}
+
+async function runGameSelfTest() {
+  const out = [];
+  const ok = (name, cond) => out.push((cond ? "PASS " : "FAIL ") + name);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const fetchLib = async () => (await (await fetch("/api/library", { cache: "no-store" })).json()).library;
+  const typeName = (v) => { $("game-name").value = v; $("game-name").dispatchEvent(new Event("input")); };
+  window.confirm = () => true;
+  try {
+    state.live = false;        // ESP32 へのライブ編集は、この検査では使わない
+    showKind("drum");
+    ok("ドラムの画面に、「ゲームに送る」の欄が出る（ESP32 に送る欄も）", !$("panel-game").classList.contains("hidden") && !$("panel-send").classList.contains("hidden"));
+    $("drum-preset").value = "2"; $("drum-preset").dispatchEvent(new Event("change"));
+    $("game-send").click(); await wait(300);
+    ok("名前がないと、送れない（理由が出る）", $("game-message").className === "err" && $("game-message").textContent.includes("名前"));
+    typeName("夕焼けビート");
+    $("game-send").click(); await wait(600);
+    let lib = await fetchLib();
+    ok("ドラムが、ゲームのライブラリに入った", lib.drums.length === 1 && lib.drums[0].name === "夕焼けビート" && lib.drums[0].lanes.K === "x.......x.x.....");
+    ok("成功のメッセージ", $("game-message").className === "ok");
+    ok("「ゲームに入っているもの」に出る", document.querySelectorAll("#game-list .game-item").length === 1);
+    document.querySelector('#drum-table .cell[data-lane="C"][data-i="0"]').click(); await wait(1000);
+    lib = await fetchLib();
+    ok("送ったあとは、クリックのたびに、同じ名前を自動で上書きする（増えない）", lib.drums.length === 1 && !!lib.drums[0].lanes.C);
+    $("game-live").checked = false;
+    document.querySelector('#drum-table .cell[data-lane="C"][data-i="4"]').click(); await wait(1000);
+    lib = await fetchLib();
+    ok("自動で送り直すのを OFF にすると、送らない", lib.drums[0].lanes.C[4] === ".");
+    $("game-live").checked = true;
+
+    // バッキング
+    showKind("backing");
+    $("backing-preset").value = "6"; $("backing-preset").dispatchEvent(new Event("change"));
+    typeName("朝のアルペジオ");
+    $("game-send").click(); await wait(600);
+    lib = await fetchLib();
+    ok("バッキングが入った（ドラムとは別の一覧）", lib.backings.length === 1 && lib.backings[0].cells === "1-2-3-4-1-2-3-4-" && lib.drums.length === 1);
+    ok("ゲームに入っているもの: 2つ", document.querySelectorAll("#game-list .game-item").length === 2);
+
+    // 進行
+    showKind("prog");
+    for (let i = 0; i < 50 && !game.chords.length; i++) await wait(100);
+    ok("進行の画面: 駒が一覧で選べる（Lv.1〜5 の 31個。→ は含まない）", document.querySelectorAll("#prog-chords button").length === 31);
+    ok("進行の画面: ESP32 に送る欄は出ない", $("panel-send").classList.contains("hidden") && !$("panel-game").classList.contains("hidden"));
+    for (const n of ["Ⅱm7", "Ⅴ7", "ⅠM7"]) document.querySelector('#prog-chords button[data-name="' + n + '"]').click();
+    ok("駒を選ぶと、並びに足される", game.seq.join() === "Ⅱm7,Ⅴ7,ⅠM7" && document.querySelectorAll("#prog-seq .tile").length === 3);
+    ok("点数は、駒の数から自動（150×3）", $("prog-points").value === "450");
+    $("game-send").click(); await wait(300);
+    ok("名前がないと、送れない（進行）", $("game-message").className === "err");
+    typeName("ツーファイブ");
+    $("game-send").click(); await wait(600);
+    lib = await fetchLib();
+    ok("進行が入った（並び・点数・始まり）", lib.progressions.length === 1 && lib.progressions[0].chords.join() === "Ⅱm7,Ⅴ7,ⅠM7" && lib.progressions[0].points === 450 && lib.progressions[0].startAt === "head");
+    $("prog-start").value = "any"; $("prog-start").dispatchEvent(new Event("change")); await wait(1000);
+    lib = await fetchLib();
+    ok("始まりの場所を変えると、自動で送り直す", lib.progressions.length === 1 && lib.progressions[0].startAt === "any");
+    document.querySelector("#prog-seq .tile").click(); await wait(1000);
+    lib = await fetchLib();
+    ok("駒を外すと、自動で送り直す（2つ）", lib.progressions[0].chords.join() === "Ⅴ7,ⅠM7");
+    for (let i = 0; i < 10; i++) document.querySelector('#prog-chords button[data-name="Ⅰ"]').click();
+    ok("8つより多くは、並べられない", game.seq.length === 8);
+    $("prog-clear").click();
+    ok("全部消す", game.seq.length === 0 && document.querySelectorAll("#prog-seq .tile").length === 0);
+    $("prog-points").value = "10"; $("prog-points").dispatchEvent(new Event("input"));
+    for (const n of ["Ⅱm7", "Ⅴ7"]) document.querySelector('#prog-chords button[data-name="' + n + '"]').click();
+    typeName("点が少なすぎる");
+    $("game-send").click(); await wait(500);
+    ok("点数が範囲外だと、送れない（サーバーの検査の文）", $("game-message").className === "err" && $("game-message").textContent.includes("点数"));
+    lib = await fetchLib();
+    ok("範囲外の進行は、入らない", lib.progressions.length === 1);
+
+    // 読み込む・削除
+    document.querySelector('#game-list .game-item[data-kind="drum"] .open').click(); await wait(100);
+    ok("「読み込む」で、ドラムの画面に戻り、内容と名前が入る", state.kind === "drum" && $("game-name").value === "夕焼けビート" && state.drum.lanes.K.join("") === "x.......x.x.....");
+    document.querySelector('#game-list .game-item[data-kind="drum"] .del').click(); await wait(600);
+    lib = await fetchLib();
+    ok("「削除」で、ゲームから消える", lib.drums.length === 0 && lib.backings.length === 1);
+  } catch (e) {
+    out.push("FAIL 例外: " + e);
+  }
+  writeResult(out);
+}
+
+if (location.hash === "#selftest") runSelfTest();
+if (location.hash === "#selftest-control") runControlSelfTest();
+if (location.hash === "#selftest-live") runLiveSelfTest();
+if (location.hash === "#selftest-game") runGameSelfTest();
+if (location.hash === "#demo") { showKind("drum"); applyDrumPreset("2"); }   // 見た目の確認用
+</script>
+</body>
+</html>

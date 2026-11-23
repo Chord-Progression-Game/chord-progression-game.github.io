@@ -1,0 +1,67 @@
+--- tsf.h.orig	2026-10-19 02:00:10
++++ tsf.h	2026-10-19 02:03:52
+@@ -420,7 +420,7 @@
+ struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
+ struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
+ struct tsf_voice_envelope { unsigned char segment, segmentIsExponential : 1, isAmpEnv : 1; short midiVelocity; float level, slope; int samplesUntilNextSegment; struct tsf_envelope parameters; };
+-struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
++struct tsf_voice_lowpass { float QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };   // ★改造: double → float（ESP32-S3 は倍精度が遅い）
+ struct tsf_voice_lfo { int samplesUntil; float level, delta; };
+ 
+ struct tsf_region
+@@ -1152,9 +1152,9 @@
+ 	e->b2 = (1 - K * e->QInv + KK) * norm;
+ }
+ 
+-static float tsf_voice_lowpass_process(struct tsf_voice_lowpass* e, double In)
++static float tsf_voice_lowpass_process(struct tsf_voice_lowpass* e, float In)
+ {
+-	double Out = In * e->a0 + e->z1; e->z1 = In * e->a1 + e->z2 - e->b1 * Out; e->z2 = In * e->a0 - e->b2 * Out; return (float)Out;
++	float Out = In * e->a0 + e->z1; e->z1 = In * e->a1 + e->z2 - e->b1 * Out; e->z2 = In * e->a0 - e->b2 * Out; return Out;
+ }
+ 
+ static void tsf_voice_lfo_setup(struct tsf_voice_lfo* e, float delay, int freqCents, float outSampleRate)
+@@ -1287,22 +1287,32 @@
+ 		{
+ 			case TSF_STEREO_INTERLEAVED:
+ 				gainLeft = gainMono * v->panFactorLeft, gainRight = gainMono * v->panFactorRight;
+-				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
+ 				{
+-					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
++					// ★改造: 位置を double ではなく、整数の固定小数点（整数部32bit + 小数部32bit）で進める。
++					//   ESP32-S3 には倍精度の計算回路がなく、double は1回の足し算でも数百サイクルかかるため
++					uint64_t posFx = (uint64_t)(tmpSourceSamplePosition * 4294967296.0);
++					uint64_t incFx = (uint64_t)(pitchRatio * 4294967296.0);
++					uint64_t endFx = ((uint64_t)region->end) << 32;
++					uint64_t loopEndFx = ((uint64_t)tmpLoopEnd + 1) << 32;
++					uint64_t loopLenFx = ((uint64_t)(tmpLoopEnd - tmpLoopStart + 1)) << 32;
++					while (blockSamples-- && posFx < endFx)
++					{
++						unsigned int pos = (unsigned int)(posFx >> 32), nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+ 
+-					// Simple linear interpolation.
+-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
++						// Simple linear interpolation.
++						float alpha = (float)((uint32_t)posFx) * (1.0f / 4294967296.0f), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+ 
+-					// Low-pass filter.
+-					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
++						// Low-pass filter.
++						if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
+ 
+-					*outL++ += val * gainLeft;
+-					*outL++ += val * gainRight;
++						*outL++ += val * gainLeft;
++						*outL++ += val * gainRight;
+ 
+-					// Next sample.
+-					tmpSourceSamplePosition += pitchRatio;
+-					if (tmpSourceSamplePosition >= tmpLoopEndDbl && isLooping) tmpSourceSamplePosition -= (tmpLoopEnd - tmpLoopStart + 1.0);
++						// Next sample.
++						posFx += incFx;
++						if (posFx >= loopEndFx && isLooping) posFx -= loopLenFx;
++					}
++					tmpSourceSamplePosition = (double)(posFx >> 32) + (double)((uint32_t)posFx) / 4294967296.0;
+ 				}
+ 				break;
+ 

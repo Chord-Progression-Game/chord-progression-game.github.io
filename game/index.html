@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>CHORD LINES（仮題）— コード進行をトリックにする</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131210">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CHORD LINES">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="description" content="物理的な駒でコード進行を組み立て、特徴的なつながりを「トリック」として判定するゲームの試作">
+<link rel="stylesheet" href="./css/game.css">
+<link rel="stylesheet" href="./css/mobile.css">
+<script>window.__errors = []; addEventListener("error", (e) => window.__errors.push(String(e.message || e.error))); addEventListener("unhandledrejection", (e) => window.__errors.push("promise: " + String(e.reason && e.reason.stack || e.reason)));</script>
+<script>
+  // ダブルクリックで開く（file://）と、ブラウザが部品の読み込みを止めて、何も動かない。そのときは、やり方を画面に出す
+  if (location.protocol === "file:") addEventListener("DOMContentLoaded", () => {
+    const d = document.createElement("div");
+    d.style.cssText = "position:fixed;inset:0;display:grid;place-items:center;background:#131210;color:#f1ebdd;font:600 18px/1.9 'Hiragino Sans',sans-serif;text-align:center;z-index:99";
+    d.innerHTML = "<div>このページはダブルクリックでは動きません。<br>ターミナルで <b style='color:#f2c14e'>sh tools/game.sh</b> を実行してください。<br><small style='color:#aaa393'>（くわしくは game/README.md）</small></div>";
+    document.body.append(d);
+  });
+</script>
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="flash"></div>
+
+<div id="ui">
+  <!-- 起動の画面（クリックで音が使えるようになる） -->
+  <section id="splash" class="screen">
+    <div class="logo">
+      <div class="logo-main"><span>CHORD</span><span>LINES<i>.</i></span></div>
+      <!-- <div class="logo-sub">コード進行を、トリックにする。</div> -->
+      <div class="logo-tag">仮題 ／ プロトタイプ</div>
+    </div>
+    <button id="btn-start" class="btn-big">はじめる <small>クリック または Enter</small></button>
+    <div id="loading" class="hidden"><div class="bar"><i id="loading-bar"></i></div><span id="loading-text">音を読み込んでいます…</span></div>
+  </section>
+
+  <!-- タイトル（メニュー） -->
+  <section id="title" class="screen hidden">
+    <div class="title-left">
+      <div class="logo small"><div class="logo-main"><span>CHORD</span><span>LINES<i>.</i></span></div><div class="logo-sub"></div></div>
+      <nav class="menu">
+        <button data-act="tutorial"><b>学ぶ</b><span>チュートリアル<em>技をひとつずつ覚える</em></span></button>
+        <button data-act="stages"><b>選ぶ</b><span>ステージを選ぶ<em>好きな技から練習する</em></span></button>
+        <button data-act="free"><b>遊ぶ</b><span>フリープレイ<em>全部の駒で自由に</em></span></button>
+        <button data-act="melody"><b>合わせる</b><span>メロディにコードをつける<em>流れるメロディに和音を合わせる</em></span></button>
+        <button data-act="challenge"><b>競う</b><span>チャレンジ<em>90秒で高得点を狙う</em></span></button>
+        <button data-act="versus" disabled><b>—</b><span>対戦<em>準備中</em></span></button>
+      </nav>
+      <div class="title-foot">
+        <button id="btn-device" class="chip" title="実機（駒を読み取る盤）につなぐ">実機: <span id="device-state">確認中…</span></button>
+        <button id="btn-unlock" class="chip subtle">ぜんぶ開く（デモ用）</button>
+        <button id="btn-reset" class="chip subtle">進み具合をリセット</button>
+      </div>
+    </div>
+    <div class="title-right"><div id="collection-title-wrap"><div class="coll-label"><b>図鑑</b><span id="coll-title-count"></span></div><div id="collection-title"></div></div></div>
+  </section>
+
+  <!-- ステージ選択 -->
+  <section id="stages" class="screen hidden">
+    <header><button class="back" data-act="title">◀ もどる</button><h2><span id="stages-title">STAGES</span> <small id="stages-sub">ステージを選ぶ</small></h2></header>
+    <div id="stage-grid"></div>
+  </section>
+
+  <!-- ゲーム中のHUD -->
+  <section id="hud" class="hidden">
+    <div id="topbar">
+      <div class="tb-left">
+        <button id="btn-menu" class="chip">◀ MENU</button>
+        <div id="stage-badge"><b id="stage-no">STAGE 01</b><span id="stage-title">Ⅴ-Ⅰ終止</span></div>
+        <button id="btn-guide-toggle" class="chip phone-only" title="ガイド（説明）を開く・とじる">ガイド</button>
+        <div id="goal-chip" class="goal"><i></i><span id="goal-text"></span></div>
+      </div>
+      <div class="tb-right">
+        <div id="timer" class="hidden"><b id="timer-num">90</b><span>sec</span></div>
+        <div class="bpm"><button id="bpm-down" class="mini">−</button><b id="bpm-num">120</b><span>BPM</span><button id="bpm-up" class="mini">＋</button></div>
+        <button id="btn-device-hud" class="chip toggle" title="実機（駒を読み取る盤）の使い分け"><span class="dot"></span>盤 <b id="device-hud-state">画面</b></button>
+        <button id="btn-hint" class="chip toggle"><span class="dot"></span>ヒント <b id="hint-state">OFF</b></button>
+        <button id="btn-presets" class="chip" title="気に入った進行をプリセットとして保存・呼び出し">☆ プリセット</button>
+        <button id="btn-studio" class="chip hidden" title="メロディを自動でつける・書く・直す（フリープレイ）">♪ メロディ</button>
+        <div class="sm-wrap"><button id="btn-soundmenu" class="chip" aria-haspopup="true" title="音色・ビート・バッキングをえらぶ">♪ <b id="sound-menu-label">ピアノ</b></button><div id="soundmenu" class="soundmenu hidden"></div></div>
+        <div class="sm-wrap"><button id="btn-sound" class="chip toggle on" aria-haspopup="true" title="音量・ミュート（M キーでミュート）"><span class="dot"></span>音 <b id="sound-state">25%</b></button><div id="volmenu" class="soundmenu volmenu hidden"></div></div>
+      </div>
+    </div>
+
+    <!-- メロディの帯（「メロディにコードをつける」ステージ）。中身は ui/melodyview.js が作る -->
+    <div id="melody-roll" class="hidden"></div>
+
+    <!-- スマホ: チュートリアルの手順（いま置くところ）を、上の細い帯に出す -->
+    <div id="step-bar" class="phone-only" aria-live="polite"></div>
+
+    <aside id="guide">
+      <div class="panel-head"><b>ガイド</b><span id="guide-title">はじめに</span><button id="guide-toggle" class="mini" title="しまう">−</button></div>
+      <div id="guide-body"></div>
+    </aside>
+
+    <aside id="side">
+      <div class="score-card">
+        <div class="score-label">いまの得点</div>
+        <div class="score-num"><b id="score-num">0</b></div>
+        <div class="score-meta"><span id="combo-chip" class="pill">COMBO ×1</span><span id="variety-chip" class="pill">種類 0</span><span id="sense-chip" class="pill hidden" title="ジャッジ（講評）: 名前のついた技にならなくても、耳に馴染む並びは加点、進行感のない並びは減点"></span><span id="melody-chip" class="pill hidden" title="メロディとの相性: メロディの音が、和音の構成音・テンションになっているか。アヴォイドノートとぶつかっていないか"></span></div>
+        <div class="score-best" id="score-best"></div>
+        <button id="btn-side-toggle" class="chip phone-only" title="技の一覧・理由・図鑑を開く・とじる">技 ▾</button>
+      </div>
+      <div class="panel-head"><b>技</b><span>いま決まっているもの</span></div>
+      <ul id="trick-list"></ul>
+      <div id="orig" class="orig hidden"></div>
+      <div id="why" class="why-card hidden"><div class="why-head"><b>理由</b><span id="why-name"></span><button id="why-more" class="mini wm hidden" title="この技の詳しい説明と、使われている曲">くわしく ▸</button></div><p id="why-text"></p></div>
+      <div class="panel-head collection-head"><b>図鑑</b><span id="collection-count">0 / 20</span></div>
+      <div id="collection"></div>
+    </aside>
+
+    <!-- クリアしたあと、結果の画面を閉じて、盤面を見る・さわっているときの、小さな操作の欄 -->
+    <div id="clear-bar" class="hidden"><b id="clear-bar-title">✓ ステージクリア</b><span id="clear-bar-note">盤面は自由にさわれます</span><button id="btn-clear-result" class="chip">結果を見る</button><button id="btn-clear-next" class="chip primary">つぎへ ▶</button></div>
+
+    <div id="tray-wrap">
+      <div id="tray-tools">
+        <button id="btn-play" class="chip toggle on"><span class="dot"></span>演奏 <b id="play-state">ON</b></button>
+        <button id="btn-clear" class="chip">全部消す</button>
+        <button id="btn-chord-edit" class="chip hidden" title="コードを編集（駒を右クリック・長押しでも。持ち上げた駒を、ここに投げ入れてもよい）">コードを編集</button>
+        <button id="btn-chord-new" class="chip hidden" title="新しいコードをつくる（下の一覧の右はしの「＋」と同じ）">＋ コードをつくる</button>
+        <div class="legend"><i class="lg T"></i>安定 <i class="lg SD"></i>広がり <i class="lg D"></i>緊張 <i class="lg X"></i>色づけ</div>
+      </div>
+      <div id="tray"></div>
+    </div>
+  </section>
+
+  <!-- メニュー（ゲーム中） -->
+  <section id="pause" class="screen modal hidden">
+    <div class="card">
+      <h3>MENU</h3>
+      <button data-act="resume">つづける</button>
+      <button data-act="restart">このステージをやりなおす</button>
+      <button data-act="stages">ステージ選択</button>
+      <button data-act="title">タイトルへ</button>
+    </div>
+  </section>
+
+  <!-- プリセット（お気に入りの進行の保存・呼び出し）。中身は ui/presetmenu.js が作る -->
+  <section id="presets" class="screen modal hidden"></section>
+
+  <!-- メロディの画面（自動でつける・ピアノロールで書く・直す）。中身は ui/melodystudio.js が作る -->
+  <section id="studio" class="screen modal hidden"></section>
+
+  <!-- コードの編集画面（ピアノロールで、自分のコードを作る・もとのコードを直す）。中身は ui/chordlab.js が作る -->
+  <section id="chordlab" class="screen modal hidden"></section>
+
+  <!-- 技の詳細（技の枠・一覧の行を押すと開く）。中身は ui/trickdetail.js が作る -->
+  <section id="trickdetail" class="screen modal hidden"></section>
+
+  <!-- 結果 -->
+  <section id="result" class="screen modal hidden">
+    <div class="card result-card">
+      <div class="result-kicker" id="result-kicker">STAGE CLEAR</div>
+      <h2 id="result-title">Ⅴ-Ⅰ終止</h2>
+      <div id="result-stars" class="stars hidden"></div>
+      <div id="result-score" class="result-score hidden"></div>
+      <div id="result-body"></div>
+      <div id="result-tricks"></div>
+      <div class="result-btns" id="result-btns"></div>
+    </div>
+  </section>
+
+  <div id="stamp-layer"></div>
+  <div id="chordmenu" class="chordmenu hidden" role="menu"></div>
+  <div id="drag-ghost" class="hidden"></div>
+  <div id="toasts"></div>
+</div>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
