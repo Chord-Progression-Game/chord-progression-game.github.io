@@ -142,7 +142,7 @@ try:
     check("状態の合図の反映が 100ms 未満", d_remove < 100 and d_place < 100, True)
     time.sleep(1.5)   # 古い問い合わせの返事（Ⅳ のまま）が来ても、新しい状態を戻さない
     check("古い問い合わせの返事（駒あり=Ⅳ）で、新しい状態（Ⅰ）が戻らない", cdp.eval(tile_text(2)), "Ⅰ")
-    check("リアルタイム接続の表示が ON と画面の版を出す", cdp.eval("document.getElementById('c-rt').textContent"), "リアルタイム接続: ON（直近の遅れ %d ms）　画面の版 2026-11-23" % cdp.eval("live.lagMs"))
+    check("リアルタイム接続の表示が ON と画面の版を出す", cdp.eval("document.getElementById('c-rt').textContent"), "リアルタイム接続: ON（直近の遅れ %d ms）　画面の版 2026-11-24" % cdp.eval("live.lagMs"))
     STATE["s"] = placed   # 以降の（参考の）問い合わせは、この状態を返す
 
     # --- 5. ブリッジが ESP32 につながっていないとき、Mac から音が鳴らないことと、つなぎ方が、画面に出る ---

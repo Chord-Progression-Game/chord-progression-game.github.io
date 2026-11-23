@@ -1,6 +1,7 @@
 // コードの編集画面（フリープレイ）。トレイの「＋」・駒の右クリック（長押し）・「コードを編集」ボタンから開く。
-//   DTM のピアノロールのように、音を置いて、自分のコードを作る・もとのコードを直す。
-//   ・左: ピアノロール。空いているところをクリック（タップ）で音を置く / 音をドラッグで上下に動かす / 音をダブルクリック（ダブルタップ）・右クリック・× ・Delete で消す / 鍵盤をクリックで、その音が鳴る
+//   DTM のピアノロールのように、音を置いて、自分のコードを作る。もとの駒を「編集」したときも、もとの駒は書きかえずに、新しい自作コードとして足す（2026-11-23 のご指定）。
+//   ・左: ピアノロール。空いているところをクリック（タップ）で音を置く / 空いているところをドラッグすると、四角でかこんだ音を、まとめて選べる（Shift・Ctrl/⌘ で選びたす・Ctrl/⌘+A で全部。「範囲選択」のボタンを入れると、タップで1つずつ選びたす・はずす。スマホ向き）/
+//     音（選んだ音ぜんぶ）をドラッグで上下に動かす / 音をダブルクリック（ダブルタップ）・右クリック・× ・Delete で消す / 鍵盤をクリックで、その音が鳴る
 //   ・右: 名前の候補（構成音から自動。例: E G# C D G → Eaug7(♯9)・A C E G B → Am9）/ 自分で名前をつける / レベル（未設定のまま、でもよい）/ 色 / 形 / 見本
 //   ・保存すると、盤とトレイの駒が、すぐ変わる。自作コードは、ブラウザに保存されて、次に立ち上げても、そのまま残る
 //   画面の部品だけ。名前の判定・保存の形は core/chordbook.js、保存・削除は game/chordstore.js。
@@ -42,22 +43,22 @@ export class ChordLab {
   openNew(notes = []) {
     this.start({ mode: 'new', id: null, notes: normalizeNotes(notes), symbol: '', touched: false, level: null, color: null, shape: 'auto', title: 'コードをつくる' });
   }
+  // 自作コードは、その場で書きかえる。もとの駒は、音と名前をもとにして、新しい自作コードをつくる（もとの駒は、そのまま）
   openEdit(id) {
     const c = this.table.byId(id);
     if (!c || c.isRepeat) return false;
     const notes = this.store.notesOf(id);
     const cands = detectChord(notes, { max: 12 });
     const auto = cands.find((x) => x.rootPc === c.rootPc) || cands[0];
-    this.start({
-      mode: c.custom ? 'custom' : 'base', id, notes, symbol: c.symbol, touched: !!auto && c.symbol !== auto.symbol, level: c.level === undefined ? null : c.level, color: c.color || null, shape: c.shape || 'auto',
-      title: c.custom ? `自作コードを編集: ${c.symbol}` : `コードを編集: ${c.name}（${c.symbol}）`, rootPc: c.rootPc,
-    });
+    const common = { notes, symbol: c.symbol, touched: !!auto && c.symbol !== auto.symbol, level: c.level === undefined ? null : c.level, color: c.color || null, shape: c.shape || 'auto', rootPc: c.rootPc };
+    if (c.custom) this.start({ ...common, mode: 'custom', id, title: `自作コードを編集: ${c.symbol}` });
+    else this.start({ ...common, mode: 'new', id: null, from: { id: c.id, name: c.name, symbol: c.symbol }, title: `「${c.name}（${c.symbol}）」をもとに、自作コードをつくる` });
     return true;
   }
   start(state) {
     if (this.isOpen) this.close(true);
-    this.s = { selected: null, selKey: null, msg: null, ...state };
-    this.s.baseLevel = this.s.mode === 'base' ? this.table.baseById(this.s.id).level : null;
+    this.s = { selected: null, sel: new Set(), selKey: null, msg: null, from: null, ...state };
+    this.selecting = false;
     this.undoStack = []; this.redoStack = []; this.confirming = null; this.drag = null;
     this.isOpen = true;
     this.build();
@@ -78,8 +79,8 @@ export class ChordLab {
 
   // ---------- 状態 ----------
   snapshot() { this.undoStack.push({ notes: this.s.notes.slice() }); if (this.undoStack.length > 60) this.undoStack.shift(); this.redoStack = []; }
-  undo() { const p = this.undoStack.pop(); if (!p) return; this.redoStack.push({ notes: this.s.notes.slice() }); this.s.notes = p.notes; this.s.selected = null; this.recompute(); }
-  redo() { const p = this.redoStack.pop(); if (!p) return; this.undoStack.push({ notes: this.s.notes.slice() }); this.s.notes = p.notes; this.s.selected = null; this.recompute(); }
+  undo() { const p = this.undoStack.pop(); if (!p) return; this.redoStack.push({ notes: this.s.notes.slice() }); this.s.notes = p.notes; this.s.selected = null; this.s.sel = new Set(); this.recompute(); }
+  redo() { const p = this.redoStack.pop(); if (!p) return; this.undoStack.push({ notes: this.s.notes.slice() }); this.s.notes = p.notes; this.s.selected = null; this.s.sel = new Set(); this.recompute(); }
 
   // 構成音が変わったとき: 名前の候補を作り直す。いま選んでいる読み方（ルート・名前）が、まだ候補にあれば、そのまま
   recompute(first = false) {
@@ -102,9 +103,8 @@ export class ChordLab {
     const c = this.cand();
     if (!c) return null;
     const s = this.s;
-    const base = s.mode === 'base' ? this.table.baseById(s.id) : null;
     const rec = { notes: s.notes, rootPc: c.rootPc, symbol: (s.symbol || c.symbol).trim() || c.symbol, name: c.name, level: s.level, color: s.color, shape: s.shape };
-    const raw = recordToRaw(rec, { id: s.id !== null ? s.id : 0, base });
+    const raw = recordToRaw(rec, { id: s.id !== null ? s.id : 0 });
     return raw ? new Chord(raw) : null;
   }
 
@@ -119,13 +119,15 @@ export class ChordLab {
     e.rows = h('div', { class: 'cl-rows' });
     e.notes = h('div', { class: 'cl-notes' });
     e.ghost = h('div', { class: 'cl-ghost hidden' });
-    e.grid = h('div', { class: 'cl-grid' }, e.rows, e.ghost, e.notes);
+    e.box = h('div', { class: 'cl-marquee hidden' });
+    e.grid = h('div', { class: 'cl-grid' }, e.rows, e.ghost, e.notes, e.box);
     e.body = h('div', { class: 'cl-body' }, e.keys, e.grid);
     e.scroll = h('div', { class: 'cl-scroll' }, e.body);
-    e.hint = h('div', { class: 'cl-hint' }, '空いているところをクリックで音を置きます。音をドラッグで上下に動かせます。ダブルクリックか × で消します。');
+    e.hint = h('div', { class: 'cl-hint' }, '空いているところをクリックで音を置きます。空いているところをドラッグすると、四角でかこんだ音を、まとめて選べます（Shift で選びたす）。音をドラッグで上下に動かせます（選んだ音ぜんぶ）。ダブルクリックか × で消します。');
     e.undo = h('button', { class: 'chip', id: 'cl-undo', title: '元に戻す（Ctrl/⌘ + Z）', onclick: () => this.undo() }, '↶ 戻す');
     e.redo = h('button', { class: 'chip', id: 'cl-redo', title: 'やり直す（Ctrl/⌘ + Shift + Z）', onclick: () => this.redo() }, '↷ やり直す');
-    e.del = h('button', { class: 'chip', id: 'cl-del', title: '選んだ音を消す（Delete）', onclick: () => this.removeNote(this.s.selected) }, '選んだ音を消す');
+    e.del = h('button', { class: 'chip', id: 'cl-del', title: '選んだ音を消す（Delete）', onclick: () => this.removeSelected() }, '選んだ音を消す');
+    e.selmode = h('button', { class: 'chip toggle', id: 'cl-selmode', title: '入れると、タップ（クリック）で、音を選びたす・はずす。空いているところをドラッグすると、四角でかこんで、まとめて選べる（入れなくても、パソコンでは、ドラッグで選べる）', onclick: () => { this.selecting = !this.selecting; this.renderRoll(); } }, h('span', { class: 'dot' }), '範囲選択 ', h('b', {}, 'OFF'));
     e.clear = h('button', { class: 'chip', id: 'cl-clear', onclick: () => { if (this.s.notes.length) { this.snapshot(); this.s.notes = []; this.s.selected = null; this.recompute(); } } }, '音を全部消す');
     e.play = h('button', { class: 'chip primary', id: 'cl-play', title: '和音を鳴らす（Space）', onclick: () => this.play(false) }, '▶ 和音で聴く');
     e.arp = h('button', { class: 'chip', id: 'cl-arp', onclick: () => this.play(true) }, 'ばらして聴く');
@@ -142,7 +144,7 @@ export class ChordLab {
     e.info = h('div', { class: 'cl-info', id: 'cl-info' });
     e.msg = h('div', { class: 'pm-msg cl-msg', id: 'cl-msg' });
     e.save = h('button', { class: 'chip primary', id: 'cl-save', onclick: () => this.save() }, s.mode === 'new' ? 'コードを追加する' : '保存する');
-    e.reset = h('button', { class: 'chip danger', id: 'cl-reset', onclick: () => this.confirmable('reset', () => this.resetOrDelete()) }, s.mode === 'custom' ? 'このコードを削除' : 'もとにもどす');
+    e.reset = h('button', { class: 'chip danger', id: 'cl-reset', onclick: () => this.confirmable('reset', () => this.resetOrDelete()) }, 'このコードを削除');
     e.close = h('button', { class: 'chip', id: 'cl-close', onclick: () => this.close() }, '閉じる');
     const side = h('div', { class: 'cl-side' },
       h('section', { class: 'cl-sec cl-previewsec' }, h('h4', {}, '見本', h('small', {}, '盤・トレイでの見え方')), h('div', { class: 'cl-prevrow' }, e.preview, e.info)),
@@ -151,19 +153,19 @@ export class ChordLab {
       h('section', { class: 'cl-sec' }, h('h4', {}, 'レベル', h('small', {}, '決めなくてもよい')), e.levels),
       h('section', { class: 'cl-sec' }, h('h4', {}, '駒の色'), e.colors),
       h('section', { class: 'cl-sec' }, h('h4', {}, '駒の形'), e.shapes));
-    card.append(
+    card.append(...[
       h('div', { class: 'pm-head' }, e.title, h('button', { class: 'chip', id: 'cl-close-top', onclick: () => this.close() }, '閉じる')),
+      s.from ? h('p', { class: 'cl-fromnote', id: 'cl-fromnote' }, 'もとのコードは、そのままです。音を変えて「コードを追加する」を押すと、新しい自作コードとして足されます。') : null,         // null は、そのまま append すると「null」という文字になる。取りのぞく
       h('div', { class: 'cl-main' },
         h('div', { class: 'cl-left' },
-          h('div', { class: 'cl-tools' }, e.play, e.arp, e.undo, e.redo, e.del, e.clear),
+          h('div', { class: 'cl-tools' }, e.play, e.arp, e.undo, e.redo, e.selmode, e.del, e.clear),
           e.scroll, e.hint),
         side),
-      h('div', { class: 'cl-foot' }, e.msg, h('div', { class: 'cl-btns' }, e.reset, e.save, e.close)));
+      h('div', { class: 'cl-foot' }, e.msg, h('div', { class: 'cl-btns' }, e.reset, e.save, e.close))].filter(Boolean));
     clear(this.root).append(card);
     this.buildKeys();
     this.attachGrid();
     if (s.mode === 'new') e.reset.classList.add('hidden');
-    else if (s.mode === 'base') e.reset.disabled = !this.table.isEdited(s.id);
   }
 
   layout() {
@@ -201,15 +203,17 @@ export class ChordLab {
     const box = clear(e.notes);
     for (const m of s.notes) {
       const t = role.get(m);
-      const sel = m === s.selected;
+      const sel = s.sel.has(m);
       box.append(h('div', { class: `cl-note k-${t ? ROLE_CLASS(t.role) : 'x'}${sel ? ' sel' : ''}`, dataset: { midi: String(m) }, title: `${noteLabel(m)}${t ? `（${ROLE_TEXT[t.role] || ''}）` : ''}`,
         style: { top: `${(NOTE_HI - m) * this.rh}px`, height: `${this.rh - 1}px` } },
         h('span', { class: 'cl-nlabel' }, t ? t.spelled : NAMES[m % 12], h('small', {}, `${Math.floor(m / 12) - 1}`)),
         h('span', { class: 'cl-nrole' }, t ? ROLE_SHORT[t.role] || '' : ''),
-        sel ? h('i', { class: 'cl-x', title: 'この音を消す', onpointerdown: (ev) => { ev.preventDefault(); ev.stopPropagation(); this.removeNote(m); } }, '×') : null));
+        sel && s.sel.size === 1 ? h('i', { class: 'cl-x', title: 'この音を消す', onpointerdown: (ev) => { ev.preventDefault(); ev.stopPropagation(); this.removeNote(m); } }, '×') : null));
     }
     e.undo.disabled = !this.undoStack.length; e.redo.disabled = !this.redoStack.length;
-    e.del.disabled = s.selected === null; e.clear.disabled = !s.notes.length;
+    e.del.disabled = !s.sel.size; e.clear.disabled = !s.notes.length;
+    e.selmode.classList.toggle('on', this.selecting); e.selmode.querySelector('b').textContent = this.selecting ? 'ON' : 'OFF';
+    e.grid.classList.toggle('selecting', this.selecting);
     e.play.disabled = e.arp.disabled = !s.notes.length;
   }
 
@@ -229,7 +233,7 @@ export class ChordLab {
     const lv = clear(e.levels);
     [null, 1, 2, 3, 4, 5].forEach((n) => lv.append(h('button', { class: `chip seg${s.level === n ? ' on' : ''}`, type: 'button', dataset: { level: n === null ? '' : String(n) },
       title: n === null ? 'レベルを決めない（Lv.5 のあとの「自作」の段に並びます）' : `Lv.${n} の段に入ります`, onclick: () => { s.level = n; this.renderPanel(); } }, n === null ? '未設定' : `Lv.${n}`)));
-    lv.append(h('small', { class: 'cl-lvnote' }, s.level === null ? (s.mode === 'base' ? '（もとは Lv.' + s.baseLevel + '）' : 'いまは「自作」の段（Lv.5 の右）') : '高いレベルのコードを使うと「コードの難しさ」の加点がつきます'));
+    lv.append(h('small', { class: 'cl-lvnote' }, s.level === null ? 'いまは「自作」の段（Lv.5 の右）' : '高いレベルのコードを使うと「コードの難しさ」の加点がつきます'));
     // 色
     const cb = clear(e.colors);
     cb.append(h('button', { class: `cl-sw auto${s.color === null ? ' on' : ''}`, type: 'button', title: '働きの色（トニック系=黄・広がり=青・緊張=赤・色づけ=紫）', onclick: () => { s.color = null; this.renderPanel(); } }, '自動'));
@@ -252,17 +256,24 @@ export class ChordLab {
     e.msg.textContent = s.msg ? s.msg.text : '';
     e.msg.className = `pm-msg cl-msg${s.msg ? ` ${s.msg.kind}` : ''}`;
     e.save.disabled = !cand || s.notes.length < MIN_TONES;
-    if (s.mode === 'base') e.reset.disabled = !this.table.isEdited(s.id);
   }
 
   // ---------- 音の編集 ----------
-  select(m) { this.s.selected = m; this.renderRoll(); }
+  // 選んでいる音を、list にする（primary: いちばん新しく選んだ音）
+  setSel(list, primary = null) {
+    const s = this.s;
+    s.sel = new Set(list);
+    s.selected = s.sel.size ? (primary !== null && s.sel.has(primary) ? primary : [...s.sel].pop()) : null;
+    this.renderRoll();
+  }
+  select(m) { this.setSel(m === null || m === undefined ? [] : [m], m); }
+  selectAll() { this.setSel(this.s.notes); }
   addNote(m) {
     const s = this.s;
     if (s.notes.includes(m)) { this.select(m); return false; }
     if (s.notes.length >= MAX_TONES) { s.msg = { text: `1つのコードに置ける音は${MAX_TONES}つまでです`, kind: 'warn' }; this.renderPanel(); return false; }
     this.snapshot();
-    s.notes = [...s.notes, m].sort((a, b) => a - b); s.selected = m; s.msg = null;
+    s.notes = [...s.notes, m].sort((a, b) => a - b); s.sel = new Set([m]); s.selected = m; s.msg = null;
     this.recompute();
     this.audition([m], { duration: 0.6 });
     return true;
@@ -271,14 +282,36 @@ export class ChordLab {
     const s = this.s;
     if (m === null || m === undefined || !s.notes.includes(m)) return;
     this.snapshot();
-    s.notes = s.notes.filter((x) => x !== m); if (s.selected === m) s.selected = null; s.msg = null;
+    s.notes = s.notes.filter((x) => x !== m); s.sel.delete(m); if (s.selected === m) s.selected = s.sel.size ? [...s.sel].pop() : null; s.msg = null;
+    this.recompute();
+  }
+  // 選んでいる音を、ぜんぶ消す
+  removeSelected() {
+    const s = this.s;
+    if (!s.sel.size) return;
+    this.snapshot();
+    const set = s.sel;
+    s.notes = s.notes.filter((x) => !set.has(x)); s.sel = new Set(); s.selected = null; s.msg = null;
     this.recompute();
   }
   moveNote(from, to) {
     const s = this.s;
     if (to === from || to < NOTE_LO || to > NOTE_HI || s.notes.includes(to)) return false;
     s.notes = s.notes.map((x) => (x === from ? to : x)).sort((a, b) => a - b);
+    if (s.sel.has(from)) { s.sel.delete(from); s.sel.add(to); }
     if (s.selected === from) s.selected = to;
+    this.recompute();
+    return true;
+  }
+  // 選んでいる音ぜんぶ（いまの高さ: from）を、dm 半音、まとめて動かす。範囲の外・選んでいない音と重なるときは、動かさない（false）
+  shiftNotes(from, dm) {
+    const s = this.s;
+    const moved = from.map((m) => m + dm);
+    if (moved.some((m) => m < NOTE_LO || m > NOTE_HI)) return false;
+    const rest = s.notes.filter((m) => !s.sel.has(m));
+    if (moved.some((m) => rest.includes(m))) return false;
+    s.notes = [...rest, ...moved].sort((a, b) => a - b);
+    s.sel = new Set(moved); if (s.selected !== null) s.selected += dm;
     this.recompute();
     return true;
   }
@@ -289,43 +322,95 @@ export class ChordLab {
     return clamp(NOTE_HI - Math.floor((ev.clientY - r.top) / this.rh), NOTE_LO, NOTE_HI);
   }
 
+  // 四角でかこむ（ドラッグの途中）: 四角にふれた音を選ぶ（Shift・Ctrl/⌘・「範囲選択」のモードなら、もとの選びに足す）
+  updateMarquee(ev, d) {
+    const s = this.s;
+    const r = this.el.grid.getBoundingClientRect();
+    const x1 = clamp(ev.clientX - r.left, 0, r.width), y1 = clamp(ev.clientY - r.top, 0, r.height);
+    const x0 = clamp(d.x0 - r.left, 0, r.width), y0 = clamp(d.y0 - r.top, 0, r.height);
+    const L = Math.min(x0, x1), T = Math.min(y0, y1), W = Math.abs(x1 - x0), H = Math.abs(y1 - y0);
+    const b = this.el.box;
+    b.classList.remove('hidden');
+    b.style.left = `${L}px`; b.style.top = `${T}px`; b.style.width = `${W}px`; b.style.height = `${H}px`;
+    const hit = s.notes.filter((m) => { const nt = (NOTE_HI - m) * this.rh; return nt < T + H && nt + this.rh > T && r.width * 0.06 < L + W && r.width * 0.94 > L; });
+    s.sel = new Set([...d.base, ...hit]);
+    s.selected = hit.length ? hit[hit.length - 1] : (s.sel.size ? [...s.sel].pop() : null);
+    for (const el of this.el.notes.children) el.classList.toggle('sel', s.sel.has(Number(el.dataset.midi)));
+  }
+
   attachGrid() {
     const g = this.el.grid;
-    g.addEventListener('contextmenu', (ev) => { ev.preventDefault(); const n = ev.target.closest && ev.target.closest('.cl-note'); if (n) this.removeNote(Number(n.dataset.midi)); });
+    g.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      const n = ev.target.closest && ev.target.closest('.cl-note');
+      if (!n) return;
+      const m = Number(n.dataset.midi);
+      if (this.s.sel.has(m) && this.s.sel.size > 1) this.removeSelected(); else this.removeNote(m);
+    });
     g.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0) return;
       const noteEl = ev.target.closest && ev.target.closest('.cl-note');
       if (ev.target.closest && ev.target.closest('.cl-x')) return;
       const m = this.pointToMidi(ev);
-      if (noteEl) {                                                              // 音: 選ぶ・ドラッグで動かす
+      const s = this.s;
+      const modifier = ev.shiftKey || ev.ctrlKey || ev.metaKey;
+      const additive = modifier || this.selecting;                                         // 選びたす（Shift・Ctrl/⌘・「範囲選択」のモード）
+      if (noteEl) {                                                              // 音: 選ぶ・ドラッグで（選んだ音ぜんぶを）動かす
         const nm = Number(noteEl.dataset.midi);
         ev.preventDefault();
         g.setPointerCapture(ev.pointerId);
+        if (additive) {
+          if (s.sel.has(nm)) { s.sel.delete(nm); s.selected = s.sel.size ? [...s.sel].pop() : null; this.drag = { mode: 'none' }; this.renderRoll(); return; }
+          s.sel.add(nm); s.selected = nm;
+        } else if (!s.sel.has(nm)) { s.sel = new Set([nm]); s.selected = nm; }
+        else s.selected = nm;                                                    // すでに選んでいる音: 選びなおさない（まとめて動かすため）
         this.snapshot();
-        this.s.selected = nm;
-        this.drag = { midi: nm, y0: ev.clientY, moved: false, pointerId: ev.pointerId, snap: this.undoStack.length };
+        this.drag = { mode: 'move', from: [...s.sel].sort((a, b) => a - b), primary0: nm, y0: ev.clientY, moved: false, pointerId: ev.pointerId, additive, lastDm: 0 };
         this.audition([nm], { duration: 0.6 });
         this.renderRoll();
-      } else if (ev.pointerType === 'touch') {                                 // 指: タップ（動かさずに離す）で置く。縦になぞるときは、スクロール
+      } else if (ev.pointerType === 'touch' && !this.selecting) {                // 指（ふつうのモード）: タップ（動かさずに離す）で置く。縦になぞるときは、スクロール
         this.tap = { x: ev.clientX, y: ev.clientY, m, t: performance.now() };
-      } else {                                                                  // マウス・ペン: その場で置いて、そのまま動かせる
+      } else {                                                                    // マウス・ペン・「範囲選択」のモードの指: ドラッグで範囲選択 / 動かさずに離せば、音を置く（モードが ON なら、選びなおし）
         ev.preventDefault();
-        if (this.addNote(m)) { g.setPointerCapture(ev.pointerId); this.drag = { midi: m, y0: ev.clientY, moved: false, pointerId: ev.pointerId, snap: this.undoStack.length, created: true }; }
+        g.setPointerCapture(ev.pointerId);
+        this.drag = { mode: 'pending', x0: ev.clientX, y0: ev.clientY, m, additive, modifier, base: additive ? new Set(s.sel) : new Set(), pointerId: ev.pointerId, moved: false };
       }
     });
     g.addEventListener('pointermove', (ev) => {
-      if (!this.drag) { this.showGhost(ev); return; }
       const d = this.drag;
-      const dm = -Math.round((ev.clientY - d.y0) / this.rh);
-      const to = clamp(d.midi + dm, NOTE_LO, NOTE_HI);
-      const cur = this.s.selected;
-      if (cur !== null && to !== cur && this.moveNote(cur, to)) { d.moved = true; this.audition([to], { duration: 0.4 }); }
+      if (!d) { this.showGhost(ev); return; }
+      if (d.mode === 'none') return;
+      if (d.mode === 'pending') {
+        if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 5) return;       // 動いていない: まだ、クリック（音を置く）かもしれない
+        d.mode = 'marquee'; d.moved = true;
+        this.el.ghost.classList.add('hidden');
+      }
+      if (d.mode === 'marquee') { this.updateMarquee(ev, d); return; }
+      const want = -Math.round((ev.clientY - d.y0) / this.rh);                    // 動かしたい半音の数（ドラッグを始めた高さから）
+      if (want === d.lastDm) return;
+      for (let k = want; k !== d.lastDm; k += k > d.lastDm ? -1 : 1) {            // 行き止まり（範囲の外・選んでいないほかの音）なら、動かせるところまで
+        if (this.shiftNotes(d.from.map((m) => m + d.lastDm), k - d.lastDm)) {
+          d.lastDm = k; d.moved = true;
+          this.s.selected = d.primary0 + k;
+          this.audition([d.primary0 + k], { duration: 0.4 });
+          break;
+        }
+      }
     });
     const up = (ev) => {
-      if (this.drag) {
-        const d = this.drag; this.drag = null;
-        if (!d.moved && !d.created) {                                           // 動かさずに離した: 音を、ダブルクリック（ダブルタップ）で消す
-          this.undoStack.pop();                                                 // 動かしていないので、戻す操作に積まない
+      const d = this.drag;
+      if (d) {
+        this.drag = null;
+        if (d.mode === 'none') return;
+        if (d.mode === 'pending') {                                              // 動かさずに離した
+          if (this.selecting) { if (!d.modifier) this.setSel([]); }              // 「範囲選択」のモード: 空きのタップは、選びなおし（音は、置かない）
+          else if (!d.modifier) this.addNote(d.m);                                // ふつう: そこに音を置く（Shift・Ctrl/⌘ を押していれば、置かない）
+          return;
+        }
+        if (d.mode === 'marquee') { this.el.box.classList.add('hidden'); this.renderRoll(); return; }
+        if (!d.moved) {                                                          // 動かさずに離した: 音を、ダブルクリック（ダブルタップ）で消す
+          this.undoStack.pop();                                                  // 動かしていないので、戻す操作に積まない
+          if (!d.additive && d.from.length > 1) { this.setSel([d.primary0], d.primary0); return; }        // 選んだ音を、動かさずに、クリックだけ: その1つだけの選びに
           const now = performance.now();
           if (this._lastTap && this._lastTap.m === this.s.selected && now - this._lastTap.t < DOUBLE_MS) { this._lastTap = null; this.removeNote(this.s.selected); return; }
           this._lastTap = { m: this.s.selected, t: now };
@@ -339,12 +424,12 @@ export class ChordLab {
       }
     };
     g.addEventListener('pointerup', up);
-    g.addEventListener('pointercancel', () => { this.drag = null; this.tap = null; });
+    g.addEventListener('pointercancel', () => { const d = this.drag; this.drag = null; this.tap = null; if (d && d.mode === 'marquee') this.el.box.classList.add('hidden'); if (d && d.mode === 'move' && !d.moved) this.undoStack.pop(); });
     g.addEventListener('pointerleave', () => this.el.ghost.classList.add('hidden'));
   }
   showGhost(ev) {
     const gh = this.el.ghost;
-    if (ev.pointerType === 'touch' || !ev.target.closest || ev.target.closest('.cl-note')) { gh.classList.add('hidden'); return; }
+    if (this.selecting || ev.pointerType === 'touch' || !ev.target.closest || ev.target.closest('.cl-note')) { gh.classList.add('hidden'); return; }
     const m = this.pointToMidi(ev);
     gh.classList.remove('hidden');
     gh.style.top = `${(NOTE_HI - m) * this.rh}px`; gh.style.height = `${this.rh - 1}px`;
@@ -357,31 +442,37 @@ export class ChordLab {
     const tag = ev.target && ev.target.tagName;
     const typing = tag === 'INPUT' && ev.target.type === 'text';
     const mod = ev.metaKey || ev.ctrlKey;
-    if (ev.key === 'Escape') { if (typing) { ev.target.blur(); ev.preventDefault(); return; } ev.preventDefault(); if (this.s.selected !== null) this.select(null); else this.close(); return; }
+    if (ev.key === 'Escape') { if (typing) { ev.target.blur(); ev.preventDefault(); return; } ev.preventDefault(); if (this.s.sel.size) this.setSel([]); else this.close(); return; }
     if (typing) return;
     if (mod && (ev.key === 'z' || ev.key === 'Z')) { ev.preventDefault(); if (ev.shiftKey) this.redo(); else this.undo(); return; }
     if (mod && (ev.key === 'y' || ev.key === 'Y')) { ev.preventDefault(); this.redo(); return; }
+    if (mod && (ev.key === 'a' || ev.key === 'A')) { ev.preventDefault(); this.selectAll(); return; }
     if (ev.key === ' ' && tag !== 'BUTTON') { ev.preventDefault(); if (!ev.repeat) this.play(false); return; }
-    const sel = this.s.selected;
-    if (sel === null) return;
-    if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); this.removeNote(sel); return; }
+    const s = this.s;
+    if (!s.sel.size) return;
+    if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); this.removeSelected(); return; }
     const d = { ArrowUp: ev.shiftKey ? 12 : 1, ArrowDown: ev.shiftKey ? -12 : -1 }[ev.key];
-    if (d) { ev.preventDefault(); this.snapshot(); if (this.moveNote(sel, sel + d)) this.audition([sel + d], { duration: 0.4 }); else this.undoStack.pop(); }
+    if (d) {
+      ev.preventDefault();
+      this.snapshot();
+      const from = [...s.sel].sort((a, b) => a - b);
+      if (this.shiftNotes(from, d)) this.audition([s.selected], { duration: 0.4 }); else this.undoStack.pop();
+    }
   }
 
   // ---------- 保存・削除 ----------
   // 削除・もとにもどすは、2回押して実行（まちがって消さないように）
   confirmable(key, fn) {
-    if (this.confirming === key) { clearTimeout(this._confirmTimer); this.confirming = null; this.el.reset.textContent = this.s.mode === 'custom' ? 'このコードを削除' : 'もとにもどす'; fn(); return; }
+    if (this.confirming === key) { clearTimeout(this._confirmTimer); this.confirming = null; this.el.reset.textContent = 'このコードを削除'; fn(); return; }
     this.confirming = key;
     this.el.reset.textContent = 'もう一度押すと実行';
     clearTimeout(this._confirmTimer);
-    this._confirmTimer = setTimeout(() => { if (this.isOpen && this.confirming === key) { this.confirming = null; this.el.reset.textContent = this.s.mode === 'custom' ? 'このコードを削除' : 'もとにもどす'; } }, 3000);
+    this._confirmTimer = setTimeout(() => { if (this.isOpen && this.confirming === key) { this.confirming = null; this.el.reset.textContent = 'このコードを削除'; } }, 3000);
   }
   resetOrDelete() {
     const s = this.s;
-    const ok = s.mode === 'custom' ? this.store.removeCustom(s.id) : this.store.resetBase(s.id);
-    if (ok) { const type = s.mode === 'custom' ? 'remove' : 'reset', id = s.id; this.close(true); this.onSaved({ type, id }); this.onClose(); }
+    if (s.mode !== 'custom') return;
+    if (this.store.removeCustom(s.id)) { const id = s.id; this.close(true); this.onSaved({ type: 'remove', id }); this.onClose(); }
   }
   save() {
     const s = this.s, cand = this.cand();
@@ -389,13 +480,14 @@ export class ChordLab {
     const symbol = (s.symbol || '').trim();
     const args = { notes: s.notes, candidate: cand, symbol: symbol && symbol !== cand.symbol ? symbol : '', level: s.level, color: s.color, shape: s.shape };
     if (s.touched && symbol) args.symbol = symbol;
-    const r = s.mode === 'new' ? this.store.addCustom(args) : s.mode === 'custom' ? this.store.updateCustom(s.id, args) : this.store.editBase(s.id, args);
+    const r = s.mode === 'new' ? this.store.addCustom(args) : this.store.updateCustom(s.id, args);
     if (!r.ok) {
-      s.msg = { text: r.reason === 'duplicate' ? `同じ構成音のコード「${r.same.name}（${r.same.symbol}）」が、すでにあります` : REASONS[r.reason] || '保存できませんでした', kind: 'warn' };
+      const fromSame = r.reason === 'duplicate' && s.from && r.same.id === s.from.id;
+      s.msg = { text: fromSame ? `もとのコード「${r.same.name}（${r.same.symbol}）」と、同じ構成音です。音を変えてから、追加してください` : r.reason === 'duplicate' ? `同じ構成音のコード「${r.same.name}（${r.same.symbol}）」が、すでにあります` : REASONS[r.reason] || '保存できませんでした', kind: 'warn' };
       this.renderPanel();
       return;
     }
-    const type = s.mode === 'new' ? 'add' : r.reset ? 'reset' : s.mode === 'custom' ? 'update' : 'edit';
+    const type = s.mode === 'new' ? 'add' : 'update';
     this.close(true);
     this.onSaved({ type, id: r.id });
     this.onClose();

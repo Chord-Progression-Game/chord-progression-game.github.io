@@ -107,7 +107,7 @@ def main():
             ch.eval("__app.game.clear()"); time.sleep(0.2)
             x, y = card_xy(ch, cid(ch, "Ⅴ7"))
             ch.touch_event("touchStart", [(x, y)]); time.sleep(0.75); ch.touch_event("touchEnd", []); time.sleep(0.4)
-            check("長押し: 右クリックと同じメニュー（コードを編集）が出る。駒は、選ばれない", ch.eval("[!document.querySelector('#chordmenu').classList.contains('hidden'), [...document.querySelectorAll('#chordmenu .cm-item')].map((e) => e.textContent), __app.input.armed]"), [True, ["コードを編集"], None])
+            check("長押し: 右クリックと同じメニュー（これをもとに自作コードをつくる）が出る。駒は、選ばれない", ch.eval("[!document.querySelector('#chordmenu').classList.contains('hidden'), [...document.querySelectorAll('#chordmenu .cm-item')].map((e) => e.textContent), __app.input.armed]"), [True, ["これをもとに自作コードをつくる"], None])
             ch.eval("document.querySelectorAll('#chordmenu .cm-item')[0].click()"); time.sleep(0.6)
             check("長押し → 編集: 編集画面が開く。全画面（横にはみ出さない）", ch.eval("[__app.state, document.documentElement.scrollWidth <= window.innerWidth + 1, document.querySelector('.cl-card').getBoundingClientRect().width >= window.innerWidth - 1]"), ["chordlab", True, True])
             # ---- 編集画面: タップで音を置く・ダブルタップで消す ----

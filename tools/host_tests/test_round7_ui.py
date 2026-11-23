@@ -274,7 +274,7 @@ def main():
             check("スマホ・メロディー: 技のスタンプは、帯の下に出る（帯にかぶらない）", r.get("below", True), True)
             ch.eval("__app.startStage(__trials[0], 'trial')")
             time.sleep(1.0)
-            check("スマホ・チャレンジステージ: 上の細い帯に、条件の数・得点が出る（「null」などの余計な文字がない）", ch.eval("document.querySelector('#step-bar').textContent"), "1条件 1/2 ・ 得点 0/400")
+            check("スマホ・チャレンジステージ: 上の細い帯に、条件の数・得点が出る（「null」などの余計な文字がない）", ch.eval("document.querySelector('#step-bar').textContent"), "1条件 1/2 ・ 得点 0/350")
             ch.eval("(() => { const t = __app.table, g = __app.game; ['Ⅲm', 'Ⅵm', 'Ⅱm', 'Ⅴ7', 'ⅠM7'].forEach((n, i) => g.place(i, t.byName(n).id)); return true; })()")
             time.sleep(0.5)
             check("スマホ・チャレンジステージ: 条件がそろうと、帯に「提出する」ボタンが出る", ch.eval("[document.querySelector('#step-bar').textContent, !!document.querySelector('#btn-trial-done-bar')]"), ["✓条件そろい・ノルマ達成！提出する", True])

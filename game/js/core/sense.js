@@ -3,27 +3,34 @@
 //   ・ルールで決める（学習したものではない）。条件も点数も、下の表のとおり。理由の文章も、条件から作る
 //   ・すでに、名前のついた技が取ったつながり（claimed）では、重ねて加点しない（二重に数えない）
 //   ・ヒント（hints.js）も、同じ「自然さ」の考え方（edgeInfo / flowReason）を使う
-//   ・加点の規則: G1 階段 / G2 機能のながれ / G3 導音の解決 / G4 なめらかな声 / G5 サス（sus4）の解決（2026-11-17）/ G6 フレーズの終わりの「解決」（2026-11-17）/ G7 内声の半音の動き（2026-11-23）。減点: B1 進行感なし / B2 唐突な借用和音
-//   ・G7（内声の半音の動き）だけは、技が取ったつながりにも付ける。技（強進行など）は、ルート（ベース）の動きを見ていて、G7 は、内側の声（3度・7度の音）の動きを見ているため（別の観点）
+//   ・加点の規則: G1 階段 / G2 機能のながれ / G3 導音の解決 / G4 なめらかな声 / G5 サス（sus4）の解決（2026-11-17）/ G6 フレーズの終わりの「解決」（2026-11-17）/ G7 内声の半音の動き（2026-11-23。2026-11-24 に、どの声でも半音で動けば、に広げた）。
+//     減点: B1 進行感なし / B2 唐突な借用和音 / B3 同じ和音が続く（2026-11-24）/ B4 役に立っていない駒（2026-11-24。盤の外から、analyze が足す）
+//   ・G7（内声の半音の動き）だけは、技が取ったつながりにも付ける。技（強進行など）は、ルート（ベース）の動きを見ていて、G7 は、内側の声の動きを見ているため（別の観点）
 // DOM に触れない。
 
 import { chordRoles, pcName } from './chordbook.js';
 
 export const SENSE = {
   goodCap: 320,        // 加点の合計の上限（1つの盤）。2026-11-23 に、内声の加点（G7）のぶん、240 → 320
-  badCap: 120,         // 減点の合計の上限
+  badCap: 160,         // 減点の合計の上限（2026-11-24 に、同じ和音・役に立っていない駒の減点のぶん、120 → 160）
   stairs: { 3: 60, 4: 90, 5: 120 },     // ベースラインの階段: 3つ・4つ・5つ以上の和音
   flowSDT: 50,         // サブドミナント → ドミナント → トニック
   flowTSD: 30,         // トニック → サブドミナント → ドミナント
   leading: 40,         // 導音（Ⅶ）の解決
   susResolve: 40,      // サス（sus4）の解決: Ⅴsus47 → Ⅴ7 のように、4度の音（内声）が、半音さがって、3度の音へ
-  guideTone: 30,       // ガイドトーンの半音進行（G7）: 前の和音の7度の音が、半音動いて、次の和音の3度の音へ（Ⅱm7 → Ⅴ7 の「ド → シ」・Ⅴ7 → Ⅰ の「ファ → ミ」）。1つのつながりにつき。盤に、最大3回
-  chromatic: 40,       // 半音で動き続ける内声（G7）: 内側の声（ルート以外の音）が、3つ以上の和音で、同じ向きに、半音ずつ動く（Ⅳ → Ⅳm → Ⅰ の「ラ → ラ♭ → ソ」など）。盤に、最大2回
-  innerCap: 100,       // 内声の加点（G7）の合計の上限（1つの盤）
+  guideTone: 30,       // ガイドトーンの半音進行（G7）: 前の和音の7度の音が、半音動いて、次の和音の3度の音へ（Ⅱm7 → Ⅴ7 の「ド → シ」・Ⅴ7 → Ⅰ の「ファ → ミ」）。1つのつながりにつき
+  semitone: 20,        // そのほかの、声の半音の動き（G7）: 前の和音にあって次の和音にない音が、半音で、次の和音にだけある音へ（ⅠM7 → Ⅰ7 の「シ → シ♭」・Ⅴ7 → Ⅰ の「シ → ド」）。1つのつながりにつき
+  linkMore: 10,        // 同じつながりで、半音で動く声が2つ以上あるとき、1つふえるごとの上乗せ
+  linkCap: 50,         // 1つのつながりの、内声の加点の上限
+  chromatic: 40,       // 半音で動き続ける内声（G7）: ルートが動く線。内側の声が、3つ以上の和音で、同じ向きに、半音ずつ動く（Ⅳ → Ⅳm7 → Ⅰ の「ラ → ラ♭ → ソ」など）。盤に、最大2回
+  innerCap: 120,       // 内声の加点（G7）の合計の上限（1つの盤）。2026-11-24 に、100 → 120
   resolve: 60,         // 解決: フレーズの終わり（4番・8番、またはその後に駒がない）を、安定したトニック（Ⅰ系・Ⅵm系）で終える。盤に、最大2回
   smooth: 40,          // なめらかな声の動き（3つ以上の和音で、どのつながりも共通音が2つ以上）
   incoherent: 40,      // 進行感なし（3つ以上の和音で、どのつながりも「理由」がない）
   abrupt: 30,          // 唐突な借用和音
+  dup: 20,             // 同じ和音が、そのまま続く（同じ響きをのばしたいときは「→」を使う）。1つのつながりにつき
+  idle: 15,            // 役に立っていない駒（技にも、耳に馴染むつながりにも、使われていない駒）。1つにつき。盤に3つ以上の駒があるときだけ
+  idleCap: 90,         // 役に立っていない駒の減点の合計の上限
 };
 
 const SCORE_COLORS = { good: '#86c79a', bad: '#e0674d', note: '#aaa393' };
@@ -40,6 +47,27 @@ export const isMinorIv = (c) => !c.isRepeat && c.rootPc === 5 && (c.type === 'mi
 // サス（sus4）の和音と、その解決先（同じルートの、長三和音・属七の和音）。Xsus4（Xsus47）→ X（X7）で、4度の音が、半音さがって、3度の音へ動く
 export const isSus = (c) => !c.isRepeat && (c.type === 'sus47' || c.type === 'sus4');
 export const isSusResolution = (a, b) => isSus(a) && !b.isRepeat && b.rootPc === a.rootPc && (b.type === 'maj' || b.type === 'dom7');
+// ---------- フレーズの終わり（終止・解決の位置の決まり）----------
+//   seg[idx] が、フレーズの終わりか。次のどれか:
+//     ① いちばん最後の駒（その後に続く駒がない）
+//     ② 4番・8番に着く駒（分割したマスの前半は、そのマスの終わりではない。後半が続くため）
+//     ③ 同じフレーズの中で、そのあとに「同じルートの和音」だけが続いて、①か②に着く（2026-11-24）
+//   ③ は、終止のあとに、同じ和音の色ちがい（Ⅰ → ⅠM7 → Ⅰ7 など）を足して、トニックを引きのばしても、終止がなくならないようにするため。
+//   終止（Ⅴ → Ⅰ）のあとに、同じルートの和音が続くのは、「終わりの和音を、色を変えながらのばしている」だけで、終わっていることは変わらない。
+//   ルートの違う和音が続くときは、そこで、別の動きが始まっているので、終止ではない（フレーズの終わりに着いた駒だけが、終止になる）
+export function endsPhrase(seg, idx, phrase = 4) {
+  const atEnd = (k) => k === seg.length - 1 || (seg[k].last % phrase === phrase - 1 && seg[k].half !== 0);
+  if (atEnd(idx)) return true;
+  const root = seg[idx].chord.rootPc;
+  const bar = Math.floor(seg[idx].last / phrase);
+  for (let k = idx + 1; k < seg.length; k++) {
+    const e = seg[k];
+    if (e.blocked || e.chord.isRepeat || e.chord.rootPc !== root || Math.floor(e.first / phrase) !== bar) return false;
+    if (atEnd(k)) return true;
+  }
+  return false;
+}
+
 // ---------- 内声の半音の動き（G7）----------
 //   内声 = ルート（ベースの音）以外の、和音の構成音。ガイドトーン = 3度の音と 7度の音（和音の性格を決める音）
 const pcOf = (c, roles) => { const r = chordRoles(c).find((t) => roles.includes(t.role)); return r ? r.pc : null; };
@@ -52,6 +80,23 @@ export function guideToneMove(a, b) {
   if (!a || !b || a.isRepeat || b.isRepeat) return null;
   const s = seventhPc(a), t = thirdPc(b);
   return s !== null && t !== null && isSemitone(s, t) ? { from: s, to: t } : null;
+}
+// 声の半音の動き（2026-11-24）: a にあって b にない音が、半音で、b にだけある音へ動く。声が1つ動くごとに、{ from, to, guide }（主音からの半音。guide = ガイドトーン: 7度 → 3度）
+//   ルートどうし（ベースの半音の動き。強進行でない半音下・階段）は、技・ジャッジの階段が見ているので、数えない。1つの音は、1回だけ使う
+export function semitoneLinks(a, b) {
+  if (!a || !b || a.isRepeat || b.isRepeat) return [];
+  const aOnly = a.pcs.filter((p) => !b.pcs.includes(p));
+  const bOnly = b.pcs.filter((p) => !a.pcs.includes(p));
+  const s7 = seventhPc(a), t3 = thirdPc(b);
+  const used = new Set();
+  const out = [];
+  for (const x of aOnly) {
+    const y = bOnly.find((q) => !used.has(q) && isSemitone(x, q) && !(x === a.rootPc && q === b.rootPc));
+    if (y === undefined) continue;
+    used.add(y);
+    out.push({ from: x, to: y, guide: x === s7 && y === t3 });
+  }
+  return out.sort((p, q) => (q.guide ? 1 : 0) - (p.guide ? 1 : 0));
 }
 // 内声が、半音ずつ、同じ向きに動き続ける線（3つ以上の和音）。chords: 並びの和音。戻り値: [{ from: 最初の和音の番号, steps: 動いた数, pcs: 音の高さの並び }]（見つかった、いちばん長い線ごとに1つ。短い線は、長い線に含まれる）
 export function chromaticLines(chords) {
@@ -112,13 +157,19 @@ export function naturalAfterBorrowed(b, n) {
 // 借り物の和音の呼び名（変種）
 export const SUB_VARIANTS = { 'Ⅱ♭M7': 'ネアポリタン', 'Ⅵ♭M7': '♭Ⅵ', 'Ⅶ♭7': '♭Ⅶ', 'Ⅲ♭M7': '♭Ⅲ', 'Ⅲ♭m6': '♭Ⅲm6' };
 
+// なめらかな声の動きのつながり: 動く声が1つだけ（ほかの声は、そのまま）。共通音が、少ないほうの和音の音数より1つ少ない（3和音なら2つ・7th の和音なら3つ）以上、かつ2つ以上
+export const isSmoothPair = (a, b) => {
+  const common = a.pcs.filter((p) => b.pcs.includes(p)).length;
+  return common >= 2 && common >= Math.min(a.pcs.length, b.pcs.length) - 1;
+};
+
 // ---------- つながり1本の性質 ----------
 const sameGroup = (a, b) => (a.fn === 'T' && b.fn === 'T') || (a.fn === 'SD' && b.fn === 'SD');
 export function edgeInfo(a, b) {
   const m = (((b.rootPc - a.rootPc) % 12) + 12) % 12;                        // ルートの動き（半音。上向き）
   const common = a.pcs.filter((p) => b.pcs.includes(p)).length;             // 共通音の数
   let natural = 0, why = '';
-  if (m === 5 || m === 7) { natural = 2; why = m === 5 ? 'ルートが4度上がる（強く引っぱる動き）' : 'ルートが5度上がる（やさしくつながる動き）'; }
+  if (m === 5 || m === 7) { natural = 2; why = m === 5 ? 'ルートが5度下がる（強く引っぱる動き）' : 'ルートが5度上がる（やさしくつながる動き）'; }
   else if (m === 1 || m === 2 || m === 10 || m === 11) { natural = 1; why = 'ルートが階段のようになめらかに動く'; }
   else if (m === 0) { natural = 1; why = '同じルートの響きの変化'; }
   else if (m === 3 || m === 4 || m === 8 || m === 9) {
@@ -135,7 +186,7 @@ export function judge(segments, claimed, opts = {}) {
   const phrase = opts.phrase || 4;                       // 1フレーズの長さ（位置の数）
   const claimedKinds = opts.kinds || new Map();          // 取られたつながり → 'generic'（ふつうの強進行・弱進行・半音下）か 'named'（名前のついた技）
   let resolved = 0;                                      // 「解決」の加点を出した数（盤に、最大2回）
-  let inner = 0, guides = 0, lines = 0;                  // 内声の加点（G7）: 合計・ガイドトーンの数・半音の線の数（どれも、盤ぜんぶで数える。休みで分かれた並びをまたいで）
+  let inner = 0, lines = 0;                              // 内声の加点（G7）の合計・半音の線の数（どちらも、盤ぜんぶで数える。休みで分かれた並びをまたいで）
   const items = [];
   const push = (it) => {
     const ps = it.positions.slice().sort((a, b) => a - b);
@@ -200,7 +251,7 @@ export function judge(segments, claimed, opts = {}) {
     {
       let i = 0;
       while (i + 1 < seg.length) {
-        const ok = (k) => edgeBetween(k) && !seg[k].chord.isRepeat && !seg[k + 1].chord.isRepeat && edgeInfo(seg[k].chord, seg[k + 1].chord).common >= 2;
+        const ok = (k) => edgeBetween(k) && !seg[k].chord.isRepeat && !seg[k + 1].chord.isRepeat && isSmoothPair(seg[k].chord, seg[k + 1].chord);
         if (!ok(i)) { i++; continue; }
         let j = i + 1;
         while (j + 1 < seg.length && ok(j)) j++;
@@ -210,7 +261,7 @@ export function judge(segments, claimed, opts = {}) {
         if (n >= 3 && anyFree) {
           const names = seg.slice(i, j + 1).map((e) => e.chord.name);
           push({ id: `smooth|${si}|${i}`, kind: 'good', name: 'なめらかな声の動き', points: SENSE.smooth, positions: seg.slice(i, j + 1).flatMap((e) => e.positions), chords: names,
-            reason: `${names.join(' → ')}。となりの和音どうしが2つ以上の音を共有しています。音の動きが小さくて、なめらかにつながるので耳に馴染みます。` });
+            reason: `${names.join(' → ')}。となりの和音どうしで、動く声が1つだけ（ほかの声は、そのまま）です。音の動きが小さくて、なめらかにつながるので耳に馴染みます。` });
         }
         i = j;
       }
@@ -226,10 +277,10 @@ export function judge(segments, claimed, opts = {}) {
     }
 
     // ---- G6: 解決（フレーズの終わりを、安定したトニックで終える）----
-    //   フレーズの終わり = 4番・8番に着く駒、またはその後に続く駒がない駒（終止の技と同じ決まり）。
+    //   フレーズの終わり = 4番・8番に着く駒、またはその後に続く駒がない駒。そのあとに、同じルートの和音（Ⅰ → ⅠM7 → Ⅰ7 など）だけが続いて着くときも、終わり（終止の技と同じ決まり。endsPhrase）。
     //   名前のついた技（終止・固有進行など）が、その駒へのつながりを取っているときは、重ねて加点しない。ふつうの強進行・弱進行が取っているだけなら、加点する
     for (let i = 1; i < seg.length && resolved < 2; i++) {
-      const isEnd = i === seg.length - 1 || (seg[i].last % phrase === phrase - 1 && seg[i].half !== 0);
+      const isEnd = endsPhrase(seg, i, phrase);
       if (!isEnd || !edgeBetween(i - 1)) continue;
       const a = seg[i - 1].chord, b = seg[i].chord;
       if (!isStableTonic(b) || a.rootPc === b.rootPc) continue;                      // 同じルートの、響きの変化は、解決ではない
@@ -240,30 +291,46 @@ export function judge(segments, claimed, opts = {}) {
         reason: `${a.name} → ${b.name}。フレーズの終わりを ${fam} で終えました。広がりや緊張から安定した和音へ着地して、ひと区切りついた感じ（解決）があります。${b.rootPc === 9 ? 'Ⅵm は Ⅰ の代わりに終われる少し切ない着地です。' : ''}` });
     }
 
-    // ---- G7: 内声の半音の動き（2026-11-23）。ルート（ベース）以外の声が、半音で動く、効果的なつながり ----
-    //   ・ガイドトーンの半音進行: 7度の音 → 3度の音（Ⅱm7 → Ⅴ7 の ド → シ。Ⅴ7 → Ⅰ の ファ → ミ）。+30。技が取ったつながりにも付く
-    //   ・半音で動き続ける内声: 3つ以上の和音で、同じ声が、半音ずつ同じ向きに動く（Ⅳ → Ⅳm → Ⅰ の ラ → ラ♭ → ソ）。+40
-    //   ・内声の加点の合計は、100 まで
+    // ---- G7: 内声の半音の動き（2026-11-23。2026-11-24 に、同じルートの色の変化にも広げた）----
+    //   ルート（ベース）の動きとは別に、内側の声が、半音でなめらかにつながる、効果的なつながり。どれも、技が取ったつながりにも付く（技は、ルートの動きを見ているため）
+    //   ・ガイドトーンの半音進行 +30: 強進行（ルートが5度下がる）のつながりで、前の和音の7度の音が、半音動いて、次の和音の3度の音へ（Ⅱm7 → Ⅴ7 の ド → シ・Ⅴ7 → ⅠM7 の ファ → ミ）
+    //   ・同じルートの色の変化 +20: ルートは動かず、内側の声が、半音で動く（ⅠM7 → Ⅰ7 の シ → シ♭・Ⅳ → Ⅳm の ラ → ラ♭）。ルートが動かない分、内声の動きがよく聞こえる（クリシェの1歩め）
+    //   ・同じつながりで、半音で動く声が2つ以上なら、1つふえるごとに +10（1つのつながりで、上限 50）
+    //   ・半音で動き続ける内声 +40: 3つ以上の和音で、同じ声が、同じ向きに、半音ずつ動く（Ⅳ → Ⅳm7 → Ⅰ の ラ → ラ♭ → ソ・丸サ進行 ⅣM7 → Ⅲ7 → Ⅵm7 の ラ → ソ♯ → ソ）。盤に最大2回。
+    //     同じルートのままの線（クリシェ）は、技（クリシェ）が取るので、ここでは数えない
+    //   ・内声の加点の合計は、盤で 120 まで
+    //   ルートが動いていて、ガイドトーンでもない半音の動きは、数えない（ランダムに並べても、たまたま半音で動くことは多いので、「効果的」なものだけを数える）
+    for (let i = 0; i + 1 < seg.length && inner < SENSE.innerCap; i++) {
+      if (!edgeBetween(i)) continue;
+      const a = seg[i].chord, b = seg[i + 1].chord;
+      const links = semitoneLinks(a, b);
+      const strong = (((b.rootPc - a.rootPc) % 12) + 12) % 12 === 5;                       // ガイドトーンの半音進行は、強進行（4度上 = 5度下）のつながりのときだけ（Ⅱm7 → Ⅴ7 → ⅠM7 の形）
+      const guide = strong ? links.find((l) => l.guide) || null : null;
+      const same = a.rootPc === b.rootPc;
+      if (!links.length || (!guide && !same)) continue;
+      const want = Math.min(SENSE.linkCap, (guide ? SENSE.guideTone : SENSE.semitone) + SENSE.linkMore * (links.length - 1));
+      const pts = Math.min(want, SENSE.innerCap - inner);
+      inner += pts;
+      const moves = links.map((l) => `「${pcName(l.from)}」から「${pcName(l.to)}」`).join('・');
+      push({ id: `link|${si}|${i}`, kind: 'good', name: guide ? 'ガイドトーンの半音進行' : '内声の半音の動き', points: pts, positions: [...seg[i].positions, ...seg[i + 1].positions], chords: [a.name, b.name],
+        reason: guide
+          ? `${a.name} → ${b.name}。${a.name} の7度の音（${pcName(guide.from)}）が、半音動いて、${b.name} の3度の音（${pcName(guide.to)}）へ。ベースの動きとは別に、内側の声（内声）が半音でなめらかにつながります。和音の性格を決める3度・7度の音（ガイドトーン）が半音で動くのは、ジャズでとても大切にされる、きれいなつながりです。${links.length > 1 ? `ほかにも、${links.filter((l) => !l.guide).map((l) => `「${pcName(l.from)}」から「${pcName(l.to)}」`).join('・')}と、半音で動く声があります。` : ''}`
+          : `${a.name} → ${b.name}。ルートは動かないまま、内側の声が、${moves}と、半音で動きます。和音の色だけが変わるので、内声の動きがよく聞こえます。このまま同じ向きに半音で動き続けると、「クリシェ」になります。` });
+    }
     {
-      for (let i = 0; i + 1 < seg.length && guides < 3; i++) {
-        if (!edgeBetween(i)) continue;
-        const a = seg[i].chord, b = seg[i + 1].chord;
-        const g = guideToneMove(a, b);
-        if (!g || inner + SENSE.guideTone > SENSE.innerCap) continue;
-        guides++; inner += SENSE.guideTone;
-        push({ id: `guide|${si}|${i}`, kind: 'good', name: 'ガイドトーンの半音進行', points: SENSE.guideTone, positions: [...seg[i].positions, ...seg[i + 1].positions], chords: [a.name, b.name],
-          reason: `${a.name} → ${b.name}。${a.name} の7度の音（${pcName(g.from)}）が、半音動いて、${b.name} の3度の音（${pcName(g.to)}）へ。ベースの動きとは別に、内側の声（内声）が半音でなめらかにつながります。和音の性格を決める3度・7度の音（ガイドトーン）が半音で動くのは、ジャズでとても大切にされる、きれいなつながりです。` });
-      }
-      // 半音で動き続ける内声: 休み・「？」で切れない、続きの並び（切れ目をまたがない）
+      // 半音で動き続ける内声（ルートが動く線）。休み・「？」で切れない、続きの並び（切れ目をまたがない）
       let run = [];
       const flush = () => {
         const chords = run.map((e) => e.chord);
         for (const ln of chromaticLines(chords)) {
-          if (lines >= 2 || inner + SENSE.chromatic > SENSE.innerCap) break;
+          if (lines >= 2 || inner >= SENSE.innerCap) break;
           const evs = run.slice(ln.from, ln.from + ln.steps + 1);
-          lines++; inner += SENSE.chromatic;
+          if (evs.every((e) => e.chord.rootPc === evs[0].chord.rootPc)) continue;            // ルートが同じままの線は、クリシェの技が取る
+          if (evs.some((e, k) => k > 0 && !e.chord.pcs.some((p) => evs[k - 1].chord.pcs.includes(p)))) continue;     // 動かない音（共通音）が1つもないつながりは、線として聞こえない
+          const pts = Math.min(SENSE.chromatic, SENSE.innerCap - inner);
+          lines++; inner += pts;
           const names = evs.map((e) => e.chord.name);
-          push({ id: `chroma|${si}|${seg.indexOf(evs[0])}`, kind: 'good', name: '半音で動き続ける内声', points: SENSE.chromatic, positions: evs.flatMap((e) => e.positions), chords: names,
+          push({ id: `chroma|${si}|${seg.indexOf(evs[0])}`, kind: 'good', name: '半音で動き続ける内声', points: pts, positions: evs.flatMap((e) => e.positions), chords: names,
             reason: `${names.join(' → ')}。内側の声が「${ln.pcs.map((p) => pcName(p)).join(' → ')}」と、半音ずつ同じ向きに動き続けます。ルートが動いていても、内声がなめらかな線を描くので、耳に残る、表情のある進行になります（クロマチックな内声）。` });
         }
         run = [];
@@ -307,17 +374,30 @@ export function judge(segments, claimed, opts = {}) {
       }
     }
 
-    // ---- 指摘（0点）: 同じ和音が、そのまま続いている ----
+    // ---- B3: 同じ和音が、そのまま続いている（2026-11-24 に、指摘だけ（0点）から、小さな減点に）----
+    //   同じ響きをのばしたいときは「→」の駒がある。同じ駒を並べると、駒の数だけがふえて、点をかせぐ形になるため。分割したマスの、前半と後半が同じ駒になることは、ない（1つに戻る）
     for (let i = 0; i + 1 < seg.length; i++) {
       if (!edgeBetween(i)) continue;
       const a = seg[i].chord, b = seg[i + 1].chord;
       if (!a.isRepeat && !b.isRepeat && a.id === b.id) {
-        push({ id: `same|${si}|${i}`, kind: 'note', name: '同じ和音が続いています', points: 0, positions: [...seg[i].positions, ...seg[i + 1].positions], chords: [a.name, b.name],
-          reason: `${a.name} が2つ並んでいます。同じ響きをのばしたいときは「→」の駒を使うと1つぶんのばせます。` });
+        push({ id: `same|${si}|${i}`, kind: 'bad', name: '同じ和音が続いています', points: -SENSE.dup, positions: [...seg[i].positions, ...seg[i + 1].positions], chords: [a.name, b.name],
+          reason: `${a.name} が2つ並んでいます。同じ響きをのばしたいときは「→」の駒を使うと1つぶんのばせます（同じ駒を並べても、進行はふえません）。` });
       }
     }
   });
   return items;
+}
+
+// ---- B4: 役に立っていない駒（2026-11-24）----
+//   技にも、耳に馴染むつながり（階段・機能のながれ・内声の半音の動きなど）にも、使われていない駒。駒をふやすだけで点がふえる「載せ得」を防ぐための、小さな減点（1つにつき idle。合計 idleCap まで）。
+//   盤に3つ以上の駒があるときだけ（始めの1〜2つは、まだ、つながりを作っている途中）。analyze が、使われ方を調べたあとで呼ぶ。idle: 使われていないイベントの並び
+export function idleCritique(idle) {
+  const pts = Math.min(SENSE.idleCap, SENSE.idle * idle.length);
+  const positions = idle.flatMap((e) => e.positions).sort((a, b) => a - b);
+  const names = idle.map((e) => e.chord.name);
+  return { id: 'idle', kind: 'bad', quiet: true, name: '役に立っていない駒', points: -pts, positions, chords: names, color: SCORE_COLORS.bad, sub: null, variant: null, title: '役に立っていない駒',
+    startPos: positions[0], endPos: positions[positions.length - 1], endFirst: positions[positions.length - 1],
+    reason: `${names.join('・')}（${[...new Set(positions)].map((p) => `${p + 1}番`).join('・')}）は、技にも、耳に馴染むつながり（階段・機能のながれ・内声の半音の動きなど）にも、使われていません。前後の駒と、ルートが4度・5度で動いたり、内側の声が半音で動いたりする、つながりのある駒に、かえてみよう（駒を多く並べても、つながりがないと、点にはなりません）。` };
 }
 
 // 階段の向き: seg[i] → seg[i+1] のルートが、半音・全音で、上（+1）・下（-1）に動くか。そうでなければ 0
@@ -353,10 +433,11 @@ export function flowReason(prev, y, ctx = {}) {
   if (prev.rootPc === 11 && isTonic(y)) return out(5, `${prev.name} → ${y.name}: 導音（シ）がドへ解決する`);
   if (isBorrowed(prev) && naturalAfterBorrowed(prev, y)) return out(4, `${prev.name} → ${y.name}: 借りてきた和音から、自然に着地する`);
   if (guideToneMove(prev, y)) return out(4, `${prev.name} → ${y.name}: 7度の音が半音動いて、3度の音へ（ガイドトーンの半音進行）。内声がなめらかにつながる`);
+  if (prev.rootPc === y.rootPc && semitoneLinks(prev, y).length) return out(4, `${prev.name} → ${y.name}: ルートはそのまま、内側の声が半音で動く（クリシェの形）`);
   if (isTonic(prev) && y.rootPc === 9 && (y.type === 'min' || y.type === 'min7')) return out(3, `${prev.name} → ${y.name}: Ⅰ と Ⅵm は、よく似た響き（平行調）。ふんわり切り替わる`);
   if (prev.rootPc === 9 && (prev.type === 'min' || prev.type === 'min7') && isTonic(y)) return out(3, `${prev.name} → ${y.name}: Ⅵm から Ⅰ へ。せつなさから、明るさへ`);
   if (ctx.prevPrev && stepDir([{ chord: ctx.prevPrev }, { chord: prev }], 0) !== 0 && stepDir([{ chord: prev }, { chord: y }], 0) === stepDir([{ chord: ctx.prevPrev }, { chord: prev }], 0)) return out(4, `${ctx.prevPrev.name} → ${prev.name} → ${y.name}: ベースが階段のように同じ向きに動き続ける`);
-  if (e.m === 5) return out(4, `${prev.name} → ${y.name}: ルートが4度上がる（強進行）。引っぱる力がある`);
+  if (e.m === 5) return out(4, `${prev.name} → ${y.name}: ルートが5度下がる（強進行）。引っぱる力がある`);
   if (e.m === 7) return out(3, `${prev.name} → ${y.name}: ルートが5度上がる（弱進行）。やさしくつながる`);
   if (e.natural >= 1 && e.common >= 3) return out(2, `${prev.name} → ${y.name}: 共通音が${e.common}つ。なめらかにつながる`);
   return null;

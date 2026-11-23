@@ -14,6 +14,8 @@ export const SOURCES = {
   wiki: 'Wikipedia',
   biechi: 'The Komuro Progression（解説記事）',
   jazz: 'antonjazz.com（Backdoor ii-V の解説）',
+  tjps: 'The Jazz Piano Site（Line Clichés）',
+  gctb: 'Guitar Composer\'s ToolBox（Descending Minor Cliché）',
 };
 
 // t: 曲名 / a: アーティスト / part: 使われている部分（分かるものだけ）/ note: ひとこと / src: 資料 / en: 洋楽・クラシック（日本の曲でない）
@@ -100,6 +102,12 @@ export const SONGS = {
   confirmation: [
     { t: 'Confirmation', a: 'チャーリー・パーカー', note: '1945年。ビバップの名曲。ドミナントが連なる「Bird changes」の代表', src: 'wiki', en: true },
   ],
+  cliche: [
+    { t: 'My Funny Valentine', a: 'Rodgers & Hart', part: 'はじまり。Am → AmM7 → Am7 → Am6', note: 'マイナー・クリシェの代表。ほかに、この名前でも呼ばれる', src: 'tjps', en: true },
+    { t: 'Michelle', a: 'The Beatles', note: 'Am → AmM7 → Am7 → D7（Ⅵm → ⅥmM7 → Ⅵm7 → Ⅱ7 の形）と紹介されている。資料によって、長調のクリシェ（Something など）に入れるものもある', src: 'gctb', en: true },
+    { t: 'Time in a Bottle', a: 'Jim Croce', src: 'gctb', en: true },
+    { t: 'Stairway to Heaven', a: 'Led Zeppelin', part: 'はじまり', src: 'gctb', en: true },
+  ],
   'weak_motion|カノン進行': [
     { t: '負けないで', a: 'ZARD', src: 'rag' },
     { t: 'マリーゴールド', a: 'あいみょん', part: 'Aメロ・サビ', src: 'utaten' },
@@ -117,7 +125,7 @@ SONGS['weak_motion|カノン進行（完全な形）'] = SONGS['weak_motion|カ�
 SONGS.iv_iii_vi = SONGS.maru_sa;
 
 // 日本の曲の例が、資料で確かめられなかった進行（画面に、そう書く）
-export const NO_JAPANESE = ['junkan', 'andalusian', 'ragtime', 'backdoor', 'full_cadence', 'blues8', 'confirmation'];
+export const NO_JAPANESE = ['junkan', 'andalusian', 'ragtime', 'backdoor', 'full_cadence', 'blues8', 'confirmation', 'cliche'];
 
 // 技（instance）に合う曲の一覧。{ list, viaMaruSa, noJapanese, sourceLabels } または null（曲の例がない技）
 export function songsFor(ins) {

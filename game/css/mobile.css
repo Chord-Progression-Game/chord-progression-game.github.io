@@ -167,27 +167,30 @@ canvas#gl { height: 100vh; height: 100dvh; }
   .tb-right { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; flex: 1; justify-content: flex-end; }
   .tb-right::-webkit-scrollbar { display: none; }
   .tb-right > *, .tb-right .chip { flex: none; white-space: nowrap; }
-  .tb-right .chip, .tb-left .chip { font-size: 0.78rem; padding: 0.28rem 0.6rem; min-height: 0; }
+  .tb-right .chip, .tb-left .chip { font-size: 0.78rem; padding: 0.28rem 0.6rem; min-height: 2.45rem; }                                             /* 指で押せる高さ（約30px）*/
   #stage-badge span { font-size: 0.95rem; white-space: nowrap; }
-  #stage-badge b { font-size: 0.6rem; }
+  #stage-badge b { font-size: 0.78rem; }
   .goal { font-size: 0.8rem; padding: 0.25rem 0.6rem; max-width: 18rem; }
   .bpm b { font-size: 0.95rem; }
   .soundmenu { position: fixed; right: 0.8rem; top: 3.4rem; bottom: auto; max-height: calc(100dvh - 4rem); overflow: auto; }
 
-  #guide { display: none; position: fixed; left: 0.8rem; right: auto; top: 3.4rem; bottom: auto; width: 22rem; max-height: calc(100dvh - 4rem); z-index: 22; box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.5); }
+  #guide { display: none; position: fixed; left: 0.8rem; right: auto; top: 3.4rem; bottom: auto; width: 22rem; max-height: calc(100dvh - 3.4rem - var(--tray-h, 8.6rem) - 0.4rem); z-index: 22; box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.5); }      /* 下のトレイ（駒）を、かくさない高さまで */
   body.guide-open #guide { display: block; }
+  body.guide-open #step-bar { visibility: hidden; }                                                                                               /* ガイドの中に、同じ手順があるので、重なる帯は、見せない */
   body.guide-open #guide.collapsed #guide-body { display: block; }
   #step-bar { display: none; position: absolute; left: 0.8rem; top: 3.5rem; max-width: 22rem; z-index: 2; align-items: center; gap: 0.5rem; background: var(--panel); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 0.3rem 0.6rem; font-size: 0.82rem; font-weight: 800; line-height: 1.35; }
   #step-bar.show { display: flex; }
-  #step-bar .n { flex: none; width: 1.4rem; height: 1.4rem; display: grid; place-items: center; border-radius: 2px; background: var(--text); color: var(--bg); font-family: var(--num); font-size: 0.75rem; }
+  #step-bar .n { flex: none; width: 1.4rem; height: 1.4rem; display: grid; place-items: center; border-radius: 2px; background: var(--text); color: var(--bg); font-family: var(--num); font-size: 0.8rem; }
   #step-bar.done { border-left-color: var(--ok); color: var(--ok); }
   #step-bar.done .n { background: var(--ok); }
 
   #side { right: 0.8rem; top: 3.4rem; width: 14rem; max-height: calc(100dvh - 3.4rem - 8.2rem); }
   .score-card { padding: 0.35rem 0.7rem 0.4rem; }
-  .score-label { font-size: 0.66rem; }
+  .score-meta { flex-wrap: wrap; gap: 0.25rem 0.3rem; }                                                                                /* 4つ並ぶと、右の列（14rem）に入りきらない: 折り返す（文字は、1文字ずつ縦に折らない）*/
+  .score-meta .pill { white-space: nowrap; }
+  .score-label { font-size: 0.78rem; }
   .score-num b { font-size: 2.2rem; }
-  .score-best { margin-top: 0.15rem; font-size: 0.68rem; }
+  .score-best { margin-top: 0.15rem; font-size: 0.78rem; }
   #side > :not(.score-card):not(ul#trick-list) { display: none; }
   body.side-open #side > :not(.score-card) { display: block; }
   body.side-open #side > ul#trick-list { display: flex; }
@@ -195,7 +198,8 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #trick-list li { padding: 0.3rem 0.5rem; }
   #trick-list li .nm { font-size: 0.8rem; }
   #trick-list li .pt { font-size: 0.9rem; }
-  #btn-side-toggle { margin-left: auto; padding: 0.15rem 0.5rem; font-size: 0.72rem; }
+  #btn-side-toggle { margin-left: auto; padding: 0.15rem 0.6rem; font-size: 0.78rem; min-height: 2.45rem; }
+  #guide-toggle { width: 2.45rem; height: 2.45rem; }
   #btn-guide-toggle { font-size: 0.78rem; }
 
   #stamp-layer { top: 3.2rem; }
@@ -205,14 +209,15 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #toasts { bottom: 8.6rem; }
   #tray-wrap { padding: 0.25rem 0.8rem calc(0.3rem + env(safe-area-inset-bottom)); padding-left: calc(0.8rem + env(safe-area-inset-left)); padding-right: calc(0.8rem + env(safe-area-inset-right)); }
   #tray-tools { gap: 0.4rem; overflow-x: auto; scrollbar-width: none; }
-  #tray-tools .chip { flex: none; white-space: nowrap; font-size: 0.76rem; padding: 0.2rem 0.6rem; min-height: 0; }
+  #tray-tools .chip { flex: none; white-space: nowrap; font-size: 0.78rem; padding: 0.2rem 0.6rem; min-height: 2.3rem; }
   .legend { display: none; }
   #tray { padding-top: 0.55rem; gap: 0.35rem; }
+  #tray .sep { font-size: 0.78rem; }
   .pc, #tray .pcadd { width: 4.2rem; height: 5rem; padding: 0.25rem 0.1rem 0.25rem; }
   .pc .ic { width: 1.1rem; height: 1.1rem; margin-top: 0; }
   .pc .nm { font-size: 0.95rem; margin-top: 0.2rem; }
   .pc .nm.long { font-size: 0.78rem; } .pc .nm.xlong { font-size: 0.66rem; } .pc .nm.xxlong { font-size: 0.56rem; }
-  .pc .sy { font-size: 0.62rem; margin-top: 0.05rem; }
+  .pc .sy { font-size: 0.76rem; margin-top: 0.05rem; }
   .pc .lv i { width: 0.28rem; height: 0.28rem; }
   #tray .pcadd .plus { font-size: 1.5rem; }
   #clear-bar { bottom: 8.6rem; }
@@ -240,7 +245,7 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
 
 @media (max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px) {
   /* 音のメニュー・音量のメニュー: 画面の下から出るシート。「とじる」ボタンつき（外をタップでも閉じる） */
-  .sm-close { display: inline-flex; align-items: center; margin-left: auto; min-height: 2.2rem; padding: 0.2rem 0.8rem; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); font-size: 0.82rem; font-weight: 700; }
+  .sm-close { display: inline-flex; align-items: center; margin-left: auto; min-height: 2.45rem; padding: 0.2rem 0.8rem; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); font-size: 0.82rem; font-weight: 700; }
   .soundmenu .sm-head { align-items: center; }
   .sm-arrow { width: 2.4rem; height: 2.4rem; }
   .vm-slider { height: 2.2rem; }
@@ -283,16 +288,16 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
   .mr-stat { font-size: 0.72rem; white-space: nowrap; }
   .mr-stat b { font-size: 0.9rem; }
   .mr-stat i { margin-left: 0.5rem; }
-  #btn-melody-done { flex: none; white-space: nowrap; padding: 0.1rem 0.6rem; font-size: 0.74rem; min-height: 1.8rem; }
+  #btn-melody-done { flex: none; white-space: nowrap; padding: 0.1rem 0.7rem; font-size: 0.78rem; min-height: 2.4rem; }                                  /* 採点のボタンは、指で押せる高さに（約30px）*/
   .mr-grid { --rowh: min(0.2rem, calc(2.2rem / var(--rows))); }
   .mr-notes { height: calc(var(--rows) * var(--rowh) + 0.25rem); }
   .mn { height: 0.34rem; }
   .mr-chord { font-size: 0.7rem; margin: 0.1rem 0.15rem 0; white-space: nowrap; overflow: hidden; }
   .mr-foot { min-height: 0.9rem; font-size: 0.62rem; }
   .mr-pts { display: none; }
-  .tb-right .chip, .tb-left .chip { min-height: 2.2rem; }
-  #tray-tools .chip { min-height: 2.2rem; }
-  .bpm .mini { min-width: 2.2rem; min-height: 2.2rem; }
+  .tb-right .chip, .tb-left .chip { min-height: 2.45rem; }                                                                                       /* 約30px */
+  #tray-tools .chip { min-height: 2.45rem; }
+  .bpm .mini { min-width: 2.3rem; min-height: 2.3rem; }
 }
 
 /* スマホ: チャレンジステージの、上の細い帯（条件の数・得点・「提出する」）*/
@@ -310,14 +315,14 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
 @media (max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px) {
   .bpm span { font-size: 0.72rem; }
   .bpm .mini { min-width: 2.3rem; min-height: 2.3rem; }
-  .pc .tag { font-size: 0.7rem; }
+  .pc .tag { font-size: 0.76rem; }
   .menu button b { font-size: 0.72rem; }
   .mr-pts { font-size: 0.68rem; }
   #tray .pcadd .sy { font-size: 0.72rem; }
   .pm-cell .n { font-size: 0.7rem; }
   .ms-key, .cl-key { font-size: 0.7rem; }
   #why-more { min-height: 2rem; }
-  #btn-play, #btn-clear { min-height: 2.3rem; }
+  #btn-play, #btn-clear { min-height: 2.45rem; }
 }
 
 /* コードの編集画面（スマホ）: 下の「追加する・閉じる」の欄が、画面の下にぴったりつくように（カードの下の余白に、下の内容が、のぞかないように）*/

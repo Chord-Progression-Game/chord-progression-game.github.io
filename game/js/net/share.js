@@ -10,7 +10,7 @@ const LANES = 'KSPHOCRX';
 const LENGTHS = [8, 16, 32];
 const NAME_MAX = 20;
 export const MAX_SHARE_CHARS = 400000;                  // これより長い貼り付けは、ことわる（重くなるため）
-const PREFIX = { drum: 'd', backing: 'b', progression: 'p' };
+export const PREFIX = { drum: 'd', backing: 'b', progression: 'p' };
 const LISTS = { drum: 'drums', backing: 'backings', progression: 'progressions' };
 export const KIND_LABEL = { drum: 'ドラム', backing: 'バッキング', progression: '進行' };
 

@@ -476,6 +476,10 @@ def run_bridge(args):
             import rhythm_server
             ui_hub = rhythm_server.EventHub()
             ui_library = rhythm_server.Library(rhythm_server.default_library_path())   # 名前をつけたドラム・バッキング・固有進行（ゲームが、リアルタイムで受け取る）
+            import cloud_sync
+            ui_cloud = cloud_sync.CloudSync(ui_library)                                # 公開ページ（GitHub Pages）のゲームへも、リアルタイムで送る（設定したときだけ。docs/cloud_setup.md）
+            ui_library.listeners.append(ui_cloud.notify)
+            ui_cloud.start()
             # 画面から呼ばれる関数。中身は、下（send_line などを作ったあと）で入れる
             ui_server = rhythm_server.start_in_thread(
                 args.ui_port, lambda lines: ui_queue.put((lines, 0.15)), events=ui_hub,
@@ -483,7 +487,7 @@ def run_bridge(args):
                 control=lambda lines: ui_hooks["control"](lines),
                 get_state=lambda: ui_hooks["get_state"](),
                 refresh=lambda: ui_hooks["refresh"](),
-                bridge=lambda action: ui_hooks["bridge"](action), library=ui_library)
+                bridge=lambda action: ui_hooks["bridge"](action), library=ui_library, cloud=ui_cloud)
             print("リズム・コード編集（ブラウザで開くと、マス目をクリックして、ドラム／バッキングのパターンを作れます）:")
             print("  http://127.0.0.1:%d/" % ui_server.server_address[1])
             if os.path.isdir(rhythm_server.GAME_DIR):

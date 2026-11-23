@@ -6,7 +6,9 @@ const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio',
 
 export class Screens {
   constructor() {
-    this.current = 'splash';
+    this.current = 'splash';                  // いちばん上に見えている画面（重ねた画面があれば、それ）
+    this.base = 'splash';                     // 土台の画面（タイトル・ステージ選択・HUD など）
+    this.overlay = null;                      // 重ねた画面（メニュー・結果・編集画面・取り込みなど）
     this.onOverlay = null;                    // 上に重ねる画面（メニュー・結果・編集画面など）が出るとき、呼ぶ（app.js が、スマホのシートを閉じるのに使う）
   }
 
@@ -15,12 +17,26 @@ export class Screens {
     for (const n of NAMES) $(`#${n}`).classList.add('hidden');
     $(`#${name}`).classList.remove('hidden');
     if (overlay) $(`#${overlay}`).classList.remove('hidden');
+    this.base = name;
+    this.overlay = overlay;
     this.current = overlay || name;
-    document.body.dataset.screen = this.current;          // CSS が、いまの画面で、見せるもの・隠すものを決められるように（例: タイトルの背景では、技のスタンプを出さない）
+    this.sync();
     if (overlay && this.onOverlay) this.onOverlay(overlay);
   }
 
-  hide(name) { $(`#${name}`).classList.add('hidden'); }
+  // 重ねた画面を閉じる。土台の画面にもどる
+  hide(name) {
+    $(`#${name}`).classList.add('hidden');
+    if (this.overlay === name) { this.overlay = null; this.current = this.base; this.sync(); }
+  }
+
+  // CSS が、いまの画面で、見せるもの・隠すものを決められるように、body に書く。
+  //   data-screen = 土台の画面（重ねた画面を開いても閉じても、変わらない。例: タイトルの背景では、技のスタンプを出さない）
+  //   data-overlay = 重ねた画面（なければ、空）
+  sync() {
+    document.body.dataset.screen = this.base;
+    document.body.dataset.overlay = this.overlay || '';
+  }
 
   // ステージ選択のカード
   buildStageGrid(stages, specials, game, onPick) {
@@ -99,7 +115,7 @@ export class Screens {
       box.append(h('div', { class: 'rt', style: { '--c': ins.color } }, h('b', {}, `${trickTitle(ins)}`, sub ? h('small', {}, sub) : null, h('small', {}, `+${ins.total}`)), h('span', { style: { color: 'var(--dim)', fontWeight: '700' } }, ins.chords.join(' → ')), h('span', {}, ins.reason)));
     }
     const btns = clear($('#result-btns'));
-    for (const b of buttons) btns.append(h('button', { class: b.primary ? 'primary' : '', onclick: b.onClick }, b.label));
+    for (const b of buttons) btns.append(h('button', { class: b.primary ? 'primary' : '', onclick: () => { if (this.overlay === 'result') b.onClick(); } }, b.label));         // 結果の画面が見えているときだけ、効く（閉じたあとの、古いボタンで、状態がこわれないように）
     this.show('hud', 'result');
   }
 }

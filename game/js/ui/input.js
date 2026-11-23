@@ -20,7 +20,7 @@ export function nextFreeSlot(board) {
 
 export class Input {
   // onLabel(ins): 技の枠（3D の、名前と点数の四角）を押したときに呼ぶ（詳しい説明を出す）。canInspect(): 実機の盤のときも、枠は押せる（駒を置く操作と、別に決める）
-  // 自作コード用: onContext({ id, slot, x, y }) = 駒を右クリック（スマホでは、長押し）/ isEditPick() ・ onEditPick(id) ・ onEditPickCancel() = 「コードを編集」を押したあと、編集する駒を選ぶ / onEditDrop(id) = 駒を「コードを編集」のボタンに投げ入れた
+  // 自作コード用: onContext({ id, slot, x, y, touch }) = 駒を右クリック（スマホでは、長押し）/ isEditPick() ・ onEditPick(id) ・ onEditPickCancel() = 「コードを編集」を押したあと、編集する駒を選ぶ / onEditDrop(id) = 駒を「コードを編集」のボタンに投げ入れた
   constructor({ scene, game, hud, table, canvas, audition, sfx, enabled = () => true, onLabel = null, canInspect = () => true, onContext = null, isEditPick = () => false, onEditPick = null, onEditPickCancel = null, onEditDrop = null }) {
     Object.assign(this, { scene, game, hud, table, canvas, audition, sfx, enabled, onLabel, canInspect, onContext, isEditPick, onEditPick, onEditPickCancel, onEditDrop });
     this.pending = null;        // ボタンを押したが、まだドラッグが始まっていない
@@ -84,7 +84,7 @@ export class Input {
     this._lp = setTimeout(() => {
       if (!this.pending || this.pending !== p || this.drag) return;
       this.pending = null; this.unlisten();
-      this.onContext({ id: p.id, slot: p.slot === undefined ? -1 : p.slot, x: p.x0, y: p.y0 });
+      this.onContext({ id: p.id, slot: p.slot === undefined ? -1 : p.slot, x: p.x0, y: p.y0, touch: true });
     }, 520);
   }
 

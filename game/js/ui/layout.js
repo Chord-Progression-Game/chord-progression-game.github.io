@@ -42,7 +42,20 @@ export function boardRegion(portrait = true) {
     const r = visibleRect($(sel));
     if (r) top = Math.max(top, r.bottom + 4);
   }
-  return { top, bottom: tw.top - 4 };
+  let bottom = tw.top - 4;
+  if (portrait && document.body.classList.contains('guide-open')) {            // ガイドのシート（画面の下から立ちあがる）が開いているあいだは、盤を、そのシートの上に、収める（盤が、シートの下にかくれないように）
+    const gd = visibleRect($('#guide'));
+    if (gd && gd.top > top + 60) bottom = Math.min(bottom, gd.top - 4);
+  }
+  const region = { top, bottom };
+  if (!portrait && document.body.classList.contains('guide-open')) {           // 横持ち: ガイドは、左に立つ欄。盤を、その右（得点の列の左）のあいだへ寄せる
+    const gd = visibleRect($('#guide')), sd = visibleRect($('#side'));
+    if (gd && gd.left < window.innerWidth / 2) {
+      const left = gd.right + 8, right = sd && sd.left > window.innerWidth / 2 ? sd.left - 8 : window.innerWidth - 8;
+      if (right - left > 200) { region.left = left; region.right = right; }
+    }
+  }
+  return region;
 }
 
 // 画面が変わったときに、onChange({ phone, portrait }) を呼ぶ。上のバー・トレイの高さ・得点の下の位置を CSS 変数（--topbar-h・--tray-h・--score-bottom）にも出す（パネルの位置の計算に使う）

@@ -78,7 +78,7 @@ export async function run(t) {
     g.place(3, id('Ⅰ'));
     t.eq('もう一度置くと、また決まる（初めてではない）', tricks[tricks.length - 1], ['authentic_cadence', false]);
     t.eq('図鑑: 見つけた技', g.save.discovered.sort(), ['authentic_cadence', 'komuro']);
-    t.eq('図鑑の一覧は23個。見つけたのは2つ', [g.collection().length, g.collection().filter((c) => c.found).length], [23, 2]);
+    t.eq('図鑑の一覧は26個。見つけたのは2つ', [g.collection().length, g.collection().filter((c) => c.found).length], [26, 2]);
     g.clear();
     t.eq('全部消すと、盤は空・技なし', [g.board.every((x) => x === null), g.analysis.instances.length], [true, 0]);
     g.place(0, id('Ⅰ')); t.eq('空きへ動かす', [g.move(0, 3), g.board[0], g.board[3] === id('Ⅰ')], [true, null, true]); t.eq('埋まっているところへは動かせない（入れ替えを使う）', [g.place(5, id('Ⅴ')), g.move(3, 5)], [true, false]); g.clear();
@@ -124,7 +124,7 @@ export async function run(t) {
     t.eq('講評: 階段の真ん中を外して（講評が消えて）、置き直すと、もう一度知らせる（3つ分の +60）', [crit.length, crit[crit.length - 1]], [3, ['stairs', 60]]);
     g.clear(); crit.length = 0;
     g.place(0, id('Ⅰ')); g.place(1, id('Ⅲ7')); g.place(2, id('Ⅵ♭M7'));
-    t.eq('講評: 進行感なし（−40）のイベント。減点は、合計に入る（駒のレベルの加点 50 - 40 = 10）', [crit, g.analysis.score.senseBad, g.analysis.score.total], [[['incoherent', -40]], 40, 10]);
+    t.eq('講評: 進行感なし（−40）と、役に立っていない駒（3つ × −15）のイベント。減点は、合計に入る（0 より下にはならない）', [crit, g.analysis.score.senseBad, g.analysis.score.total], [[['incoherent', -40], ['idle', -45]], 85, 0]);
   }
   {
     const g = mk(); const st = STAGES[0];                          // はじめに: 技の判定はおやすみ。講評も、出さない
@@ -307,14 +307,14 @@ export async function run(t) {
     const g = mk(); g.loadStage(CHALLENGE_STAGE, 'challenge');
     const ev = []; g.on('timer', (e) => ev.push(e.left)); let end = null; g.on('challengeEnd', (e) => { end = e; });
     g.startTimer();
-    g.place(0, id('Ⅵm')); g.place(1, id('Ⅳ')); g.place(2, id('Ⅴ'));       // 400点
+    g.place(0, id('Ⅵm')); g.place(1, id('Ⅳ')); g.place(2, id('Ⅴ'));       // 240点
     t.eq('チャレンジ: 最初の残り', g.timeLeft, 90);
     for (let i = 0; i < 905; i++) g.tick(0.1);
     t.eq('チャレンジ: 90秒で終わる', [end !== null, g.timerRunning], [true, false]);
-    t.eq('チャレンジ: 得点は、いちばん高かった盤（小室進行 = 400）', end.score, 400);
-    t.eq('チャレンジ: 星（500・1000・1800 に届いていない → 0）', end.stars, 0);
+    t.eq('チャレンジ: 得点は、いちばん高かった盤（小室進行 = 240）', end.score, 240);
+    t.eq('チャレンジ: 星（300・600・1100 に届いていない → 0）', end.stars, 0);
     t.eq('チャレンジ: タイマーの通知は、1秒ごと', [ev[0], ev[ev.length - 1], ev.length], [89, 0, 90]);
-    t.eq('ベストが保存される', g.save.best.challenge, 400);
+    t.eq('ベストが保存される', g.save.best.challenge, 240);
   }
 
   // ============ メロディのステージ（コード進行の点 + メロディとの相性の点）============
@@ -348,7 +348,8 @@ export async function run(t) {
     const starsOf = (names) => melodyStars(mk8(names).analysis, par).stars;
     t.eq('星: ぜんぶ Ⅰ（相性 63%）= 1 / お手本 = 3 / ぜんぶ Ⅲm（相性 27%）= 0', [starsOf(Array(8).fill('Ⅰ')), starsOf(st.answer), starsOf(Array(8).fill('Ⅲm'))], [1, 3, 0]);
     { const x = mk8(['Ⅰ', 'Ⅱm', 'Ⅳ', 'Ⅴ', 'Ⅰ', 'Ⅳ', 'Ⅴ', 'Ⅰ']); const rs = melodyStars(x.analysis, par);
-      t.eq('星の条件: 相性が 90% 以上で、コード進行の点が、お手本の 5割（1260）以上 → 星3。5割に届かないと、星2（2番を Ⅱm にした例）', [x.analysis.score.melodyMatch >= 0.9, x.analysis.score.raw >= 1260, rs.stars, rs.conds.map((c) => c.ok)], [true, x.analysis.score.raw >= 1260, x.analysis.score.raw >= 1260 ? 3 : 2, [true, true, x.analysis.score.raw >= 1260]]); }
+      const half = Math.round(par.progression * 0.5);
+      t.eq(`星の条件: 相性が 90% 以上で、コード進行の点が、お手本の 5割（${half}）以上 → 星3。5割に届かないと、星2（2番を Ⅱm にした例）`, [x.analysis.score.melodyMatch >= 0.9, x.analysis.score.raw >= half, rs.stars, rs.conds.map((c) => c.ok)], [true, x.analysis.score.raw >= half, x.analysis.score.raw >= half ? 3 : 2, [true, true, x.analysis.score.raw >= half]]); }
     t.eq('メロディのステージでなければ、採点する（finishMelody）は、何もしない', (() => { const x = mk(); x.loadStage(FREE_STAGE, 'free'); return [x.finishMelody(), x.melody, x.analysis.melody === undefined]; })(), [null, null, true]);
     t.eq('フリープレイには、メロディの点が混ざらない（同じ盤で、点は、これまでどおり）', (() => { const x = mk(); x.loadStage(FREE_STAGE, 'free'); st.answer.forEach((n, i) => x.place(i, id(n))); return x.analysis.score.total === x.analysis.score.raw && x.analysis.score.melody === undefined; })(), true);
     // 全5つ: お手本どおり → 星3
@@ -418,19 +419,19 @@ export async function run(t) {
       t.ok(`${st.id}: 空の盤は、「提出」できない（条件が足りない・ノルマ未達成）`, !evaluateTrial(st, Array(8).fill(null), analyze(Array(8).fill(null), table), table).ready);
       t.ok(`${st.id}: 使える駒だけを使う（トレイを制限しているステージ）。使えない駒を置くと、条件を満たせない`, !st.pieces || (() => { const bad = bd(SOL[st.id]).map((x) => x); const outside = table.pieces().find((c) => !st.pieces.includes(c.name)); const b2 = b.slice(); b2[7] = outside.id; return evaluateTrial(st, b2, analyze(b2, table), table).rules.some((r) => !r.ok && /使える駒/.test(r.text)); })());
     }
-    t.eq('星: ノルマ以上 = 1・1.4倍 = 2・1.8倍 = 3（c01: 400・560・720）', [trialStars(TRIAL_STAGES[0], 399), trialStars(TRIAL_STAGES[0], 400), trialStars(TRIAL_STAGES[0], 560), trialStars(TRIAL_STAGES[0], 720)], [0, 1, 2, 3]);
+    t.eq('星: ノルマ以上 = 1・1.4倍 = 2・1.8倍 = 3（c01: 350・490・630）', [trialStars(TRIAL_STAGES[0], 349), trialStars(TRIAL_STAGES[0], 350), trialStars(TRIAL_STAGES[0], 490), trialStars(TRIAL_STAGES[0], 630)], [0, 1, 2, 3]);
     t.eq('nextTrialAfter: c01 の次は c02・最後の次はなし', [nextTrialAfter(TRIAL_STAGES[0]).id, nextTrialAfter(TRIAL_STAGES[8])], ['c02', null]);
 
     // ゲームの流れ: 読み込む → 置く → 条件の知らせ → 提出 → 記録
     const g = mk(); const events = []; g.on('trial', (e) => events.push(e.state)); let ended = null; g.on('trialEnd', (e) => { ended = e; });
     g.loadStage(TRIAL_STAGES[0], 'trial');
-    t.eq('チャレンジステージ: 読み込むと、条件の様子が届く（条件 1/2・ノルマ 400・提出できない）', [events.length, events[0].okCount, events[0].rules.length, events[0].norm, events[0].ready], [1, 1, 2, 400, false]);
+    t.eq('チャレンジステージ: 読み込むと、条件の様子が届く（条件 1/2・ノルマ 350・提出できない）', [events.length, events[0].okCount, events[0].rules.length, events[0].norm, events[0].ready], [1, 1, 2, 350, false]);
     t.eq('チャレンジステージ: 使える駒は、このステージの駒だけ（10個）', [g.allowed.length, g.canPlace(id('Ⅲ7')), g.canPlace(id('Ⅰ'))], [10, false, true]);
     t.eq('チャレンジステージ: 提出しようとしても、条件がそろっていない間は、ことわる', (() => { const r = g.finishTrial(); return [r.ok, ended]; })(), [false, null]);
     for (const [i, n] of ['Ⅲm', 'Ⅵm', 'Ⅱm', 'Ⅴ7', 'ⅠM7'].entries()) g.place(i, id(n));
-    t.eq('チャレンジステージ: 置くと、条件・得点が変わる（提出できる）', [events[events.length - 1].ready, events[events.length - 1].score >= 400], [true, true]);
+    t.eq('チャレンジステージ: 置くと、条件・得点が変わる（提出できる）', [events[events.length - 1].ready, events[events.length - 1].score >= 350], [true, true]);
     const r = g.finishTrial();
-    t.eq('チャレンジステージ: 提出 → クリア（星・得点・記録）', [r.ok, ended.stage.id, ended.stars, ended.score >= 400, g.save.trial.c01.stars, g.save.trial.c01.best === ended.score, g.cleared], [true, 'c01', 2, true, 2, true, true]);
+    t.eq('チャレンジステージ: 提出 → クリア（星・得点・記録）', [r.ok, ended.stage.id, ended.stars, ended.score >= 350, g.save.trial.c01.stars, g.save.trial.c01.best === ended.score, g.cleared], [true, 'c01', 1, true, 1, true, true]);
     t.eq('チャレンジステージ: クリアすると、次が開く（c02）・ほかは鍵のまま', [g.isTrialUnlocked(TRIAL_STAGES, 0), g.isTrialUnlocked(TRIAL_STAGES, 1), g.isTrialUnlocked(TRIAL_STAGES, 2)], [true, true, false]);
     const n = events.length; g.place(7, id('Ⅳ'));
     t.ok('チャレンジステージ: 盤が変わると、条件の様子が、また届く（変わらないときは、届かない）', events.length > n && (() => { const m = events.length; g.place(7, id('Ⅳ')); return events.length === m; })());

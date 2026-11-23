@@ -298,8 +298,31 @@
     <h3>ゲームに入っているもの</h3>
     <div class="game-list" id="game-list"></div>
 
-    <h3>公開ページ（インターネット）のゲームにも送る</h3>
-    <p class="legend" style="margin-top:0">インターネットの公開ページのゲームには、このブリッジがつながっていないので、<b>リンク</b>か<b>ファイル</b>で渡します。上の「ゲームに入っているもの」のうち、左のチェックが入っているものが、渡る対象です。リンクを開くと、ゲームが「取り込みますか?」と出します（取り込んだものは、そのブラウザに保存されます。スマホにも、リンクを送れば入ります）。リンクの内容は、ブラウザの中だけで作られ、どこにも送信されません。</p>
+    <h3>全部の端末の、公開ページのゲームへ、自動で送る（リアルタイム）</h3>
+    <p class="legend" style="margin-top:0">ここで「ゲームに送る」と、公開ページ（インターネット）のゲームを開いている<b>全部の端末</b>（パソコン・スマホ）に、すぐ届きます。リンクを一つずつ送る必要は、ありません。Google の Firebase（無料枠）に、ライブラリを書きこむ形です。<b>最初の設定だけ</b>、手順（<code>docs/cloud_setup.md</code>）のとおりに、Firebase の画面で行います。書きこめるのは、この Mac のブリッジだけ（秘密のキーは、この Mac の中にだけ保存されて、画面・ゲーム・GitHub には、出ません）。</p>
+    <div id="cloud-status" class="legend" role="status"></div>
+    <div id="cloud-form">
+      <div class="row">
+        <label>データベースの URL <input type="text" id="cloud-url" placeholder="https://〜-default-rtdb.firebaseio.com" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div class="row">
+        <label>鍵（サービスアカウントのキー。Firebase でもらった JSON ファイル） <input type="file" id="cloud-key-file" accept=".json,application/json"></label>
+        <button class="primary" id="cloud-connect">つなぐ（書きこめるか確かめます）</button>
+      </div>
+      <details class="legend"><summary>古い方式: 秘密のキー（Database secret）を使うとき</summary>
+        <div class="row"><label>秘密のキー <input type="password" id="cloud-secret" placeholder="保存したあとは、画面には出ません" spellcheck="false" autocomplete="off"></label></div>
+        <p class="legend">Firebase の「プロジェクトの設定 → サービス アカウント」に「データベースのシークレット」が見つかるときだけ使えます（新しいプロジェクトでは、見つからないことがあります。そのときは、上の JSON ファイルを使ってください）。</p>
+      </details>
+    </div>
+    <div class="row">
+      <button id="cloud-push">いま、全部送り直す</button>
+      <button id="cloud-clear">自動で送るのを、やめる</button>
+    </div>
+    <div id="cloud-message" role="status"></div>
+    <p class="legend">つないだあと: ゲームの <code>game/cloud.json</code> の <code>url</code> に、上と同じ URL を書いて、GitHub Desktop でコミット・プッシュすると、公開ページが、この URL から受け取るようになります（URL は、公開されて、かまいません。秘密のキーは、書かないでください）。</p>
+
+    <h3>公開ページ（インターネット）のゲームに、リンクかファイルで渡す</h3>
+    <p class="legend" style="margin-top:0">自動で送る設定を、していないときや、特定の端末にだけ渡したいときは、<b>リンク</b>か<b>ファイル</b>で渡します。上の「ゲームに入っているもの」のうち、左のチェックが入っているものが、渡る対象です。リンクを開くと、ゲームが「取り込みますか?」と出します（取り込んだものは、そのブラウザに保存されます。スマホにも、リンクを送れば入ります）。リンクの内容は、ブラウザの中だけで作られ、どこにも送信されません。</p>
     <div class="row">
       <label>公開ページの URL <input type="text" id="pages-url" value="https://chord-progression-game.github.io/" spellcheck="false"></label>
     </div>
@@ -887,7 +910,7 @@ function renderControl() {
     s.drum > 0 ? "※ ドラムは MIDI チャンネル10 で出ます。GarageBand のピアノでは低い音になるので、tools/gm_synth（sh tools/run.sh --gm）で鳴らしてください。" : "";
 }
 
-const PAGE_VERSION = "2026-11-23";   // この画面の版。リアルタイム接続の表示に出る（古い画面が開いたままでないかの確認用）
+const PAGE_VERSION = "2026-11-24";   // この画面の版。リアルタイム接続の表示に出る（古い画面が開いたままでないかの確認用）
 
 // ブリッジを作り直すと、順番号が 0 から数え直しになる。「別のブリッジだ」と分かったら、覚えている順番を捨てる。
 // 画面の部品（JavaScript）も古いままかもしれないので、操作画面を見ているときは、読み込み直す
@@ -1176,6 +1199,50 @@ function initPages() {
   $("pages-open").addEventListener("click", pagesOpen);
   $("pages-copy").addEventListener("click", pagesCopy);
   $("pages-file").addEventListener("click", pagesFile);
+  initCloud();
+}
+
+// ---------- 全部の端末の公開ページへ、自動で送る（tools/cloud_sync.py。Firebase Realtime Database）----------
+function cloudMessage(text, cls) { const m = $("cloud-message"); m.textContent = text; m.className = cls || ""; }
+function cloudShow(c) {
+  const el = $("cloud-status");
+  if (!c) { el.textContent = "この画面では、使えません（ブリッジの機能が見つかりません）。"; return; }
+  const STATE = { off: "まだ、設定されていません。", idle: "設定ずみ（待っています）", pushing: "送っています…", ok: "送れています", error: "うまく送れていません" };
+  let t = "状態: " + (STATE[c.state] || c.state);
+  if (c.configured) t += "　／　送り先: " + c.url + "（" + c.path + "）";
+  if (c.last_ok) t += "　／　最後に送れた時刻: " + new Date(c.last_ok).toLocaleTimeString();
+  if (c.pending) t += "　／　まだ、送っていない変更があります";
+  if (c.last_error) t += "　／　" + c.last_error;
+  el.textContent = t;
+  $("cloud-url").value = c.configured ? c.url : $("cloud-url").value;
+  $("cloud-secret").placeholder = c.configured ? "（保存ずみ。変えるときだけ入れてください）" : "保存したあとは、画面には出ません";
+  if (c.configured) el.textContent += "　／　鍵: " + (c.auth === "service_account" ? "サービスアカウントのキー" : "秘密のキー");
+  $("cloud-clear").disabled = !c.configured; $("cloud-push").disabled = !c.configured;
+}
+async function cloudCall(method, body) {
+  const res = await fetch("/api/cloud", method === "GET" ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await res.json();
+  if (!d.ok) throw new Error(d.error || "うまくいきませんでした");
+  return d.cloud;
+}
+async function cloudRefresh() { try { cloudShow(await cloudCall("GET")); } catch (e) { cloudShow(null); } }
+function initCloud() {
+  $("cloud-connect").addEventListener("click", async () => {
+    const url = $("cloud-url").value.trim(), secret = $("cloud-secret").value.trim(), file = $("cloud-key-file").files && $("cloud-key-file").files[0];
+    if (!url || (!secret && !file)) { cloudMessage("URL と、鍵（JSON ファイル）の、両方を入れてください。", "err"); return; }
+    const body = { action: "connect", url };
+    if (file) {
+      try { if (file.size > 12000) throw new Error("ファイルが大きすぎます"); body.service_account = JSON.parse(await file.text()); }
+      catch (e) { cloudMessage("鍵のファイルを読めませんでした（Firebase でもらった JSON ファイルを、そのまま選んでください）。", "err"); return; }
+    } else body.secret = secret;
+    cloudMessage("つないでいます…（1回、書きこんで、確かめます）", "");
+    try { const c = await cloudCall("POST", body); $("cloud-secret").value = ""; $("cloud-key-file").value = ""; cloudShow(c); cloudMessage("つながりました。これから、「ゲームに送る」と、自動で、全部の端末に届きます。", "ok"); }
+    catch (e) { cloudMessage(e.message, "err"); }
+  });
+  $("cloud-push").addEventListener("click", async () => { try { const c = await cloudCall("POST", { action: "push" }); cloudShow(c); cloudMessage(c.state === "ok" ? "送りました。" : (c.last_error || "送れませんでした"), c.state === "ok" ? "ok" : "err"); } catch (e) { cloudMessage(e.message, "err"); } });
+  $("cloud-clear").addEventListener("click", async () => { if (!window.confirm("自動で送るのを、やめますか?（保存した秘密のキーも、この Mac から消えます。公開ページに、すでにあるものは、そのまま残ります）")) return; try { cloudShow(await cloudCall("POST", { action: "clear" })); cloudMessage("やめました。", "ok"); } catch (e) { cloudMessage(e.message, "err"); } });
+  cloudRefresh();
+  setInterval(() => { if (!document.hidden) cloudRefresh(); }, 5000);
 }
 
 async function loadLibrary() {

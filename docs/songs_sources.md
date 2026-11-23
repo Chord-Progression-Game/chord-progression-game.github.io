@@ -16,6 +16,8 @@
 | `wiki` | Wikipedia「'50s progression」「Andalusian cadence」「Ragtime progression」「Eight-bar blues」「I–IV–V–I」 | 曲名（年）。日本の曲は「'50s progression」の表に、THE BLUE HEARTS・ONE OK ROCK・安室奈美恵 などが載っていた |
 | `biechi` | 「The Komuro Progression」（biechi.github.io/blog/2c538f/）| 小室進行・1564進行の曲 |
 | `jazz` | antonjazz.com「Backdoor ii-V」 | バックドア進行の例（Lady Bird） |
+| `tjps` | The Jazz Piano Site「Line Clichés」（www.thejazzpianosite.com/jazz-piano-lessons/jazz-chord-progressions/line-cliches/）。2026-11-24 に追加 | クリシェ（ライン・クリシェ）の曲の例（My Funny Valentine など）と、定義 |
+| `gctb` | Guitar Composer's ToolBox「Descending Minor Cliché」（www.guitarcomposerstoolbox.com/chord-progressions/descending-minor-cliche-in-f/ ほか）。2026-11-24 に追加 | マイナーのクリシェを使う曲の例（Michelle・Time in a Bottle・Stairway to Heaven）。資料によって、長調のクリシェに入れるものもある |
 
 ## 進行ごとの、入れた曲
 

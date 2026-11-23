@@ -13,7 +13,8 @@ import { loadSave, writeSave, resetSave } from './game/save.js';
 import { HUD } from './ui/hud.js';
 import { Screens } from './ui/screens.js';
 import { Input } from './ui/input.js';
-import { DeviceLink } from './net/device.js';
+import { DeviceLink, bridgeAvailable } from './net/device.js';
+import { CloudLibrary, loadCloudConfig } from './net/cloud.js';
 import { LibraryLink, mergeUserPatterns, libraryChanges, isUserPatternId } from './net/library.js';
 import { decodeShare, sanitizeShared, sanitizeLocal, mergeIntoLibrary, removeFromLibrary } from './net/share.js';
 import { LibImport } from './ui/libimport.js';
@@ -153,7 +154,19 @@ async function main() {
   // 公開ページ（https）: ブリッジがないので、リズム・コード編集の内容は、リンク・ファイル・貼り付けで「取り込んで」、ブラウザに保存する（net/share.js・ui/libimport.js）
   const chordNames = table.baseList.filter((c) => !c.isRepeat).map((c) => c.name);
   save.library = sanitizeLocal(save.library, chordNames);
-  app.library = new LibraryLink({ onChange: applyLibrary, local: () => save.library });
+  // 公開ライブラリ: リズム・コード編集の画面（自分の Mac）から、全端末へ、リアルタイムで届く、ドラム・バッキング・進行（game/cloud.json に url があるときだけ。net/cloud.js）
+  const cloud = new CloudLibrary({ chordNames, onChange: () => { save.cloudRaw = cloud.raw; writeSave(save); app.library.reloadLocal(); if (libImport.isOpen) libImport.renderList(); } });
+  cloud.restore(save.cloudRaw);                                          // 前に届いたものを、先に使う（つながらない場所でも、使える）
+  app.cloud = cloud;
+  app.library = new LibraryLink({ onChange: applyLibrary, local: () => save.library, cloud: () => cloud.lib });
+  async function startCloud() {
+    const cfg = await loadCloudConfig();
+    if (!cfg) { if (cloud.count()) app.library.reloadLocal(); return; }
+    if (bridgeAvailable() && !/^http:/.test(cfg.url)) return;           // ブリッジのある、自分のパソコン: ブリッジのライブラリが本物。公開のものは、使わない（テストの上書きは、127.0.0.1 の http）
+    if (bridgeAvailable()) app.library.forceLocal = true;
+    cloud.start(cfg);
+    app.library.reloadLocal();
+  }
 
   // 演奏のループの長さ。チュートリアルで、お手本も、置いた駒も、4つの場所（1〜4番）におさまるあいだは、4ステップでループする（5〜8番の空きを待たない）。
   // 5番以降に駒を置くと、次の周回から、8ステップに戻る。フリープレイ・タイムアタック・チャレンジステージ・タイトルは、いつも8ステップ
@@ -194,6 +207,17 @@ async function main() {
     app.marks = { primary: [], advanced: [], guide: null };
     void stage;
   });
+  // 盤の駒を、ゲームの状態（前半・後半）から、すべて描き直す。駒の見た目（名前・色・形）が変わったとき（自作コード・編集）に使う。
+  //   分割したマスは、前半を半分の大きさにして、後半の駒も、出しなおす（前半だけ描き直すと、正方形にもどって、後半の駒に重なる）
+  function redrawPieces() {
+    for (let i = 0; i < 8; i++) {
+      const id = game.board[i], id2 = game.split[i];
+      const first = id !== null && id !== undefined && table.byId(id) ? table.byId(id) : null;
+      const second = first && id2 !== null && id2 !== undefined && table.byId(id2) ? table.byId(id2) : null;
+      scene.setPiece(i, first, { animate: false, half: !!second });
+      scene.setPiece2(i, second, { animate: false });
+    }
+  }
   game.on('board', (e) => {
     scene.setPiece(e.slot, e.id !== null ? table.byId(e.id) : null, { animate: e.id !== null && e.source !== 'restore' && !e.slid, half: game.isSplit(e.slot) });
     if (app.sfx && !app.muted && e.source !== 'demo-silent' && e.source !== 'device-sync' && e.source !== 'preset' && e.source !== 'chordbook') { if (e.id !== null) app.sfx.place(); else app.sfx.remove(); }       // プリセットの呼び出しは、まとめて1回だけ鳴らす（applyPreset）
@@ -230,7 +254,7 @@ async function main() {
     if (app.sfx && !app.muted) app.sfx.huh();
   });
   game.on('critique', ({ critique }) => {                                           // ジャッジ（講評）: 新しく出た加点・減点・指摘。知らせて、理由を残す
-    if (game.demoMode || app.state !== 'play') return;
+    if (game.demoMode || app.state !== 'play' || critique.quiet) return;           // quiet: 役に立っていない駒など、通知しない講評（右の「技」の一覧には出る）
     const pts = critique.points === 0 ? '' : ` ${critique.points > 0 ? '+' : '−'}${Math.abs(critique.points)}`;
     hud.toast(`${critique.group === 'melody' ? 'メロディ' : 'ジャッジ'}: ${critique.name}${pts}`);
     if (performance.now() - lastTrickAt > 400) hud.setWhy(critique);               // 技（Ⅴ-Ⅰ終止など）が決まった瞬間は、技の理由を残す
@@ -366,6 +390,7 @@ async function main() {
     hud.setCollection(game.collection());
     hud.setBpm(stage.bpm);
     hud.setToggle('#btn-hint', game.hintsOn, '#hint-state');
+    if (mode === 'free' && chordStore.migrated) { hud.toast(`以前に編集したコード ${chordStore.migrated}つは、新しい自作コードに引っ越しました（もとのコードは、もとの姿にもどっています）`); chordStore.migrated = 0; }
     if (mode === 'challenge') hud.setTimer(stage.seconds);
     $('#btn-presets').classList.toggle('hidden', mode === 'tutorial' || mode === 'challenge' || mode === 'trial');       // プリセットは、自由に組み立てるとき（フリープレイ・メロディ）だけ
     $('#btn-studio').classList.toggle('hidden', mode !== 'free');                                    // メロディの画面は、フリープレイだけ
@@ -767,7 +792,7 @@ async function main() {
     return presetStore.add({ name, board: b, split: game.split, from: first, to: last, melody: melodyDoc.notes() });
   }
   const studio = new MelodyStudio({
-    root: $('#studio'), table, doc: melodyDoc, getBoard: () => game.board,
+    root: $('#studio'), table, doc: melodyDoc, getBoard: () => game.board, getSplit: () => game.split,
     audition: (midi, slots) => { const e = app.engine; if (e && !app.muted && e.ctx.state === 'running') e.playLead(midi, e.ctx.currentTime + 0.01, Math.max(0.12, Math.min(0.7, slots * e.slotSeconds() * 0.95))); },
     isPlaying: () => !!(app.engine && app.engine.playing), togglePlay,
     getEnabled: () => save.userMelodyOn !== false, setEnabled: (v) => { save.userMelodyOn = !!v; writeSave(save); applyUserMelody(); },
@@ -788,7 +813,7 @@ async function main() {
     onSaved: (change) => {
       const c = table.byId(change.id);
       const label = c ? `「${c.name}（${c.symbol}）」` : '';
-      hud.toast(change.type === 'add' ? `自作コード${label}を追加しました（下の${c && c.level !== null && c.level !== undefined ? `Lv.${c.level}` : '「自作」'}の段にあります）` : change.type === 'update' || change.type === 'edit' ? `${label}を保存しました` : change.type === 'reset' ? 'コードをもとにもどしました' : '自作コードを削除しました');
+      hud.toast(change.type === 'add' ? `自作コード${label}を追加しました（下の${c && c.level !== null && c.level !== undefined ? `Lv.${c.level}` : '「自作」'}の段にあります）` : change.type === 'update' ? `${label}を保存しました` : '自作コードを削除しました');
     },
   });
   app.chordLab = chordLab; app.chordMenu = chordMenu;
@@ -796,7 +821,7 @@ async function main() {
   chordStore.on((change) => {
     if (game.mode !== 'free') return;
     game.refreshAllowed();
-    game.board.forEach((id, slot) => { if (id !== null && id !== table.repeatId && table.byId(id)) scene.setPiece(slot, table.byId(id), { animate: false }); });
+    redrawPieces();
     hud.buildTray(game.trayIds(), { grouped: true, addButton: true });
     applyMarks();
     if (change.type === 'add' && app.engine && !app.muted) app.engine.audition(change.id);
@@ -810,20 +835,19 @@ async function main() {
     $('#btn-chord-edit').classList.toggle('on', app.editPick);
     if (on) hud.toast('編集するコードを、下の一覧か盤の上から選んでください（もういちど押すか Esc でやめる）');
   }
-  function openChordMenu({ id, x, y }) {
+  function openChordMenu({ id, x, y, touch = false }) {
     if (game.mode !== 'free' || app.state !== 'play') return;
     const c = table.byId(id);
     if (!c || c.isRepeat) return;
-    const items = [{ label: 'コードを編集', onClick: () => startEdit(id) }];
+    const items = [{ label: c.custom ? 'コードを編集' : 'これをもとに自作コードをつくる', hint: c.custom ? '' : 'もとのコードは、そのままです', onClick: () => startEdit(id) }];
     if (c.custom) items.push({ label: 'このコードを削除', danger: true, hint: '盤の上にある同じ駒も、はずれます', onClick: () => { chordStore.removeCustom(id); hud.toast(`自作コード「${c.name}」を削除しました`); } });
-    else if (c.edited) items.push({ label: 'もとにもどす', danger: true, onClick: () => { chordStore.resetBase(id); hud.toast(`「${c.name}」をもとにもどしました`); } });
-    chordMenu.open({ x, y, title: `${c.name}（${c.symbol}）`, items });
+    chordMenu.open({ x, y, title: `${c.name}（${c.symbol}）`, items, touch });
   }
 
   // ============================================================ リズム・コード編集の内容の取り込み（公開ページ。タイトルの「リズムを取り込む」・音のメニューのボタン・リンク（#lib=）から開く）
   const countOf = (r) => ({ drums: r.drums.length, backings: r.backings.length, progressions: r.progressions.length, skipped: r.skipped });
   const libImport = new LibImport({
-    root: $('#libimport'), getLibrary: () => save.library, canOpen: () => ['play', 'title', 'stages'].includes(app.state),
+    root: $('#libimport'), getLibrary: () => save.library, getCloud: () => ({ enabled: cloud.enabled, state: cloud.state, lib: cloud.lib }), canOpen: () => ['play', 'title', 'stages'].includes(app.state),
     onPreview: (text) => { const d = decodeShare(text); return d.ok ? { ok: true, counts: countOf(sanitizeShared(d.data, chordNames)) } : d; },
     onImport: (text) => {
       const d = decodeShare(text);
@@ -894,6 +918,7 @@ async function main() {
     }
     app.device.start();
     app.library.start();
+    startCloud();
     showTitle();
     openSharedLink();
   }

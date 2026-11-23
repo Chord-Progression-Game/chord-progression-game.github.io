@@ -32,16 +32,16 @@ def center(ch, selector):
     return ch.eval("(() => { const e = document.querySelector(%r); if (!e) return null; const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()" % selector)
 
 
-def drag(ch, x0, y0, x1, y1, steps=14, hold=0.0):
-    ch.mouse("mouseMoved", x0, y0, 0)
-    ch.mouse("mousePressed", x0, y0, 1)
+def drag(ch, x0, y0, x1, y1, steps=14, hold=0.0, modifiers=0):
+    ch.mouse("mouseMoved", x0, y0, 0, modifiers)
+    ch.mouse("mousePressed", x0, y0, 1, modifiers)
     for i in range(1, steps + 1):
         t = i / steps
-        ch.mouse("mouseMoved", x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 1)
+        ch.mouse("mouseMoved", x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 1, modifiers)
         time.sleep(0.012)
     if hold:
         time.sleep(hold)
-    ch.mouse("mouseReleased", x1, y1, 0)
+    ch.mouse("mouseReleased", x1, y1, 0, modifiers)
 
 
 def slot_xy(ch, slot):
@@ -60,10 +60,10 @@ def move_board_piece(ch, from_slot, to_xy):
     drag(ch, x0, y0, to_xy[0], to_xy[1])
 
 
-def click(ch, x, y):
-    ch.mouse("mouseMoved", x, y, 0)
-    ch.mouse("mousePressed", x, y, 1)
-    ch.mouse("mouseReleased", x, y, 0)
+def click(ch, x, y, modifiers=0):
+    ch.mouse("mouseMoved", x, y, 0, modifiers)
+    ch.mouse("mousePressed", x, y, 1, modifiers)
+    ch.mouse("mouseReleased", x, y, 0, modifiers)
 
 
 def open_game(ch, port, audio=False, state="title"):

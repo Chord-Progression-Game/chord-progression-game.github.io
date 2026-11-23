@@ -187,9 +187,41 @@ function briefOf(items) {
   return parts.join(' ／ ');
 }
 
+// ---------- 分割したマス（前半・後半の2つの和音。2026-11-24）----------
+//   2拍目の頭（ステップの 4マス目）で、和音が切りかわる。前半（0〜3マス目）の音は前半の和音で、後半（4〜7マス目）の音は後半の和音で聞く。
+//   2拍目の頭をまたぐ音は、前半・後半に分けて、それぞれの和音で聞く（後半のぶんは「のびている音」の重み）
+const HALF = SLOTS_PER_STEP / 2;
+const beatOf = (attack, from) => (!attack ? MELODY_SCORE.beat.held : from === 0 ? MELODY_SCORE.beat.head : from === HALF ? MELODY_SCORE.beat.second : from % 2 === 0 ? MELODY_SCORE.beat.offbeat : MELODY_SCORE.beat.weak);
+export function halfSegments(segs) {
+  const out = [];
+  for (const sg of segs) {
+    if (sg.from < HALF && sg.from + sg.len > HALF) {
+      const l1 = HALF - sg.from, l2 = sg.from + sg.len - HALF;
+      out.push({ ...sg, len: l1, half: 0, weight: l1 * beatOf(sg.attack, sg.from) });
+      out.push({ ...sg, from: HALF, len: l2, attack: false, half: 1, weight: l2 * MELODY_SCORE.beat.held });
+    } else out.push({ ...sg, half: sg.from >= HALF ? 1 : 0 });
+  }
+  return out;
+}
+// 分割したマスの、後半の和音（なければ null）
+export function secondChordAt(split, k, table) {
+  const id = split ? split[k] : null;
+  if (id === null || id === undefined) return null;
+  const c = table.byId(id);
+  return c && !c.isRepeat ? c : null;
+}
+
+// 1ステップの、評価の記号（◎○△×）。items: そのステップの（または半分の）、音の判定の一覧
+function verdictOf(items, score) {
+  const clean = items.every((s) => s.kind !== 'avoid' && s.kind !== 'unstable');
+  const worst = items.reduce((m, s) => Math.min(m, s.value), 1);
+  return score >= 0.8 && clean ? (items.some((s) => s.kind === 'tension') ? 'color' : 'perfect') : worst < 0 && score < 0.3 ? 'bad' : worst < 0 ? 'mixed' : 'good';
+}
+
 // ---------- 採点 ----------
-// board: 8つの駒（コードID か null）。melody: { notes }。戻り値の steps[k]: そのステップの結果
-export function judgeMelody(board, melody, table) {
+// board: 8つの駒（コードID か null）。melody: { notes }。split: 分割したマスの、後半の和音の ID の配列（省いてもよい）。戻り値の steps[k]: そのステップの結果
+//   分割したマスの steps[k] には、chord2・symbol2・halves（[{ chord, verdict, hasNotes }, …]）も付く
+export function judgeMelody(board, melody, table, split = null) {
   const all = stepSegments(melody);
   const steps = [];
   const counts = { chord: 0, tension: 0, passing: 0, unstable: 0, avoid: 0 };
@@ -205,10 +237,12 @@ export function judgeMelody(board, melody, table) {
       continue;
     }
     scored++;
-    const items = segs.map((s) => {
-      const j = judgeSegment(chord, s);
+    const chord2 = secondChordAt(split, k, table);                                    // 分割したマス: 後半の和音
+    const items = (chord2 ? halfSegments(segs) : segs).map((s) => {
+      const ch = chord2 && s.half === 1 ? chord2 : chord;
+      const j = judgeSegment(ch, s);
       counts[j.kind]++;
-      return { ...s, ...j, text: kindText[j.kind](s.name, chord, j) };
+      return { ...s, ...j, text: kindText[j.kind](s.name, ch, j) };
     });
     const w = items.reduce((a, s) => a + s.weight, 0);
     const score = items.reduce((a, s) => a + s.value * s.weight, 0) / w;
@@ -217,9 +251,18 @@ export function judgeMelody(board, melody, table) {
     const clean = items.every((s) => s.kind !== 'avoid' && s.kind !== 'unstable');
     const bonus = clean && score >= 0.8 && items.some((s) => s.kind === 'tension' && isStrong(s)) && bonusSteps < MELODY_SCORE.tensionBonusSteps ? MELODY_SCORE.tensionBonus : 0;
     if (bonus) bonusSteps++;
-    const worst = items.reduce((m, s) => Math.min(m, s.value), 1);
-    const verdict = score >= 0.8 && clean ? (items.some((s) => s.kind === 'tension') ? 'color' : 'perfect') : worst < 0 && score < 0.3 ? 'bad' : worst < 0 ? 'mixed' : 'good';
-    steps.push({ step: k, chord: chord.name, symbol: chord.symbol, hasNotes: true, items, score, points, bonus, verdict, text: items.map((s) => s.text).join(' '), brief: briefOf(items) });
+    const verdict = verdictOf(items, score);
+    const st = { step: k, chord: chord.name, symbol: chord.symbol, hasNotes: true, items, score, points, bonus, verdict, text: items.map((s) => s.text).join(' '), brief: briefOf(items) };
+    if (chord2) {                                                                      // 分割したマス: 前半・後半それぞれの評価の記号も出す
+      st.chord2 = chord2.name; st.symbol2 = chord2.symbol;
+      st.halves = [0, 1].map((hf) => {
+        const part = items.filter((x) => x.half === hf);
+        if (!part.length) return { chord: hf ? chord2.name : chord.name, hasNotes: false, verdict: 'rest' };
+        const sc = part.reduce((a, x) => a + x.value * x.weight, 0) / part.reduce((a, x) => a + x.weight, 0);
+        return { chord: hf ? chord2.name : chord.name, hasNotes: true, verdict: verdictOf(part, sc), score: sc };
+      });
+    }
+    steps.push(st);
     total += points + bonus;
   }
   const sumPoints = steps.reduce((a, s) => a + s.points, 0);

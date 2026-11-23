@@ -438,12 +438,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ms-chord .n { position: absolute; left: 0.25rem; top: 0.1rem; font-family: var(--num); font-size: 0.58rem; color: var(--faint); font-weight: 600; }
 .ms-chord .mk { position: absolute; right: 0.3rem; top: 0.1rem; font-size: 0.8rem; color: var(--ok); }
 .ms-chord.empty { color: var(--faint); font-weight: 600; }
+/* 分割したマス: 前半・後半の2つの和音を、左右に並べる */
+.ms-chord.split { display: flex; padding: 0.18rem 0 0; border-top-color: transparent; background: linear-gradient(90deg, var(--c) 0 50%, var(--c2) 50% 100%) top / 100% 3px no-repeat, var(--panel-2); }
+.ms-chord.split .n { z-index: 1; }
+.ms-chord.split .half { position: relative; flex: 1; min-width: 0; padding: 0.55rem 0.15rem 0; text-align: center; font-size: 0.82em; }
+.ms-chord.split .half + .half { border-left: 1px dashed var(--line-2); }
+.ms-chord.split .half b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-chord.split .half .mk { position: absolute; right: 0.15rem; top: 0.05rem; font-size: 0.72rem; color: var(--ok); }
 .ms-body { display: flex; }
 .ms-keys { position: sticky; left: 0; z-index: 4; width: var(--keysw); flex: none; border-right: 1px solid var(--line-2); background: var(--panel); }
 .ms-key { height: var(--rh); border-bottom: 1px solid #aaa393; background: #d9d3c5; color: #3a362e; font-size: calc(var(--rh) * 0.62); line-height: calc(var(--rh) - 1px); text-align: right; padding-right: 0.3rem; font-family: var(--num); cursor: pointer; overflow: hidden; }
 .ms-key.black { background: linear-gradient(90deg, #25221e 0 64%, #d9d3c5 64% 100%); border-bottom-color: #25221e; }
 .ms-key:hover { background: var(--accent); }
-.ms-grid { position: relative; flex: none; cursor: crosshair; touch-action: none; }
+.ms-grid { position: relative; flex: none; cursor: crosshair; touch-action: pan-x pan-y; }          /* 指で、空いているところをなぞると、ロールが動く（スクロール）。タップで音が置ける。音の上・「範囲選択」のモードでは、なぞっても、ロールは動かない（音を動かす・四角でかこむため） */
+.ms-grid.selecting { touch-action: none; }
 .ms-bands, .ms-vlines, .ms-notes { position: absolute; inset: 0; pointer-events: none; }
 .ms-row { position: absolute; left: 0; right: 0; height: var(--rh); border-bottom: 1px solid rgba(241, 235, 221, 0.05); }
 .ms-row.black { background: rgba(0, 0, 0, 0.26); }
@@ -456,12 +464,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   repeating-linear-gradient(90deg, rgba(241, 235, 221, 0.5) 0 1px, transparent 1px calc(var(--cw) * 8)),
   repeating-linear-gradient(90deg, rgba(241, 235, 221, 0.15) 0 1px, transparent 1px calc(var(--cw) * 4)),
   repeating-linear-gradient(90deg, rgba(241, 235, 221, 0.05) 0 1px, transparent 1px var(--cw)); }
-.ms-note { position: absolute; pointer-events: auto; border-radius: 2px; background: var(--k); border: 1px solid rgba(0, 0, 0, 0.5); display: flex; align-items: center; overflow: hidden; cursor: grab; z-index: 1; }
+.ms-note { touch-action: none; position: absolute; pointer-events: auto; border-radius: 2px; background: var(--k); border: 1px solid rgba(0, 0, 0, 0.5); display: flex; align-items: center; overflow: hidden; cursor: grab; z-index: 1; }
 .ms-note.k-none { background: #6f6b61; }
 .ms-note.sel { outline: 2px solid var(--accent); outline-offset: 0; z-index: 2; }
 .ms-nlabel { font-size: calc(var(--rh) * 0.64); font-weight: 800; color: #16140f; padding-left: 0.25rem; pointer-events: none; white-space: nowrap; }
 .ms-grip { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: rgba(0, 0, 0, 0.2); cursor: ew-resize; }
 .ms-ghost { position: absolute; border: 1px dashed var(--accent); background: rgba(242, 193, 78, 0.12); pointer-events: none; }
+.ms-marquee, .cl-marquee { position: absolute; border: 1px dashed var(--accent); background: rgba(242, 193, 78, 0.16); pointer-events: none; z-index: 4; }          /* ドラッグで範囲選択するときの、四角 */
+.ms-grid.selecting, .cl-grid.selecting { cursor: cell; }
+.cl-grid.selecting { touch-action: none; }          /* 「範囲選択」のモード: 指で、四角にかこめるように（ふだんは、縦になぞると、スクロール） */
 .ms-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent); opacity: 0; pointer-events: none; z-index: 3; }
 .ms-foot { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.84rem; }
 .ms-summary.good { color: var(--ok); }
@@ -557,7 +568,7 @@ body.edit-pick #tray .pc { outline: 1px dashed var(--accent); outline-offset: 1p
 .cl-row.c { border-bottom: 1px solid var(--line-2); }
 .cl-ghost { position: absolute; left: 6%; right: 6%; border: 1px dashed var(--faint); border-radius: 2px; color: var(--faint); font-size: calc(var(--rh) * 0.62); padding-left: 0.4rem; pointer-events: none; font-family: var(--num); }
 .cl-notes { position: absolute; inset: 0; pointer-events: none; }
-.cl-note { position: absolute; left: 6%; right: 6%; pointer-events: auto; border-radius: 3px; background: var(--k, #6f6b61); border: 1px solid rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: space-between; padding: 0 0.5rem; color: #14120f; font-weight: 800; font-size: calc(var(--rh) * 0.72); cursor: grab; touch-action: none; z-index: 1; }
+.cl-note { touch-action: none; position: absolute; left: 6%; right: 6%; pointer-events: auto; border-radius: 3px; background: var(--k, #6f6b61); border: 1px solid rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: space-between; padding: 0 0.5rem; color: #14120f; font-weight: 800; font-size: calc(var(--rh) * 0.72); cursor: grab; touch-action: none; z-index: 1; }
 .cl-note small { font-weight: 700; opacity: 0.7; margin-left: 0.15rem; }
 .cl-nrole { font-size: calc(var(--rh) * 0.62); opacity: 0.85; }
 .cl-note.sel { outline: 2px solid var(--accent); z-index: 2; }
@@ -632,6 +643,10 @@ body.web-only .web-only-show { display: inline-flex; }
 .li-msg.err { color: var(--danger); }
 .li-h { margin: 0.3rem 0 0; font-size: 0.8rem; letter-spacing: 0.06em; color: var(--dim); }
 .li-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.li-cloudstate { margin: 0; font-size: 0.82rem; line-height: 1.6; color: var(--dim); }
+.li-cloudstate.live { color: var(--ok); }
+.li-cloudstate.offline { color: var(--danger); }
+.li-item.cloud { opacity: 0.95; }
 .li-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.6rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; }
 .li-kind { flex: none; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; color: var(--dim); min-width: 4.2em; }
 .li-name { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

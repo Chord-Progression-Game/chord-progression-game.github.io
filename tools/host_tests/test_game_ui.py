@@ -58,7 +58,7 @@ def main():
             ch.eval("__app.clearDelayOverride = 500")                     # テストでは、短くする
             check("タイトル: メニューは7つ（学ぶ・選ぶ・合わせる・挑む・遊ぶ・競う。対戦は準備中で押せない）", ch.eval("[document.querySelectorAll('#title .menu button').length, document.querySelector('#title .menu button[data-act=versus]').disabled, !!document.querySelector('#title .menu button[data-act=melody]')]"), [7, True, True])
             check("タイトル: メニューの順番と名前（チュートリアル・チュートリアルを選ぶ・メロディーにコードをつける・チャレンジステージ・フリープレイ・タイムアタック・対戦）", ch.eval("[...document.querySelectorAll('#title .menu button')].map(b => b.querySelector('span').firstChild.textContent)"), ["チュートリアル", "チュートリアルを選ぶ", "メロディーにコードをつける", "チャレンジステージ", "フリープレイ", "タイムアタック", "対戦"])
-            check("タイトル: 図鑑は23個（つながり3・終止4・固有進行14・借用和音2）", ch.eval("document.querySelectorAll('#collection-title .col-dot').length"), 23)
+            check("タイトル: 図鑑は26個（つながり4・終止6・固有進行13・借用和音2・内声1）", ch.eval("document.querySelectorAll('#collection-title .col-dot').length"), 26)
             check("タイトル: 実機は未接続（画面の盤で遊ぶ）", ch.eval("document.querySelector('#device-state').textContent.includes('未接続')"), True)
             click(ch, *center(ch, '#title .menu button[data-act=tutorial]'))
             ch.wait_for("__app.state === 'play'", timeout=10)
@@ -98,11 +98,11 @@ def main():
             time.sleep(0.4)
             check("ステージ1: Ⅴ-Ⅰ終止が決まる（囲みは Ⅴ7 → Ⅰ の1つ。技の一覧は、終止 + ジャッジの「機能のながれ」「ガイドトーンの半音進行」）", ch.eval("JSON.stringify([__app.game.analysis.instances.map(i => i.kind), __app.game.analysis.instances[0].positions, __app.scene.enclosures.size, document.querySelectorAll('#trick-list li:not(.empty)').length])"), '[["authentic_cadence"],[2,3],1,3]')
             check("ステージ1: スタンプが出る（技の名前）", ch.eval("(document.querySelector('.stamp .name') || {}).textContent"), "Ⅴ-Ⅰ終止")
-            ch.wait_for("document.querySelector('#score-num').textContent === '300'", timeout=5)          # 200 点 + ジャッジ（機能のながれ）50 + ガイドトーンの半音進行 30 + ⅣM7・Ⅴ7（レベル2）の加点 20
+            ch.wait_for("document.querySelector('#score-num').textContent === '295'", timeout=5)          # 200 点 + ジャッジ（機能のながれ）50 + 内声の半音の動き（ガイドトーン 30 + 声がもう1つ動く 10）+ Ⅴ7（技に使われた Lv2）の加点 5
             check("ステージ1: スタンプは小さい（説明は、スタンプに入れない = 3Dのラベルと重ならない）", ch.eval("document.querySelector('.stamp .why') === null"), True)
             check("ステージ1: 右の列に WHY（技の説明）が残る", ch.eval("JSON.stringify([!document.querySelector('#why').classList.contains('hidden'), document.querySelector('#why-name').textContent, document.querySelector('#why-text').textContent.includes('正格終止')])"), '[true,"Ⅴ-Ⅰ終止",true]')
             check("ステージ1: 目標のチップが「決まった」になる", ch.eval("document.querySelector('#goal-chip').classList.contains('done')"), True)
-            check("ステージ1: 図鑑に、2つ見つかった（Ⅴ-Ⅰ終止と、途中で Ⅴ7 が最後の駒だったときのドミナント終止。ステージ0 は、技なしで進める）", ch.eval("document.querySelector('#collection-count').textContent"), "2 / 23")
+            check("ステージ1: 図鑑に、2つ見つかった（Ⅴ-Ⅰ終止と、途中で Ⅴ7 が最後の駒だったときのドミナント終止。ステージ0 は、技なしで進める）", ch.eval("document.querySelector('#collection-count').textContent"), "2 / 26")
             ch.wait_for("!document.querySelector('#result').classList.contains('hidden')", timeout=8)
             check("ステージ1: クリアの画面に、技の説明が出る", ch.eval("document.querySelectorAll('#result-tricks .rt').length"), 1)
 
@@ -139,8 +139,8 @@ def main():
             # ============ コンボと得点 ============
             for i, n in enumerate(["Ⅵm", "Ⅳ", "Ⅴ", "Ⅰ"]):
                 drag_piece_to_slot(ch, n, i); time.sleep(0.2)
-            ch.wait_for("document.querySelector('#score-num').textContent === '990'", timeout=5)
-            check("小室進行 + Ⅴ-Ⅰ終止 = コンボ ×1.5 → 990 点", ch.eval("[document.querySelector('#combo-chip').textContent, document.querySelector('#variety-chip').textContent]"), ["COMBO ×1.5", "種類 2"])
+            ch.wait_for("document.querySelector('#score-num').textContent === '531'", timeout=5)
+            check("小室進行 + Ⅴ-Ⅰ終止 = コンボ ×1.15 → 506、種類2つで ×1.05 → 531 点", ch.eval("[document.querySelector('#combo-chip').textContent, document.querySelector('#variety-chip').textContent]"), ["COMBO ×1.15", "種類 2"])
             check("囲みは2つ（3Dのラベルも）", ch.eval("__app.scene.enclosures.size"), 2)
             check("WHY は、最後に決まった技（Ⅴ-Ⅰ終止）", ch.eval("document.querySelector('#why-name').textContent"), "Ⅴ-Ⅰ終止")
             ch.eval("document.querySelector('#btn-clear').click()")
@@ -247,7 +247,7 @@ def main():
             # ============ ヒント ============
             drag_piece_to_slot(ch, "ⅣM7", 0); time.sleep(0.3)
             click(ch, *center(ch, '#btn-hint')); time.sleep(0.6)
-            check("ヒント ON: おすすめの印（Ⅴ7・Ⅲ7）と、3Dの候補", ch.eval("JSON.stringify([[...document.querySelectorAll('.pc.hint1 .nm')].map(e => e.textContent).sort(), __app.scene.ghosts.length > 0, document.querySelector('#hint-state').textContent])"), '[["Ⅲ7","Ⅴ7"],true,"ON"]')
+            check("ヒント ON: おすすめの印（Ⅰ〔Ⅳ-Ⅰ終止〕・Ⅴ7・Ⅲ7）と、3Dの候補", ch.eval("JSON.stringify([[...document.querySelectorAll('.pc.hint1 .nm')].map(e => e.textContent).sort(), __app.scene.ghosts.length > 0, document.querySelector('#hint-state').textContent])"), '[["Ⅰ","Ⅲ7","Ⅴ7"],true,"ON"]')
             check("ヒント ON: 発展の印（Ⅳm7 など）", ch.eval("[...document.querySelectorAll('.pc.hint2 .nm')].map(e => e.textContent).includes('Ⅳm7')"), True)
             # ヒントの候補（盤の上の、透けた札）を、クリックして置く
             gx = ch.eval("(() => { const s = __app.scene; const g = s.ghosts[0]; const v = g.sprite.getWorldPosition(new g.sprite.position.constructor()); v.project(s.camera); const r = s.canvas.getBoundingClientRect(); return [(v.x + 1) / 2 * r.width + r.left, (1 - v.y) / 2 * r.height + r.top, g.id, s.ghostSlot]; })()")
@@ -273,7 +273,7 @@ def main():
             for slot, n in zip((0, 1, 2), ("Ⅰ", "Ⅲ7", "Ⅵ♭M7")):
                 ch.eval("__app.game.place(%d, __app.table.byName(%r).id)" % (slot, n))
             time.sleep(0.4)
-            check("ジャッジ: 進行感のない並び → 減点の行（−40）・チップ「ジャッジ −40」", ch.eval("JSON.stringify([document.querySelectorAll('#trick-list li.sense.bad').length, (document.querySelector('#trick-list li.sense.bad .pt') || {}).textContent, document.querySelector('#sense-chip').textContent])"), '[1,"−40","ジャッジ −40"]')
+            check("ジャッジ: 進行感のない並び → 減点の行（進行感なし −40・役に立っていない駒 −45）・チップ「ジャッジ −85」", ch.eval("JSON.stringify([document.querySelectorAll('#trick-list li.sense.bad').length, (document.querySelector('#trick-list li.sense.bad .pt') || {}).textContent, document.querySelector('#sense-chip').textContent])"), '[2,"−40","ジャッジ −85"]')
             ch.eval("__app.game.clear()"); time.sleep(0.3)
             check("ジャッジ: 盤を空にすると、チップも行も消える", ch.eval("JSON.stringify([document.querySelector('#sense-chip').classList.contains('hidden'), document.querySelectorAll('#trick-list li.sense').length])"), '[true,0]')
 
@@ -290,11 +290,11 @@ def main():
             check("チャレンジ: 最初の駒でタイマーが動き出す", ch.eval("__app.game.timerRunning"), True)
             drag_piece_to_slot(ch, "Ⅴ7", 1); time.sleep(0.2)
             drag_piece_to_slot(ch, "ⅠM7", 2); time.sleep(0.4)
-            ch.wait_for("document.querySelector('#score-num').textContent === '500'", timeout=3)          # ツーファイブワン 400 点 + コードの難しさの加点 40
-            check("チャレンジ: ツーファイブワンで 500 点（400 + 難しさの加点 40 + ガイドトーンの半音進行 60）", ch.eval("document.querySelector('#score-num').textContent"), "500")
+            ch.wait_for("document.querySelector('#score-num').textContent === '480'", timeout=3)          # ツーファイブワン 400 点 + コードの難しさの加点 20
+            check("チャレンジ: ツーファイブワンで 480 点（400 + 難しさの加点 20 + ガイドトーンの半音進行 60）", ch.eval("document.querySelector('#score-num').textContent"), "480")
             ch.eval("__app.game.timeLeft = 0.2")
             ch.wait_for("!document.querySelector('#result').classList.contains('hidden')", timeout=5)
-            check("タイムアタック: 終わると結果（得点 500・星 1。500 点が、星1つのしきい値）", ch.eval("[document.querySelector('#result-kicker').textContent, document.querySelector('#result-score').textContent.startsWith('500'), document.querySelectorAll('#result-stars b').length]"), ["TIME UP", True, 1])
+            check("タイムアタック: 終わると結果（得点 480・星 1。300 点が、星1つのしきい値）", ch.eval("[document.querySelector('#result-kicker').textContent, document.querySelector('#result-score').textContent.startsWith('480'), document.querySelectorAll('#result-stars b').length]"), ["TIME UP", True, 1])
             # --- 終わったあと: 「盤面を見る・編集する」（チュートリアルと同じ。2026-11-18）---
             check("タイムアタックの結果: ボタンは 3つ（もう一度・盤面を見る・編集する・タイトルへ。選ぶ画面はない）", ch.eval("[...document.querySelectorAll('#result-btns button')].map(b => b.textContent)"), ["もう一度", "盤面を見る・編集する", "タイトルへ"])
             best_before = ch.eval("__app.save.best.challenge")
@@ -305,7 +305,7 @@ def main():
             check("チャレンジ: 終わったあとも、盤面を編集できる（駒を置ける）。タイマーは、もう動かない", ch.eval("JSON.stringify([__app.game.board[3] !== null, __app.game.timerRunning, __app.challengeDone])"), '[true,false,true]')
             check("チャレンジ: 編集しても、記録（ベスト）は変わらない", ch.eval("__app.save.best.challenge"), best_before)
             click(ch, *center(ch, '#btn-clear-result')); time.sleep(0.5)
-            check("チャレンジ: 「結果を見る」で、結果の画面にもどる（同じ得点 500）", ch.eval("JSON.stringify([!document.querySelector('#result').classList.contains('hidden'), document.querySelector('#clear-bar').classList.contains('hidden'), document.querySelector('#result-score').textContent.startsWith('500')])"), '[true,true,true]')
+            check("チャレンジ: 「結果を見る」で、結果の画面にもどる（同じ得点 480）", ch.eval("JSON.stringify([!document.querySelector('#result').classList.contains('hidden'), document.querySelector('#clear-bar').classList.contains('hidden'), document.querySelector('#result-score').textContent.startsWith('480')])"), '[true,true,true]')
             ch.eval("[...document.querySelectorAll('#result-btns button')].find(b => b.textContent.includes('盤面を見る')).click()"); time.sleep(0.4)
             click(ch, *center(ch, '#btn-clear-next')); time.sleep(0.8)
             check("チャレンジ: 操作の欄の「もう一度 ▶」で、新しいチャレンジが始まる（盤面は空・タイマーは止まって 90）", ch.eval("JSON.stringify([__app.game.mode, __app.game.board.every(x => x === null), __app.game.timerRunning, document.querySelector('#timer-num').textContent, document.querySelector('#clear-bar').classList.contains('hidden'), __app.challengeDone])"), '["challenge",true,false,"90",true,false]')
@@ -348,12 +348,12 @@ def main():
             ch.eval("__app.game.clear(); __app.library.apply({seq: 6, drums: [], backings: [], progressions: []})")          # 最初の読み込み（知らせは出ない）
             ch.eval("__app.library.apply(%s)" % json.dumps(lib, ensure_ascii=False)); time.sleep(0.4)
             check("ライブラリ: ドラム・バッキングが選べる一覧に入る（番号は 1000 以上）", ch.eval("JSON.stringify([__app.presets.drums.filter(d => d.user).map(d => [d.id, d.name]), __app.presets.backings.filter(d => d.user).map(d => [d.id, d.name])])"), '[[[1001,"テストビート"]],[[1002,"テストバッキング"]]]')
-            check("ライブラリ: 進行が、図鑑に増える（24個）", ch.eval("[document.querySelectorAll('#collection .col-dot').length, document.querySelector('#collection-count').textContent.endsWith(' / 24')]"), [24, True])
+            check("ライブラリ: 進行が、図鑑に増える（27個）", ch.eval("[document.querySelectorAll('#collection .col-dot').length, document.querySelector('#collection-count').textContent.endsWith(' / 27')]"), [27, True])
             check("ライブラリ: 「受け取りました」の知らせが、3つ出る（ドラム・バッキング・進行）", ch.eval("[...document.querySelectorAll('.toast')].map(t => t.textContent).filter(t => t.includes('受け取りました')).length"), 3)
             for i, n in enumerate(["Ⅱm7", "Ⅴ7", "ⅠM7"]):
                 drag_piece_to_slot(ch, n, i); time.sleep(0.2)
             ch.wait_for("__app.game.analysis.instances.length > 0", timeout=5)
-            check("ライブラリ: 届いた進行が、盤で技として決まる（450 点 + 難しさの加点 40 + ガイドトーンの半音進行 60）", ch.eval("JSON.stringify([__app.game.analysis.instances.map(i => [i.kind, i.name, i.points]), __app.game.analysis.score.total])"), '[[["custom_p3","テスト進行",450]],550]')
+            check("ライブラリ: 届いた進行が、盤で技として決まる（450 点 + 難しさの加点 20 + ガイドトーンの半音進行 60）", ch.eval("JSON.stringify([__app.game.analysis.instances.map(i => [i.kind, i.name, i.points]), __app.game.analysis.score.total])"), '[[["custom_p3","テスト進行",450]],530]')
             ch.eval("__app.game.clear()")
             click(ch, *center(ch, '#btn-soundmenu')); time.sleep(0.2)
             for _ in range(20):                                                  # ビートを、ユーザーのものまで進める
@@ -363,7 +363,7 @@ def main():
             check("ライブラリ: メニューに、ユーザーのビート（「あなたが作った」の印）", ch.eval("[__app.save.sound.drum, document.querySelector('#soundmenu .sm-row[data-kind=drum] .sm-name b').textContent, !!document.querySelector('#soundmenu .sm-row[data-kind=drum] .sm-name i')]"), [1001, "テストビート", True])
             check("ライブラリ: エンジンの設定と、選んだビートが一致（音を出さない試験では省略）", ch.eval("__app.engine ? __app.engine.drumId : 1001"), 1001)
             ch.eval("__app.library.apply({seq: 8, drums: [], backings: [], progressions: []})"); time.sleep(0.4)
-            check("ライブラリ: 消されたら、図鑑も一覧も元に戻る（23個）。選んでいたビートは、標準に戻る", ch.eval("JSON.stringify([document.querySelectorAll('#collection .col-dot').length, __app.presets.drums.filter(d => d.user).length, document.querySelector('#soundmenu .sm-row[data-kind=drum]').classList.contains('is-default') || document.querySelector('#soundmenu .sm-row[data-kind=drum] .sm-name b').textContent])"), '[23,0,"8ビート"]')
+            check("ライブラリ: 消されたら、図鑑も一覧も元に戻る（26個）。選んでいたビートは、標準に戻る", ch.eval("JSON.stringify([document.querySelectorAll('#collection .col-dot').length, __app.presets.drums.filter(d => d.user).length, document.querySelector('#soundmenu .sm-row[data-kind=drum]').classList.contains('is-default') || document.querySelector('#soundmenu .sm-row[data-kind=drum] .sm-name b').textContent])"), '[26,0,"8ビート"]')
             ch.eval("document.querySelector('#soundmenu .sm-reset').click()")
             click(ch, 5, 5); time.sleep(0.2)
 

@@ -45,7 +45,12 @@ def main():
     lib.put("drum", {"name": "夕焼けビート", "length": 16, "lanes": {"K": "x...x...x...x...", "S": "....x.......x...", "H": "x.x.x.x.x.x.x.x."}})
     lib.put("backing", {"name": "ゆったり", "length": 16, "cells": "C---....C---...."})
     lib.put("progression", {"name": "テスト進行", "chords": ["Ⅰ", "Ⅴ", "Ⅵm"], "points": 500, "startAt": "head"})
-    server = rs.start_in_thread(0, lambda l: None, control=lambda l: None, get_state=lambda: STATE, live=lambda l: None, library=lib)
+    import cloud_sync  # noqa: E402
+    from mock_firebase import MockFirebase  # noqa: E402
+    mock = MockFirebase(secret="EDITORSECRET")
+    sync = cloud_sync.CloudSync(lib, config_path=os.path.join(tempfile.mkdtemp(), "cloud.json"), allow_local=True)
+    lib.listeners.append(sync.notify)
+    server = rs.start_in_thread(0, lambda l: None, control=lambda l: None, get_state=lambda: STATE, live=lambda l: None, library=lib, cloud=sync)
     port = server.server_address[1]
     try:
         with ChromeSession(width=1100, height=900) as ch:
@@ -80,9 +85,41 @@ def main():
             check("全部チェックを外すと、リンクは作らない（理由を出す）", ch.eval("[pagesLink(), document.getElementById('pages-message').textContent.includes('送るものが、ありません')]"), [None, True])
             ch.eval("document.querySelectorAll('.game-item .pg-pick').forEach((c) => { if (!c.checked) c.click(); }); document.getElementById('pages-url').value = 'ftp://x'")
             check("URL が https:// などで始まらないときは、作らない", ch.eval("[pagesLink(), document.getElementById('pages-message').textContent.includes('https://')]"), [None, True])
+            # ---- 全部の端末へ、自動で送る（Firebase。ここでは、にせもの）----
+            ch.wait_for("document.getElementById('cloud-status').textContent.length > 0", timeout=10)
+            check("自動で送る: はじめは、「まだ、設定されていません」・「やめる」「いま送る」は押せない", ch.eval("[document.getElementById('cloud-status').textContent.includes('まだ、設定されていません'), document.getElementById('cloud-clear').disabled, document.getElementById('cloud-push').disabled]"), [True, True, True])
+            ch.eval("document.getElementById('cloud-url').value = %s; document.getElementById('cloud-secret').value = 'WRONG'; document.getElementById('cloud-connect').click()" % json.dumps(mock.url))
+            time.sleep(1.2)
+            check("自動で送る: 秘密のキーが違うと、ことわる（理由が出る）。設定されない", ch.eval("[document.getElementById('cloud-message').textContent.includes('書きこめません'), document.getElementById('cloud-message').className]"), [True, "err"])
+            ch.eval("document.getElementById('cloud-secret').value = 'EDITORSECRET'; document.getElementById('cloud-connect').click()")
+            ch.wait_for("document.getElementById('cloud-status').textContent.includes('送れています')", timeout=10)
+            check("自動で送る: 合っていれば、つながる。秘密のキーの欄は、空にもどる（画面に残さない）。「やめる」が押せる", ch.eval("[document.getElementById('cloud-secret').value, document.getElementById('cloud-clear').disabled, document.getElementById('cloud-message').className]"), ["", False, "ok"])
+            check("自動で送る: 状態の表示に、秘密のキーが、出ない", ch.eval("document.body.innerText.includes('EDITORSECRET')"), False)
+            check("自動で送る: にせものの Firebase に、いまのライブラリ（ドラム 1・バッキング 1・進行 1）が、書かれている", [len(mock.value('chordlines/library')['drums']), len(mock.value('chordlines/library')['backings']), len(mock.value('chordlines/library')['progressions'])], [1, 1, 1])
+            lib.put("drum", {"name": "あとから足した", "length": 16, "lanes": {"K": "x...............", "S": "....x..........."}})
+            check("自動で送る: ライブラリが変わると、自動で、書かれる", (lambda: any(time.sleep(0.1) or len(mock.value('chordlines/library')['drums']) == 2 for _ in range(60)))(), True)
+            # サービスアカウントのキー（JSON ファイル）を、選んで、つなぐ
+            import subprocess
+            kd = tempfile.mkdtemp()
+            subprocess.run(["openssl", "genrsa", "-out", os.path.join(kd, "k.pem"), "2048"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            subprocess.run(["openssl", "rsa", "-in", os.path.join(kd, "k.pem"), "-pubout", "-out", os.path.join(kd, "p.pem")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            mock_sa = MockFirebase(secret="UNUSED", token_pubkey=open(os.path.join(kd, "p.pem")).read())
+            sa = {"type": "service_account", "project_id": "p", "client_email": "fb@p.iam.gserviceaccount.com", "private_key": open(os.path.join(kd, "k.pem")).read(), "token_uri": mock_sa.url + "/token"}
+            ch.eval("window.confirm = () => true; document.getElementById('cloud-clear').click()")
+            ch.wait_for("document.getElementById('cloud-status').textContent.includes('まだ、設定されていません')", timeout=10)
+            ch.eval("(() => { document.getElementById('cloud-url').value = %s; const dt = new DataTransfer(); dt.items.add(new File([%s], 'key.json', { type: 'application/json' })); document.getElementById('cloud-key-file').files = dt.files; document.getElementById('cloud-connect').click(); })()" % (json.dumps(mock_sa.url), json.dumps(json.dumps(sa))))
+            ch.wait_for("document.getElementById('cloud-status').textContent.includes('送れています')", timeout=15)
+            check("自動で送る: 鍵の JSON ファイルを選んで、つなぐ（サービスアカウント）。状態に「サービスアカウントのキー」と出る・秘密鍵は、画面に出ない", ch.eval("[document.getElementById('cloud-status').textContent.includes('サービスアカウントのキー'), document.body.innerText.includes('BEGIN'), document.getElementById('cloud-key-file').value]"), [True, False, ""])
+            check("自動で送る（サービスアカウント）: にせものに、ライブラリが書かれている", mock_sa.value("chordlines/library") is not None, True)
+            mock_sa.stop()
+            ch.eval("window.confirm = () => true; document.getElementById('cloud-clear').click()")
+            ch.wait_for("document.getElementById('cloud-status').textContent.includes('まだ、設定されていません')", timeout=10)
+            check("自動で送る: 「やめる」で、設定が消える", ch.eval("document.getElementById('cloud-push').disabled"), True)
             check("JS のエラーがない", ch.eval("typeof window.__errors === 'undefined' ? 'n/a' : JSON.stringify(window.__errors)"), "n/a")
     finally:
         server.shutdown()
+        sync.stop()
+        mock.stop()
     print("編集画面 → 公開ページ: %d 件中 %d 件 失敗" % (checks, fails))
     return 1 if fails else 0
 

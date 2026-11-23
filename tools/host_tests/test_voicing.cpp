@@ -39,10 +39,15 @@ int main() {
 
   // ---- ふつうの動き ----
   eqi("Ⅰ→Ⅶ: 上に11半音ではなく、下に1半音（B2=47）", chooseOctaveShift(nominal(15), 48, true), -12);   // Ⅶm7-5 の B
-  eqi("Ⅰ→Ⅳ: 上に5半音（F3=53）のまま", chooseOctaveShift(nominal(3), 48, true), 0);
+  eqi("Ⅰ→Ⅳ: 強進行（4度上）なので、上に5半音ではなく、5度下（F2=41）", chooseOctaveShift(nominal(3), 48, true), -12);
   eqi("Ⅰ→Ⅴ: 上に7半音ではなく、下に5半音（G2=43）", chooseOctaveShift(nominal(4), 48, true), -12);
   eqi("Ⅳ(F3=53)→Ⅰ: 下に5半音（C3=48）のまま", chooseOctaveShift(nominal(1), 53, true), 0);
-  eqi("Ⅴ(G3=55)→Ⅰ: 上に5半音（C4=60）へ", chooseOctaveShift(nominal(1), 55, true), 12);
+  eqi("Ⅴ(G3=55)→Ⅰ: 強進行（4度上）なので、上へ跳ばず、5度下（C3=48）へ（終止した感じ）", chooseOctaveShift(nominal(1), 55, true), 0);
+  eqi("Ⅱm(D3=50)→Ⅴ: 5度下（G2=43）へ", chooseOctaveShift(nominal(4), 50, true), -12);
+  eqi("Ⅴ(G2=43)→Ⅰ: 5度下（C2=36）へ", chooseOctaveShift(nominal(1), 43, true), -12);
+  eqi("Ⅰ(C2=36)→Ⅳ: 5度下の F1(29) は低すぎて候補にない → いちばん近い F2(41)", chooseOctaveShift(nominal(3), 36, true), -12);
+  eqi("Ⅲ(E2=40)→Ⅵ: 5度下の A1(33) は候補にない → いちばん近い A2(45)", chooseOctaveShift(nominal(2), 40, true), -12);
+  eqi("Ⅴ(G4=67)→Ⅰ: 5度下の C4(60) は候補（+12）にある", chooseOctaveShift(nominal(1), 67, true), 12);
   eqi("同じコード（Ⅰ→Ⅰ）は動かない", chooseOctaveShift(48, 48, true), 0);
   eqi("同じコードがすでに上にあれば、そのまま（C4→C）", chooseOctaveShift(48, 60, true), 12);
   eqi("下にあれば、そのまま（C2→C）", chooseOctaveShift(48, 36, true), -12);
@@ -66,7 +71,12 @@ int main() {
       // 3つの候補のうち、本当に一番近いか
       int best = 999;
       for (int c = -12; c <= 12; c += 12) { int dd = nom + c - prev; if (dd < 0) dd = -dd; if (dd < best) best = dd; }
-      eqi("一番近い候補を選んでいる", d, best);
+      // 強進行（ルートが4度上）は、5度下の高さが候補にあれば、それを選ぶ（ほかは、いちばん近い候補）
+      bool strong = (((nom - prev) % 12) + 12) % 12 == 5;
+      bool fifthDown = false;
+      for (int c = -12; c <= 12; c += 12) if (nom + c == prev - 7) fifthDown = true;
+      if (strong && fifthDown) eqi("強進行は、5度下", (nom + sh) - prev, -7);
+      else eqi("一番近い候補を選んでいる", d, best);
       // 前のコードが本来の範囲（nom-12 〜 nom+12）にあるなら、動きは最大6半音。
       // 範囲の外にあっても、12半音以内に収まる
       if (prev >= nom - 12 && prev <= nom + 12) eqi("範囲内なら、動きは最大12半音以内", d <= 12, 1);
@@ -115,8 +125,8 @@ int main() {
     eqi("王道 3: Ⅳ=F2(41)（下に4半音）", roots[2], 41);
     // Ⅳ(41)→Ⅴ: G3=55(14) G2=43(2) → G2(43)
     eqi("王道 4: Ⅴ=G2(43)（上に2半音）", roots[3], 43);
-    // Ⅴ(43)→Ⅰ: C3=48(5) C2=36(7) C4=60 → C3(48)
-    eqi("王道 5: 2周目のⅠ=C3(48)（上に5半音）", roots[4], 48);
+    // Ⅴ(43)→Ⅰ: 強進行（4度上）なので、5度下の C2=36 へ（C3=48 へ上がらない）
+    eqi("王道 5: 2周目のⅠ=C2(36)（強進行: 5度下）", roots[4], 36);
     eqi("王道 6〜8: 2周目も1周目と同じ動き", roots[5] == roots[1] && roots[6] == roots[2] && roots[7] == roots[3], 1);
   }
 

@@ -3,14 +3,15 @@
 //   onPreview(text) → { ok, error?, counts: { drums, backings, progressions, skipped } }（貼り付けた内容の、取り込む前の確認）
 //   onImport(text)  → { ok, error?, added, updated, full, skipped }（取り込む。成功なら、保存・反映ずみ）
 //   onRemove(kind, id) → 削除（保存・反映ずみ）
+//   getCloud() → { enabled, state, lib }（公開ライブラリ: 全端末で共通。リアルタイムで届く。net/cloud.js。読むだけ）
 import { h, clear } from './dom.js';
 import { KIND_LABEL } from '../net/share.js';
 
 const SUMMARY = (c) => `ドラム ${c.drums}・バッキング ${c.backings}・進行 ${c.progressions}${c.skipped ? `（読み込めないもの ${c.skipped}）` : ''}`;
 
 export class LibImport {
-  constructor({ root, getLibrary, onPreview, onImport, onRemove, onOpen = () => {}, onClose = () => {}, canOpen = () => true }) {
-    Object.assign(this, { root, getLibrary, onPreview, onImport, onRemove, onOpen, onClose, canOpen });
+  constructor({ root, getLibrary, onPreview, onImport, onRemove, getCloud = () => ({ enabled: false, state: 'off', lib: null }), onOpen = () => {}, onClose = () => {}, canOpen = () => true }) {
+    Object.assign(this, { root, getLibrary, onPreview, onImport, onRemove, getCloud, onOpen, onClose, canOpen });
     this.isOpen = false;
     root.addEventListener('click', (e) => { if (e.target === root) this.close(); });          // 外側（暗いところ）をクリックしても、閉じる
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.isOpen) { this.close(); e.preventDefault(); } });
@@ -45,6 +46,7 @@ export class LibImport {
     this.file.addEventListener('change', () => { const f = this.file.files && this.file.files[0]; if (f) this.readFile(f); this.file.value = ''; });
     this.applyBtn = h('button', { class: 'chip primary', id: 'li-apply', onclick: () => this.apply() }, '取り込む');
     this.listBox = h('div', { class: 'li-list', id: 'li-list' });
+    this.cloudBox = h('div', { class: 'li-list li-cloud', id: 'li-cloud' });
     clear(this.root).append(h('div', { class: 'card li-card', role: 'dialog', 'aria-label': 'リズムの取り込み' },
       h('div', { class: 'pm-head' }, h('b', {}, 'リズム・コード編集の内容を取り込む'), h('button', { class: 'chip', id: 'li-close', onclick: () => this.close() }, '閉じる')),
       h('p', { class: 'li-note' }, 'パソコンの「リズム・コード編集」の画面で作ったドラム・バッキング・進行を、このゲームに入れます。編集の画面の「公開ページのゲームにも送る」で、リンクかファイルを作って、ここに貼り付けるか、リンクを開いてください。取り込んだものは、このブラウザに保存されます。'),
@@ -52,7 +54,9 @@ export class LibImport {
       h('div', { class: 'li-row' }, h('label', { class: 'chip li-file-label' }, 'ファイルを選ぶ', this.file), this.applyBtn),
       this.msg,
       h('h4', { class: 'li-h' }, '取り込んだもの'),
-      this.listBox));
+      this.listBox,
+      h('h4', { class: 'li-h' }, '公開ライブラリ（全部の端末に、自動で届くもの）'),
+      this.cloudBox));
     this.renderList();
   }
 
@@ -106,5 +110,28 @@ export class LibImport {
       }
     }
     if (!total) this.listBox.append(h('p', { class: 'li-empty' }, 'まだ、ありません。'));
+    this.renderCloud();
+  }
+
+  // 公開ライブラリ: 状態と、届いているもの（読むだけ。削除はできない。作った人が、編集の画面で、消す）
+  renderCloud() {
+    if (!this.cloudBox) return;
+    const c = this.getCloud();
+    clear(this.cloudBox);
+    if (!c.enabled && !(c.lib && (c.lib.drums.length + c.lib.backings.length + c.lib.progressions.length))) {
+      this.cloudBox.append(h('p', { class: 'li-empty', id: 'li-cloud-state' }, 'このゲームには、設定されていません。'));
+      return;
+    }
+    const STATE = { live: 'つながっています。編集の画面で変えると、すぐ届きます。', polling: '数秒ごとに、確かめています。', connecting: 'つなげています…', offline: 'つながっていません。前に届いたものを、使っています。', off: '' };
+    this.cloudBox.append(h('p', { class: `li-cloudstate ${c.state}`, id: 'li-cloud-state' }, STATE[c.state] || ''));
+    const lib = c.lib || { drums: [], backings: [], progressions: [] };
+    let total = 0;
+    for (const [kind, items] of [['drum', lib.drums], ['backing', lib.backings], ['progression', lib.progressions]]) {
+      for (const it of items || []) {
+        total++;
+        this.cloudBox.append(h('div', { class: 'li-item cloud', dataset: { kind, id: it.id } }, h('span', { class: 'li-kind' }, KIND_LABEL[kind]), h('span', { class: 'li-name' }, it.name)));
+      }
+    }
+    if (!total) this.cloudBox.append(h('p', { class: 'li-empty' }, 'まだ、届いていません。'));
   }
 }

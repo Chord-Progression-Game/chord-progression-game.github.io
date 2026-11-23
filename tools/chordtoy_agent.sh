@@ -29,7 +29,7 @@ sync_files() {
   SRC_PY="$ROOT/tools/.venv/bin/python"
   if [ ! -x "$SRC_PY" ]; then echo "先に  sh tools/setup_bridge.sh  を実行してください"; return 1; fi
   mkdir -p "$DEST/tools"
-  cp "$ROOT/tools/midi_bridge.py" "$ROOT/tools/rhythm_server.py" "$DEST/tools/" || return 1
+  cp "$ROOT/tools/midi_bridge.py" "$ROOT/tools/rhythm_server.py" "$ROOT/tools/cloud_sync.py" "$DEST/tools/" || return 1
   rm -rf "$DEST/tools/rhythm_editor" && cp -R "$ROOT/tools/rhythm_editor" "$DEST/tools/rhythm_editor" || return 1
   # ゲーム（http://127.0.0.1:8765/game/ で配る）。テストの一時ファイルは、持っていかない
   rm -rf "$DEST/game" && cp -R "$ROOT/game" "$DEST/game" && rm -rf "$DEST/game/test/_generated" || return 1

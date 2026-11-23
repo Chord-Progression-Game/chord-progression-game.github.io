@@ -127,12 +127,12 @@ export function suggest(board, table, allowedIds, opts = {}) {
     for (const y of allowed) {
       if (virtualEvent(y, cursor).blocked) continue;                    // 冒頭のドミナント系の駒は、技にならない
       // 最初の駒は、パターンが「おすすめ」としている駒だけ（例: ツーファイブワンの最初は Ⅱm7。どの m7 でもよいわけではない）
-      let starts = PATTERNS.filter((p) => !p.advancedHint && p.steps.length >= 3 && p.steps[0](y) && (!p.prefer || p.prefer[0].includes(y.name)) && (!p.startAt || p.startAt.includes(cursor)));
+      let starts = PATTERNS.filter((p) => !p.advancedHint && !p.noStartHint && p.steps.length >= 3 && p.steps[0](y) && (!p.prefer || p.prefer[0].includes(y.name)) && (!p.startAt || p.startAt.includes(cursor)));
       if (!starts.length) continue;
       const short = starts.filter((p) => p.steps.length <= 5);          // 盤を使い切る長い進行（ブルース8つ）は、最初のヒントには出さない
       if (short.length) starts = short;
       const bestP = starts.sort((a, b) => b.points - a.points)[0];
-      cands.push({ chord: y, tier: 1, score: 500 + bestP.points, reason: `${[...new Set(starts.map((p) => `「${trickLabel(p.kind, p.variant)}」`))].join('')}の最初`, pattern: bestP, gain: 0 });
+      cands.push({ chord: y, tier: 1, score: 500 + bestP.points, reason: `${[...new Set(starts.map((p) => `「${trickLabel(p.kind, p.variant)}」`))].join('')}の最初`, pattern: bestP, gain: 0, start: true });
     }
   }
 
@@ -194,6 +194,7 @@ export function suggest(board, table, allowedIds, opts = {}) {
     const afterDom = !!prevChord && isDominantType(prevChord);
     if (phraseHead) {
       ii7Head = !afterDom;                                                  // 前がドミナントのときは、「発展」に
+      if (afterDom) for (const x of cands) if (x.chord.rootPc === ii7.rootPc && ['min', 'min7'].includes(x.chord.type) && x.start && x.tier === 1) x.tier = 2;       // 名前のついた進行の「最初」としても出ているが、ドミナントのあとの頭では、おすすめにしない（Ⅴ-Ⅰ・偽終止などの流れを先に）
       if (!has || has.tier > 1) {
         addFlow({ chord: ii7, tier: afterDom ? 2 : 1, score: afterDom ? 150 : 900, pattern: null, gain: 0, flow: true,
           reason: `${ii7.name} は、進行の頭によく使われる和音。このあと Ⅴ7 → ⅠM7 とつなげると『ツーファイブワン』になる` });

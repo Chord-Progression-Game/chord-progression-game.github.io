@@ -8,7 +8,10 @@
     ・JS のエラーがない
     ・開いている画面（モーダル）は、同時に 1つだけ。「開いている」と覚えている状態と、画面の見え方が一致する（以前は、結果の画面が重なると、ずれた）
     ・遊ぶ画面（play）のときは、モーダルが出ていない / タイトル・ステージ選択のときは、その画面が出ている
-    ・盤の中身と 3D の駒が一致する（分割したマスの後半も）/ 分割したマスの決まり（空きは分けない・前半と後半は別の駒）
+    ・盤の中身と 3D の駒が一致する（分割したマスの後半も。駒の幅も: 分割したマスは半分・ふつうは全部）/ 分割したマスの決まり（空きは分けない・前半と後半は別の駒）
+    ・body の data-screen（土台の画面）・data-overlay（重ねた画面）が、見えている画面と一致する（以前は、取り込みの画面を閉じたあと、data-screen が戻らず、スマホの
+      タイトルに、技のスタンプが出た）/ スマホのタイトル・選ぶ画面・起動の背景には、技のスタンプが見えない（2026-11-24 に追加）
+    ・自作コードを足す・変える・消す・置く操作（駒の描き直し）をまぜる（以前は、分割したマスの前半が、正方形にもどった）
     ・クリアの結果が出るはずの時刻をすぎても、出ていない（別の画面を開いていないのに）ことがない
     ・知らせ（トースト）が、積み上がりすぎない
 実行:  python3 tools/host_tests/test_fuzz_ui.py [操作の回数（既定 260）] [seed]
@@ -46,7 +49,25 @@ INVARIANTS = r"""
   if (A.state === 'result' && !vis('result')) bad.push('state=result なのに、結果の画面が出ていない');
   if (A.state !== 'result' && vis('result') && A.state !== 'splash') bad.push('結果の画面が出ているのに、state=' + A.state);
   if (!['splash', 'title', 'stages', 'play', 'pause', 'result', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport'].includes(A.state)) bad.push('知らない状態: ' + A.state);
+  // 画面の名前（body の data-screen = 土台・data-overlay = 重ねた画面）が、見えている画面と合っている（2026-11-24）
+  {
+    const mains = ['splash', 'title', 'stages', 'hud'].filter(vis);
+    if (mains.length !== 1) bad.push('土台の画面が ' + mains.length + ' つ見えている: ' + mains.join(','));
+    else if (document.body.dataset.screen !== mains[0]) bad.push('data-screen が、見えている土台の画面とちがう: ' + document.body.dataset.screen + ' / 見えているのは ' + mains[0]);
+    const overs = ['pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'result'].filter(vis);
+    const ov = document.body.dataset.overlay || '';
+    if (overs.length > 1) bad.push('重ねた画面が ' + overs.length + ' つ見えている: ' + overs.join(','));
+    else if ((overs[0] || '') !== ov) bad.push('data-overlay が、見えている重ねた画面とちがう: ' + ov + ' / 見えているのは ' + (overs[0] || 'なし'));
+    // スマホ: 起動・タイトル・選ぶ画面の背景には、技のスタンプを出さない（メニューにかぶさるため）
+    if (document.body.classList.contains('is-phone') && ['splash', 'title', 'stages'].includes(document.body.dataset.screen)) {
+      const layer = document.querySelector('#stamp-layer');
+      if (layer && getComputedStyle(layer).display !== 'none') bad.push('スマホ: ' + document.body.dataset.screen + ' の背景で、技のスタンプの置き場が出ている（data-overlay=' + ov + '）');
+      const seen = [...document.querySelectorAll('#stamp-layer .stamp')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; });
+      if (seen.length) bad.push('スマホ: ' + document.body.dataset.screen + ' に、技のスタンプが見えている（' + seen.length + ' つ）');
+    }
+  }
   // 盤の決まり
+  const tileWidth = (pc) => { const g = pc.group.userData.tile.geometry; if (!g.boundingBox) g.computeBoundingBox(); return g.boundingBox.max.x - g.boundingBox.min.x; };
   for (let i = 0; i < 8; i++) {
     const f = g.board[i], s = g.split[i];
     if (s !== null && s !== undefined && (f === null || f === undefined || f === A.table.repeatId)) bad.push('分割の決まり: ' + (i + 1) + '番が空き・「→」なのに、後半がある');
@@ -57,7 +78,13 @@ INVARIANTS = r"""
     if ((p2 ? p2.chord : null) !== (want2 || null)) bad.push('3D と盤がちがう: ' + (i + 1) + '番の後半（盤 ' + (want2 && want2.name) + ' / 3D ' + (p2 && p2.chord.name) + '）');
     if (p1 && want2 && !p1.half) bad.push('3D: ' + (i + 1) + '番は分割しているのに、前半の駒が、半分の大きさでない');
     if (p1 && !want2 && p1.half) bad.push('3D: ' + (i + 1) + '番は分割していないのに、前半の駒が、半分の大きさ');
+    // 駒の板の幅（分割したマスの前半・後半 = 0.62・ふつう = 1.34）。描き直しで、半分の大きさが、正方形にもどらないこと（2026-11-24）
+    if (p1 && p1.group.userData.tile) { const tw = tileWidth(p1), want = want2 ? 0.62 : 1.34; if (Math.abs(tw - want) > 0.02) bad.push('3D: ' + (i + 1) + '番の前半の駒の板の幅が ' + tw.toFixed(2) + '（そのはずの幅: ' + want + '）'); }
+    if (p2 && p2.group.userData.tile && Math.abs(tileWidth(p2) - 0.62) > 0.02) bad.push('3D: ' + (i + 1) + '番の後半の駒の板の幅が ' + tileWidth(p2).toFixed(2) + '（そのはず: 0.62）');
+    if (p1 && want1 && p1.group.userData.label && p1.chord.name !== want1.name) bad.push('3D: ' + (i + 1) + '番の駒の名前が古い');
   }
+  // 画面の文字に、「null」「undefined」「NaN」「[object …]」が出ていない（DOM の append(null) などの、うっかり。2026-11-24 に追加: コードの編集画面に「null」と出ていた）
+  { const txt = (document.querySelector('#ui') || document.body).innerText || ''; const m = /(^|[^A-Za-z0-9_])(null|undefined|NaN)([^A-Za-z0-9_]|$)|\[object /.exec(txt); if (m) bad.push('画面の文字に「' + m[0].trim() + '」が出ている'); }
   // クリアの結果が出るはずなのに出ていない
   if (A.clearPending && A.clearPending === g.stage && g.cleared && A.state === 'play' && performance.now() > (A.clearDueAt || 0) + 2500 && !vis('result') && document.querySelector('#clear-bar').classList.contains('hidden')) bad.push('クリアの結果が、出るはずの時刻をすぎても、出ていない');
   if (document.querySelectorAll('#toasts .toast').length > 4) bad.push('知らせが積み上がっている: ' + document.querySelectorAll('#toasts .toast').length);
@@ -105,7 +132,28 @@ def actions(rng, phone):
     def js_key(k):
         return "(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: %r, bubbles: true })); return 1; })()" % k
 
+    def js_custom_add():
+        notes = rng.choice([[52, 56, 60, 62, 67], [57, 60, 64, 67, 71], [48, 52, 55, 59, 62], [50, 53, 57, 60, 64], [55, 59, 62, 65, 68], [53, 56, 60, 63, 67], [47, 50, 54, 57]])
+        return "(() => { __app.chordStore.addCustom({ notes: %s, level: %s, color: %s, shape: %r }); return 1; })()" % (json.dumps(notes), rng.choice(["null", "2", "5"]), rng.choice(["null", "'#52bd95'", "'#e25c97'"]), rng.choice(["auto", "star", "cube", "ring"]))
+
+    def js_custom_update():
+        return "(() => { const c = __app.table.customChords(); if (c.length) { const x = c[%d %% c.length]; __app.chordStore.updateCustom(x.id, { notes: x.midi, level: %s, color: %s, shape: %r }); } return 1; })()" % (rng.randrange(5), rng.choice(["null", "3", "4"]), rng.choice(["null", "'#76c2dc'", "'#e29756'"]), rng.choice(["auto", "star", "octa", "cylinder"]))
+
+    def js_custom_remove():
+        return "(() => { const c = __app.table.customChords(); if (c.length) __app.chordStore.removeCustom(c[%d %% c.length].id); return 1; })()" % rng.randrange(5)
+
+    def js_custom_place():
+        return "(() => { const c = __app.table.customChords(), g = __app.game; if (c.length && g.mode === 'free') g.placeAt(%d, %r, c[%d %% c.length].id); return 1; })()" % (slot(), rng.choice("LRC"), rng.randrange(5))
+
+    def js_open_edit():                                  # もとの駒・自作コードの編集画面を開く（もとの駒は、新しい自作コードの下書きになる）
+        return "(() => { if (__app.state === 'play' && __app.game.mode === 'free') { const t = __app.table, p = t.pieces(); __app.chordLab.openEdit(p[%d %% p.length].id); } return 1; })()" % rng.randrange(40)
+
+    def js_lab_save():
+        return "(() => { if (__app.chordLab.isOpen) { const l = __app.chordLab; if (l.s.mode === 'new' && l.s.notes.length >= 2) { l.s.notes = l.s.notes.concat([%d]).filter((x, i, a) => a.indexOf(x) === i).slice(0, 8); l.recompute(); } document.querySelector('#cl-save').click(); } return 1; })()" % rng.choice([61, 66, 70, 74])
+
     base = [
+        (6, "自作コードを足す", js_custom_add), (3, "自作コードを変える", js_custom_update), (2, "自作コードを消す", js_custom_remove), (4, "自作コードを置く", js_custom_place),
+        (2, "もとの駒を編集（画面）", js_open_edit), (2, "コードの編集: 保存", js_lab_save),
         (14, "駒を置く", js_place), (8, "左右に置く", js_place_at), (5, "はずす", js_remove), (4, "動かす", js_move),
         (3, "全部消す", lambda: js_click('#btn-clear')),
         (5, "ステージを始める", js_start),
@@ -157,7 +205,7 @@ def pick(rng, acts):
     return acts[-1][1], acts[-1][2]()
 
 
-def run_one(label, w, h, mobile, n_actions, seed, port):
+def run_one(label, w, h, mobile, n_actions, seed, port, audio=False):
     rng = random.Random(seed)
     fails = []
     log = []
@@ -165,8 +213,10 @@ def run_one(label, w, h, mobile, n_actions, seed, port):
     if mobile:
         kw.update(mobile=True, dpr=2, touch=True, ua=UA)
     with ChromeSession(**kw) as ch:
-        open_game(ch, port, audio=False)
+        open_game(ch, port, audio=audio)
         ch.eval("__app.clearDelayOverride = 600; true")
+        if audio:
+            time.sleep(1.5)                                   # タイトルのデモが動いて、技のスタンプが出るまで
         acts = actions(rng, mobile)
         for i in range(n_actions):
             name, js = pick(rng, acts)
@@ -176,7 +226,7 @@ def run_one(label, w, h, mobile, n_actions, seed, port):
             except RuntimeError as e:
                 fails.append((i, name, "操作の途中で例外: " + str(e)[:200]))
                 break
-            time.sleep(rng.choice([0.02, 0.05, 0.1, 0.2, 0.45]))
+            time.sleep(rng.choice([0.02, 0.05, 0.1, 0.2, 0.45, 0.45, 1.1] if audio else [0.02, 0.05, 0.1, 0.2, 0.45]))
             bad = json.loads(ch.eval(INVARIANTS))
             if bad:
                 fails.append((i, name, "; ".join(bad)))
@@ -199,8 +249,9 @@ def main():
     srv, port = serve()
     total_fail = 0
     try:
-        for label, w, h, mobile, seed in [("PC", 1280, 720, False, seed0), ("スマホ縦", 390, 844, True, seed0 + 1), ("スマホ横", 844, 390, True, seed0 + 2), ("タブレット縦", 768, 1024, True, seed0 + 3)]:
-            fails, log = run_one(label, w, h, mobile, n, seed, port)
+        for label, w, h, mobile, seed, audio in [("PC", 1280, 720, False, seed0, False), ("スマホ縦", 390, 844, True, seed0 + 1, False), ("スマホ横", 844, 390, True, seed0 + 2, False), ("タブレット縦", 768, 1024, True, seed0 + 3, False),
+                                                  ("スマホ縦（音あり・デモが動く）", 390, 844, True, seed0 + 4, True), ("小さいスマホ縦（SE）", 375, 667, True, seed0 + 5, True), ("大きいスマホ縦", 430, 932, True, seed0 + 6, False), ("スマホ横（小）", 667, 375, True, seed0 + 7, True)]:
+            fails, log = run_one(label, w, h, mobile, n, seed, port, audio)
             if fails:
                 total_fail += 1
                 i, name, msg = fails[0]
@@ -210,7 +261,7 @@ def main():
                 print("ok   [%s seed=%d] %d 回の操作で、決まりは、こわれなかった" % (label, seed, n))
     finally:
         srv.shutdown()
-    print("でたらめ操作: %d 通り中 %d 通り 失敗" % (4, total_fail))
+    print("でたらめ操作: %d 通り中 %d 通り 失敗" % (8, total_fail))
     return 1 if total_fail else 0
 
 

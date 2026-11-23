@@ -310,7 +310,7 @@ static void testRepeatPiece() {
   expectNotes("→ は 前の Ⅰ と同じ高さ", onNotes(0, 990, 1010), {48, 52, 55, 60});
   expectText("→ の表示", "→（前のコマと同じ: Ⅰ）");
   runTo(2010);
-  expectNotes("→のあとの Ⅳ は F3 (本来の高さ)", onNotes(0, 1990, 2010), {53, 57, 60, 65});
+  expectNotes("→のあとの Ⅳ は、Ⅰ（C3）から完全5度下の F2（強進行は、5度下へ。2026-11-24）", onNotes(0, 1990, 2010), {41, 45, 48, 53});
   cmd("STATUS");
   expectText("STATUS で → の説明", "→  （前のコマと同じ: Ⅰ）");
   cmd("STOP");
@@ -1231,7 +1231,7 @@ static void testEightPositions() {
   expectText("ステップ表示は 1/8", "▶ ステップ1/8  位置1: Ⅰ");
   expectText("8つ目まで進む", "▶ ステップ8/8  位置8: Ⅴ");
   expectNotes("1周目の位置1", onNotes(0, 0, 10), {48, 52, 55, 60});
-  expectNotes("5つ目(位置5)は、ボイスリーディングで前に近づく: Ⅴ(43) → Ⅰ", onNotes(0, 3990, 4010), {48, 52, 55, 60});
+  expectNotes("5つ目(位置5): Ⅴ(43) → Ⅰ は、完全5度下の C2（強進行は、5度下へ。2026-11-24）", onNotes(0, 3990, 4010), {36, 40, 43, 48});
   expectNotes("位置1に戻ると、本来の高さに戻る（2周目の先頭）", onNotes(0, 7990, 8010), {48, 52, 55, 60});
   cmd("STOP");
 

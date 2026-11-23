@@ -51,6 +51,7 @@ class Library(object):
         self._chords = list(chord_names) if chord_names else None
         self._game_dir = game_dir
         self.data = {"version": 1, "seq": 0, "next": 1, "drums": [], "backings": [], "progressions": []}
+        self.listeners = []          # 内容が変わったときに、呼ぶ関数（公開ページへ送る cloud_sync が使う）。引数なし
         self._load()
 
     # ---- 保存・読み込み ----
@@ -161,6 +162,7 @@ class Library(object):
                 lst[lst.index(found)] = clean
             self.data["seq"] += 1
             self._save()
+            self._changed()
             return clean
 
     def delete(self, kind, ident):
@@ -174,7 +176,15 @@ class Library(object):
             lst.remove(found)
             self.data["seq"] += 1
             self._save()
+            self._changed()
             return found
+
+    def _changed(self):
+        for fn in list(self.listeners):
+            try:
+                fn()
+            except Exception:  # noqa: BLE001  知らせの失敗で、保存を、こわさない
+                pass
 
 
 def default_library_path():
@@ -536,7 +546,7 @@ def load_page():
     return html.replace("__PRESETS__", presets)
 
 
-def make_server(port, send_lines, status=None, control=None, get_state=None, refresh=None, live=None, events=None, game_dir=GAME_DIR, bridge=None, library=None):
+def make_server(port, send_lines, status=None, control=None, get_state=None, refresh=None, live=None, events=None, game_dir=GAME_DIR, bridge=None, library=None, cloud=None):
     """ send_lines(lines): パターンの保存など、時間のかかるコマンドを ESP32 に送る関数。
         control(lines): BPM・キーなど、すぐ送りたいコマンドを送る関数。get_state(): 画面に見せる ESP32 の状態（辞書）。
         refresh(): 自分のパターンの一覧を、ESP32 から読み直す。status(): 接続状態の文字（省略可）。
@@ -578,6 +588,10 @@ def make_server(port, send_lines, status=None, control=None, get_state=None, ref
                 if library is None:
                     return self._send(404, json.dumps({"ok": False, "error": "ライブラリがありません"}, ensure_ascii=False).encode("utf-8"))
                 return self._send(200, json.dumps({"ok": True, "library": library.snapshot()}, ensure_ascii=False).encode("utf-8"))
+            if self.path == "/api/cloud":                      # 公開ページへ送る設定の状態（秘密のキーは、出さない）
+                if cloud is None:
+                    return self._send(404, json.dumps({"ok": False, "error": "この機能は、使えません"}, ensure_ascii=False).encode("utf-8"))
+                return self._send(200, json.dumps({"ok": True, "cloud": cloud.status()}, ensure_ascii=False).encode("utf-8"))
             if self.path == "/api/state":
                 state = get_state() if get_state else {"connected": False}
                 return self._send(200, json.dumps(state, ensure_ascii=False).encode("utf-8"))
@@ -637,7 +651,7 @@ def make_server(port, send_lines, status=None, control=None, get_state=None, ref
         def do_POST(self):
             if not self._host_ok():
                 return self._send(403, b"{}")
-            if self.path not in ("/api/save", "/api/live", "/api/control", "/api/refresh", "/api/bridge", "/api/library"):
+            if self.path not in ("/api/save", "/api/live", "/api/control", "/api/refresh", "/api/bridge", "/api/library", "/api/cloud"):
                 return self._send(404, b"{}")
             # JSON 以外(text/plain など)は受けない。他のサイトの画面から、勝手に送られるのを防ぐ
             if not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
@@ -652,6 +666,18 @@ def make_server(port, send_lines, status=None, control=None, get_state=None, ref
                 elif self.path == "/api/bridge":
                     if not isinstance(req, dict) or req.get("action") not in ("connect", "release"):
                         raise ValueError("その操作は使えません")
+                    lines = []
+                elif self.path == "/api/cloud":
+                    if cloud is None:
+                        raise ValueError("この機能は、使えません")
+                    if not isinstance(req, dict) or req.get("action") not in ("connect", "push", "clear"):
+                        raise ValueError("その操作は使えません")
+                    if req["action"] == "connect":
+                        cloud_result = cloud.configure(req.get("url"), req.get("secret"), req.get("path"), service_account=req.get("service_account"))
+                    elif req["action"] == "push":
+                        cloud_result = cloud.push_now()
+                    else:
+                        cloud_result = cloud.clear()
                     lines = []
                 elif self.path == "/api/library":
                     if library is None:
@@ -671,6 +697,8 @@ def make_server(port, send_lines, status=None, control=None, get_state=None, ref
                     lines = build_commands(req)
             except (ValueError, UnicodeDecodeError) as e:
                 return self._send(400, json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8"))
+            if self.path == "/api/cloud":
+                return self._send(200, json.dumps({"ok": True, "cloud": cloud_result}, ensure_ascii=False).encode("utf-8"))
             if self.path == "/api/bridge":
                 result = bridge(req.get("action")) if bridge else {"ok": False, "error": "ブリッジの機能がありません"}
                 return self._send(200, json.dumps(result, ensure_ascii=False).encode("utf-8"))

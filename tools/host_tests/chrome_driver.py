@@ -115,8 +115,9 @@ class ChromeSession:
         for t in ("mousePressed", "mouseReleased"):
             self.cdp.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
 
-    def mouse(self, kind, x, y, buttons=1):
-        self.cdp.call("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": "left", "buttons": buttons, "clickCount": 1})
+    def mouse(self, kind, x, y, buttons=1, modifiers=0):
+        """ modifiers: Alt=1・Ctrl=2・Meta(⌘)=4・Shift=8（足し合わせる）"""
+        self.cdp.call("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": "left", "buttons": buttons, "clickCount": 1, "modifiers": modifiers})
 
     # ---- 指（タッチ）----
     def touch_event(self, kind, points):
@@ -139,6 +140,7 @@ class ChromeSession:
             _t.sleep(0.012)
         self.touch_event("touchEnd", [])
 
-    def key(self, key, code=None):
-        self.cdp.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": key, "code": code or key})
-        self.cdp.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": key, "code": code or key})
+    def key(self, key, code=None, modifiers=0):
+        """ modifiers: Alt=1・Ctrl=2・Meta(⌘)=4・Shift=8（足し合わせる）。例: ch.key("a", "KeyA", 2) = Ctrl+A """
+        self.cdp.call("Input.dispatchKeyEvent", {"type": "keyDown", "key": key, "code": code or key, "modifiers": modifiers})
+        self.cdp.call("Input.dispatchKeyEvent", {"type": "keyUp", "key": key, "code": code or key, "modifiers": modifiers})

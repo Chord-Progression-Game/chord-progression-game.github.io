@@ -49,6 +49,8 @@ LINT_JS = r"""
     if ((r.right > vw + 2 || r.left < -2) && !hScroller(el) && (txt || isBtn) && cs.pointerEvents !== 'none' && !el.closest('#stamp-layer')) issues.push({ t: 'offscreen', el: desc(el), text: (txt || el.textContent || '').trim().slice(0, 12), left: Math.round(r.left), right: Math.round(r.right), vw });
   }
   if (document.documentElement.scrollWidth > vw + 1) issues.push({ t: 'page-scroll', sw: document.documentElement.scrollWidth, vw });
+  // 画面の文字に、うっかり「null」「undefined」「NaN」「[object …]」が出ていない
+  { const m = /(^|[^A-Za-z0-9_])(null|undefined|NaN)([^A-Za-z0-9_]|$)|\[object /.exec(document.querySelector('#ui').innerText || ''); if (m) issues.push({ t: 'stray-text', text: m[0].trim() }); }
   // 大きな部品どうしの重なり
   const BLOCKS = ['#topbar', '#side .score-card', '#melody-roll', '#step-bar', '#guide', '#clear-bar', '#tray-wrap', '#stamp-layer .stamp', '#toasts .toast', '.soundmenu', '#side'];
   const rects = [];

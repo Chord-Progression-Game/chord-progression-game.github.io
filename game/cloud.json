@@ -1,0 +1,5 @@
+{
+  "url": "",
+  "path": "chordlines/library",
+  "note": "公開ページへ、リズム・コード編集の内容を、リアルタイムで届けるときの設定。url に、Firebase Realtime Database の URL（https://〜.firebaseio.com）を書く。空のままなら、使わない。くわしくは docs/cloud_setup.md。秘密のキーは、ここには、書かない（この Mac の設定にだけ入れる）"
+}

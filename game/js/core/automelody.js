@@ -19,7 +19,7 @@
 // ■ メロディのデータ（core/melody.js と同じ）
 //   notes: [[開始のマス, 長さ（マス）, MIDI ノート番号, 音の呼び名], ...]。1ステップ = 8マス（16分音符）、8ステップで 64マス。主音は C（C4 = 60）
 
-import { SLOTS_PER_STEP, NUM_STEPS, LOOP_SLOTS, classifyNote, judgeMelody, noteName } from './melody.js';
+import { SLOTS_PER_STEP, NUM_STEPS, LOOP_SLOTS, classifyNote, judgeMelody, noteName, secondChordAt } from './melody.js';
 import { resolveChordAtStep } from './voicing.js';
 import { MAJOR } from './chords.js';
 
@@ -108,12 +108,13 @@ export function spellPitch(pc, chord) {
   return map.get(pc) || noteName(pc, flats);
 }
 
-// 音の呼び名（4つ目）を、そのステップの和音にあわせてつける。編集した音にも使う
-export function spellNotes(notes, board, table) {
+// 音の呼び名（4つ目）を、そのステップの和音にあわせてつける。編集した音にも使う。split: 分割したマスの、後半の和音の ID の配列（省いてもよい）。2拍目の頭（4マス目）から後ろの音は、後半の和音で
+export function spellNotes(notes, board, table, split = null) {
   return notes.map(([start, len, midi]) => {
     const k = Math.max(0, Math.min(NUM_STEPS - 1, Math.floor(start / SLOTS_PER_STEP)));
     const id = resolveChordAtStep(board, k, table);
-    const chord = id === null ? null : table.byId(id);
+    const chord2 = start % SLOTS_PER_STEP >= SLOTS_PER_STEP / 2 ? secondChordAt(split, k, table) : null;
+    const chord = chord2 || (id === null ? null : table.byId(id));
     return [start, len, midi, spellPitch(midi, chord)];
   });
 }
@@ -128,19 +129,30 @@ export function nineOk(chord) {
   return chord.type === 'dom7' && MAJOR.includes(chord.rootPc);
 }
 
-// 8つのステップの、和音と、使ってよい音（強い拍・長い音用）
-export function stepInfo(board, table, tension = true) {
-  return Array.from({ length: NUM_STEPS }, (_, k) => {
-    const id = resolveChordAtStep(board, k, table);
-    const chord = id === null ? null : table.byId(id);
-    if (!chord || chord.isRepeat) return { k, chord: null, tones: new Set(), strong: new Set(), nine: -1 };
+// 8つのステップの、和音と、使ってよい音（強い拍・長い音用）。split: 分割したマスの、後半の和音の ID の配列（省いてもよい）。
+//   分割したマスの info[k].second に、後半の和音の情報が入る（infoAtSlot が、マスの中の位置で、前半・後半を選ぶ）
+export function stepInfo(board, table, tension = true, split = null) {
+  const make = (chord, k) => {
     const nine = tension && nineOk(chord) ? (chord.rootPc + 2) % 12 : -1;
     const tones = new Set(chord.pcs);
     const strong = new Set(tones);
     if (nine >= 0) strong.add(nine);
     return { k, chord, tones, strong, nine };
+  };
+  const info = Array.from({ length: NUM_STEPS }, (_, k) => {
+    const id = resolveChordAtStep(board, k, table);
+    const chord = id === null ? null : table.byId(id);
+    if (!chord || chord.isRepeat) return { k, chord: null, tones: new Set(), strong: new Set(), nine: -1 };
+    const first = make(chord, k);
+    const c2 = secondChordAt(split, k, table);
+    if (c2) first.second = make(c2, k);
+    return first;
   });
+  info.split = split;
+  return info;
 }
+// マスの中の位置（0〜7）の、和音の情報（分割したマスの後半は、後半の和音）
+export const infoAtSlot = (info, k, slotInStep) => (slotInStep >= SLOTS_PER_STEP / 2 && info[k].second ? info[k].second : info[k]);
 
 // ---------- リズムを決める ----------
 function pickCells(st, rng) {
@@ -184,7 +196,10 @@ function compose(info, st, tension, rng) {
   const events = [];
   for (let k = 0; k < NUM_STEPS; k++) {
     if (isEmptyStep(info[k])) continue;
-    CELLS[cellNames[k]].forEach(([s, l], j) => events.push({ step: k, j, start: k * SLOTS_PER_STEP + s, len: l, ornament: l <= 2 && s % 4 !== 0, pitch: null, ivl: 0, mirror: null, cell: cellNames[k] }));
+    CELLS[cellNames[k]].forEach(([s, l], j) => {
+      const parts = info[k].second && s < SLOTS_PER_STEP / 2 && s + l > SLOTS_PER_STEP / 2 ? [[s, SLOTS_PER_STEP / 2 - s], [SLOTS_PER_STEP / 2, s + l - SLOTS_PER_STEP / 2]] : [[s, l]];       // 分割したマス: 2拍目の頭をまたぐ音は、前半・後半に分けて、それぞれの和音の音にする
+      parts.forEach(([ps, pl], jj) => events.push({ step: k, j: j * 2 + jj, start: k * SLOTS_PER_STEP + ps, len: pl, ornament: pl <= 2 && ps % 4 !== 0, pitch: null, ivl: 0, mirror: null, cell: cellNames[k] }));
+    });
   }
   if (!events.length) return null;
   // 2小節目・3小節目などで、同じ型のところは、前の動きをまねる（動き方をそろえる）
@@ -206,7 +221,7 @@ function compose(info, st, tension, rng) {
   let prev = null, prev2 = null, prevChord = null, nineCount = 0;
   for (const ev of events) {
     if (ev.ornament) continue;
-    const s = info[ev.step];
+    const s = infoAtSlot(info, ev.step, ev.start % SLOTS_PER_STEP);
     const phraseEnd = lastOfStep(ev) && (ev.step === 3 || ev.step === 7);
     const finalNote = ev.step === 7 && lastOfStep(ev);
     let best = null, bestCost = Infinity;
@@ -267,11 +282,11 @@ function compose(info, st, tension, rng) {
     if (P && N && P.pitch !== N.pitch && Math.abs(P.pitch - N.pitch) <= 7) q = passingBetween(P.pitch, N.pitch);             // 経過音（上と下の音を、順にうめる）
     else if (P && N && P.pitch === N.pitch) {                                                                                  // 刺繍音（となりへ行って戻る）
       const up = neighbour(P.pitch, true), down = neighbour(P.pitch, false);
-      const sc = info[ev.step];
+      const sc = infoAtSlot(info, ev.step, ev.start % SLOTS_PER_STEP);
       const bad = (x) => x === null || classifyNote(sc.chord, x % 12).cat === 'avoid';
       q = bad(down) && !bad(up) ? up : bad(up) && !bad(down) ? down : (rng() < 0.55 ? down : up);
     }
-    if (q !== null) { const c = classifyNote(info[ev.step].chord, q % 12); if (c.cat === 'tension' && (c.label !== '9th' || !tension)) q = null; }         // 経過音でも、9th より上のテンション（11th・13th・7th）に聞こえる音は使わない（9th を使わない設定のときは、9th も）
+    if (q !== null) { const c = classifyNote(infoAtSlot(info, ev.step, ev.start % SLOTS_PER_STEP).chord, q % 12); if (c.cat === 'tension' && (c.label !== '9th' || !tension)) q = null; }         // 経過音でも、9th より上のテンション（11th・13th・7th）に聞こえる音は使わない（9th を使わない設定のときは、9th も）
     if (q !== null && q >= AUTO.lo - 1 && q <= AUTO.hi + 1) { ev.pitch = q; continue; }
     // 置ける音がない: 前の音をくり返す（8分音符の、同じ音の連打は、よくある動き）か、のばす（つながっていないときは、休みのまま）
     if (P && P.start + P.len === ev.start && P.pitch !== null && st.repeat > rng() && !(P.ornament)) { ev.pitch = P.pitch; ev.repeated = true; continue; }
@@ -286,7 +301,7 @@ function compose(info, st, tension, rng) {
     const L = a[a.length - 1], F = b[0];
     if (L.ornament || L.drop || F.ornament || F.drop || L.pitch === null || L.pitch !== F.pitch) continue;
     if (L.start % SLOTS_PER_STEP < 4 || L.start + L.len !== F.start) continue;
-    if (!info[k].strong.has(L.pitch % 12) || !info[k + 1].strong.has(F.pitch % 12)) continue;
+    if (!infoAtSlot(info, k, L.start % SLOTS_PER_STEP).strong.has(L.pitch % 12) || !info[k + 1].strong.has(F.pitch % 12)) continue;
     if (rng() < st.tie) { L.len += F.len; F.drop = true; F.tied = true; }
   }
 
@@ -299,7 +314,7 @@ function compose(info, st, tension, rng) {
 // 良さの点（大きいほど良い）と、画面に出す説明。notes は、呼び名つき（spellNotes 済み）
 export function tasteScore(notes, board, table, info, cells = null) {
   const mel = { notes };
-  const j = judgeMelody(board, mel, table);
+  const j = judgeMelody(board, mel, table, info.split || null);
   const seq = notes.slice().sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   let stepwise = 0, leaps = 0, big = 0, reps = 0, mids = 0, n = 0;
   for (let i = 1; i < seq.length; i++) {
@@ -313,13 +328,13 @@ export function tasteScore(notes, board, table, info, cells = null) {
   }
   const stepRatio = n ? stepwise / n : 1, leapRatio = n ? leaps / n : 0;
   let nines = 0;
-  for (const [start, , midi] of seq) { const s = info[Math.min(NUM_STEPS - 1, Math.floor(start / SLOTS_PER_STEP))]; if (s.chord && s.nine >= 0 && midi % 12 === s.nine) nines++; }
+  for (const [start, , midi] of seq) { const s = infoAtSlot(info, Math.min(NUM_STEPS - 1, Math.floor(start / SLOTS_PER_STEP)), start % SLOTS_PER_STEP); if (s.chord && s.nine >= 0 && midi % 12 === s.nine) nines++; }
   const pcs = new Set(seq.map((x) => x[2] % 12)).size;
   const lo = Math.min(...seq.map((x) => x[2])), hi = Math.max(...seq.map((x) => x[2]));
   const chordSteps = info.filter((s) => s.chord).length || 1;
   const perStep = seq.length / chordSteps;
   const last = seq[seq.length - 1], first = seq[0];
-  const lastStep = info[Math.min(NUM_STEPS - 1, Math.floor(last[0] / SLOTS_PER_STEP))];
+  const lastStep = infoAtSlot(info, Math.min(NUM_STEPS - 1, Math.floor(last[0] / SLOTS_PER_STEP)), last[0] % SLOTS_PER_STEP);
   const endsWell = !!lastStep.chord && lastStep.tones.has(last[2] % 12) && last[1] >= 4;
   const shorts = seq.filter((x) => x[1] <= 2).length;
   const variety = cells ? new Set(cells.filter((_, k) => info[k].chord)).size : 3;
@@ -354,14 +369,15 @@ export function generateMelody(board, table, opts = {}) {
   const tension = opts.tension !== false;
   const seed = Number.isFinite(opts.seed) ? opts.seed >>> 0 : 1;
   const tries = Math.max(1, opts.tries || AUTO.tries);
-  const info = stepInfo(board, table, tension);
+  const split = Array.isArray(opts.split) ? opts.split : null;                          // 分割したマスの、後半の和音（省くと、マスごとに1つの和音）
+  const info = stepInfo(board, table, tension, split);
   if (!info.some((s) => s.chord)) return { ok: false, reason: 'nochord', notes: [], slots: LOOP_SLOTS, seed, style, tension };
   let best = null;
   for (let i = 0; i < tries; i++) {
     const rng = mulberry32((Math.imul(seed, 2654435761) + Math.imul(i + 1, 40503)) >>> 0);
     const cand = compose(info, st, tension, rng);
     if (!cand || !cand.notes.length) continue;
-    const notes = spellNotes(cand.notes, board, table);
+    const notes = spellNotes(cand.notes, board, table, split);
     const sc = tasteScore(notes, board, table, info, cand.cells);
     if (!best || sc.total > best.score) best = { notes, score: sc.total, report: sc, cells: cand.cells };
   }
@@ -371,9 +387,9 @@ export function generateMelody(board, table, opts = {}) {
 
 // ---------- 検査（テストと、画面の確認に使う）----------
 // 自動でつけたメロディが、決まりを守っているか。守っていないところの一覧（空なら、すべて守っている）
-export function checkRules(notes, board, table, { tension = true } = {}) {
+export function checkRules(notes, board, table, { tension = true, split = null } = {}) {
   const bad = [];
-  const info = stepInfo(board, table, tension);
+  const info = stepInfo(board, table, tension, split);
   const sorted = notes.slice().sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   sorted.forEach(([start, len, midi], i) => {
     const where = `${i + 1}つ目（${start}マス・${noteName(midi % 12)}）`;
@@ -381,15 +397,21 @@ export function checkRules(notes, board, table, { tension = true } = {}) {
     if (midi < AUTO.lo - 1 || midi > AUTO.hi + 1) bad.push(`${where}: 音域の外`);
     const ornament = len <= 2 && start % 4 !== 0;
     for (let k = Math.floor(start / SLOTS_PER_STEP); k <= Math.floor((start + len - 1) / SLOTS_PER_STEP); k++) {
-      const s = info[k];
-      if (!s.chord) { bad.push(`${where}: 和音のないステップ ${k + 1} に音がある`); continue; }
-      const c = classifyNote(s.chord, midi % 12);
-      if (!ornament) {
-        const ok = c.cat === 'chord' || (c.cat === 'tension' && c.label === '9th' && tension);
-        if (!ok) bad.push(`${where}: ステップ ${k + 1}（${s.chord.name}）の強い拍・長い音が、コードの音でも 9th でもない（${c.cat} ${c.label}）`);
-      } else if (c.cat === 'tension' && (c.label !== '9th' || !tension)) {
-        bad.push(`${where}: ステップ ${k + 1}（${s.chord.name}）の短い音が、9th より上のテンション（${c.label}）に聞こえる`);
-      }
+      // 分割したマスは、前半（0〜3マス目）・後半（4〜7マス目）に分けて、それぞれの和音で調べる。分割していないマスは、1つの和音
+      const spans = info[k].second ? [[k * SLOTS_PER_STEP, info[k]], [k * SLOTS_PER_STEP + SLOTS_PER_STEP / 2, info[k].second]] : [[k * SLOTS_PER_STEP, info[k]]];
+      spans.forEach(([a, s], h) => {
+        const b = a + (info[k].second ? SLOTS_PER_STEP / 2 : SLOTS_PER_STEP);
+        if (!(start < b && start + len > a)) return;
+        if (!s.chord) { if (!h) bad.push(`${where}: 和音のないステップ ${k + 1} に音がある`); return; }
+        const c = classifyNote(s.chord, midi % 12);
+        const halfText = info[k].second ? (h ? '（後半）' : '（前半）') : '';
+        if (!ornament) {
+          const ok = c.cat === 'chord' || (c.cat === 'tension' && c.label === '9th' && tension);
+          if (!ok) bad.push(`${where}: ステップ ${k + 1}${halfText}（${s.chord.name}）の強い拍・長い音が、コードの音でも 9th でもない（${c.cat} ${c.label}）`);
+        } else if (c.cat === 'tension' && (c.label !== '9th' || !tension)) {
+          bad.push(`${where}: ステップ ${k + 1}${halfText}（${s.chord.name}）の短い音が、9th より上のテンション（${c.label}）に聞こえる`);
+        }
+      });
     }
     if (i > 0 && sorted[i - 1][0] + sorted[i - 1][1] > start) bad.push(`${where}: 前の音と重なっている`);
     if (i > 0 && Math.abs(midi - sorted[i - 1][2]) > AUTO.maxLeap + 3) bad.push(`${where}: 跳躍が大きすぎる（${Math.abs(midi - sorted[i - 1][2])}半音）`);

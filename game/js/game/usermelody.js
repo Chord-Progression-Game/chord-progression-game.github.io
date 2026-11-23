@@ -82,6 +82,54 @@ export class MelodyDoc {
   }
   move(id, ds, dm) { const it = this._items.find((x) => x.id === id); return it ? this.set(id, { s: it.s + ds, m: it.m + dm }) : false; }
   clear() { if (!this._items.length) return false; return this._edit(() => { this._items = []; return true; }); }
+
+  // ---------- 複数の音を、まとめて動かす・消す・のばす（ドラッグで範囲選択した音。2026-11-24）----------
+  // ids の音を、まとめて消す。戻り値: 消した数
+  removeMany(ids) {
+    const set = new Set(ids);
+    const n = this._items.filter((x) => set.has(x.id)).length;
+    if (!n) return 0;
+    this._edit(() => { this._items = this._items.filter((x) => !set.has(x.id)); return true; });
+    return n;
+  }
+  // ドラッグの途中から、選んだ音（ids）を、いまの位置（from: ドラッグを始めたときの items。id つき）から、ds マス・dm 半音、まとめて動かす。
+  //   ぜんぶの音が範囲（0〜64マス・C3〜C7）に入るように、動かす量を、せばめる。同じ高さで重なる、選んでいない音は、短くする（選んだ音を優先）。
+  //   「始めたときの形」から、毎回やりなおす（途中で通りすぎた音を、削りっぱなしにしない）。戻り値: 動いたか
+  moveManyFrom(from, ids, ds, dm) {
+    const set = new Set(ids);
+    const sel = from.filter((x) => set.has(x.id));
+    if (!sel.length) return false;
+    const dsMin = -Math.min(...sel.map((x) => x.s)), dsMax = LOOP_SLOTS - Math.max(...sel.map((x) => x.s + x.l));
+    const dmMin = NOTE_LO - Math.min(...sel.map((x) => x.m)), dmMax = NOTE_HI - Math.max(...sel.map((x) => x.m));
+    const ds2 = clamp(Math.round(ds), dsMin, dsMax), dm2 = clamp(Math.round(dm), dmMin, dmMax);
+    const before = this._items.map((x) => `${x.id}:${x.s}:${x.l}:${x.m}`).join('|');
+    const next = from.map((x) => (set.has(x.id) ? { id: x.id, s: x.s + ds2, l: x.l, m: x.m + dm2 } : { ...x }));
+    this._edit(() => {
+      this._items = next;
+      const moved = next.filter((x) => set.has(x.id));
+      for (const it of moved) this._settle(it, set);
+      return true;
+    });
+    return before !== this._items.map((x) => `${x.id}:${x.s}:${x.l}:${x.m}`).join('|');
+  }
+  // 同じ、ドラッグの途中から、選んだ音の長さを、dl マス、まとめて変える（どの音も、1マスより短く・64マスの終わりより先には、ならない）
+  resizeManyFrom(from, ids, dl) {
+    const set = new Set(ids);
+    const sel = from.filter((x) => set.has(x.id));
+    if (!sel.length) return false;
+    const lo = -Math.min(...sel.map((x) => x.l - 1)), hi = Math.min(...sel.map((x) => LOOP_SLOTS - x.s - x.l));
+    const dl2 = clamp(Math.round(dl), lo, hi);
+    const before = this._items.map((x) => `${x.id}:${x.s}:${x.l}:${x.m}`).join('|');
+    const next = from.map((x) => (set.has(x.id) ? { id: x.id, s: x.s, l: x.l + dl2, m: x.m } : { ...x }));
+    this._edit(() => {
+      this._items = next;
+      for (const it of next.filter((x) => set.has(x.id))) this._settle(it, set);
+      return true;
+    });
+    return before !== this._items.map((x) => `${x.id}:${x.s}:${x.l}:${x.m}`).join('|');
+  }
+  // 矢印キーなど: 選んだ音を、いまの位置から、ds マス・dm 半音、まとめて動かす（1回の操作。元に戻すに積む）
+  moveMany(ids, ds, dm) { return this.moveManyFrom(this.items, ids, ds, dm); }
   // 音を、まるごと入れかえる（自動でつけたメロディ・プリセット・元に戻すなど）
   replaceAll(notes) { return this._edit(() => { this._setItems(sanitizeNotes(notes)); return true; }); }
 
@@ -110,18 +158,18 @@ export class MelodyDoc {
   }
 
   // ---------- 中のしくみ ----------
-  _snapshot() { return this.notes(); }
+  _snapshot() { return this.items.map((x) => [x.s, x.l, x.m, x.id]); }          // 元に戻す・やり直すのために、音の id も覚える（戻したあとも、選んでいる音が、そのまま選ばれているように）
   _pushUndo(snap) { this._undo.push(snap); if (this._undo.length > 100) this._undo.shift(); }
-  _setItems(notes) { this._items = notes.map(([s, l, m]) => ({ id: this._nextId++, s, l, m })); }
+  _setItems(notes) { this._items = notes.map(([s, l, m, id]) => ({ id: id !== undefined ? id : this._nextId++, s, l, m })); }
   _fit(it) {
     const s = clamp(Math.round(it.s), 0, LOOP_SLOTS - 1), m = clamp(Math.round(it.m), NOTE_LO, NOTE_HI);
     const l = clamp(Math.round(it.l), 1, LOOP_SLOTS - s);
     return { id: it.id, s, l, m };
   }
-  // いま変えた音 it を優先して、同じ高さで重なる音を、短くする（消えることもある）
-  _settle(it) {
+  // いま変えた音 it を優先して、同じ高さで重なる音を、短くする（消えることもある）。skip: 同時に動かした、ほかの音の id の集合（これらは、削らない）
+  _settle(it, skip = null) {
     for (const o of this._items.slice()) {
-      if (o === it || o.m !== it.m) continue;
+      if (o === it || o.m !== it.m || (skip && skip.has(o.id))) continue;
       if (o.s + o.l <= it.s || it.s + it.l <= o.s) continue;
       if (o.s < it.s) o.l = it.s - o.s;
       else if (o.s + o.l <= it.s + it.l) this._items = this._items.filter((x) => x !== o);

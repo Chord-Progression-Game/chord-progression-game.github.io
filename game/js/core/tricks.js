@@ -25,7 +25,7 @@
 // ■ 技の定義は、すべて、このファイルの TRICKS と PATTERNS にある（点数も）。違っていたら、ここだけ直せば動く。
 
 import { REPEAT_ID, degreeLabel } from './chords.js';
-import { judge, senseTotals, isMinorIv, isIvPlain, isDominantV, isTonicFamily, isSus, isSubstitute, borrowKey, SUB_VARIANTS, naturalAfterBorrowed } from './sense.js';
+import { judge, senseTotals, idleCritique, endsPhrase, thirdPc, isMinorIv, isIvPlain, isDominantV, isTonicFamily, isSus, isSubstitute, borrowKey, SUB_VARIANTS, naturalAfterBorrowed, SENSE } from './sense.js';
 
 export const PHRASE = 4;                 // 1フレーズ = 4つの位置（1〜4番・5〜8番）。フレーズの頭 = 位置 0 と 4（1番・5番）。冒頭（減点の対象）= 位置 0（1番）だけ
 export const HEAD_V_PENALTY = 100;       // 冒頭（1番）の、ドミナント系の駒（Ⅴ・Ⅲ7・Ⅰ7 など）の減点
@@ -36,9 +36,9 @@ export const HEAD_V_PENALTY = 100;       // 冒頭（1番）の、ドミナン�
 export const TRICKS = {
   dominant_motion: {
     no: 1, group: 'motion', name: 'ドミナントモーション', color: '#e2704a',
-    explain: 'ルートが完全4度上がる（＝5度下がる）進行を「強進行」といいます。次のコードを強く引っぱる力があります。',
+    explain: 'ルートが完全5度下がる（＝完全4度上がる）進行を「強進行」といいます。次のコードを強く引っぱる力があります。ゲームの音も、ベースが5度下へ動いて、終止した感じになります。',
     variants: {
-      '強進行': 'ルートが完全4度上へ（5度下へ）動きます。コードが次のコードを「引っぱる」動きです。',
+      '強進行': 'ルートが完全5度下へ（4度上へ）動きます。コードが次のコードを「引っぱる」動きです。',
       'セカンダリードミナント': 'Ⅴ7 のような「ドミナント」が Ⅰ 以外のコードへ向かう動き。ほんの一瞬そのコードが仮のトニック（主役）になります。',
       'ツーファイブワン': 'Ⅱm7 → Ⅴ7 → ⅠM7。強進行が2回つながったジャズの基本の形です。',
     },
@@ -170,6 +170,27 @@ export const TRICKS = {
       '♭Ⅲm6': 'Ⅲ♭m6 はほの暗くゆらぐ響きの借用和音。Ⅱm7・Ⅱ♭M7・Ⅰ・Ⅴ などへ進むと自然に聞こえます。',
     },
   },
+  plagal_cadence: {
+    no: 24, group: 'cadence', name: 'Ⅳ-Ⅰ終止', sub: 'プラガル終止', color: '#d6a35e',
+    explain: 'Ⅳ（ⅣM7）から Ⅰ（ⅠM7）へ進む終止。変格終止、讃美歌の「アーメン」の響きから「アーメン終止」とも呼ばれます。Ⅴ-Ⅰ終止ほど強くはありませんが、やわらかく、おだやかに終わります。Ⅴ-Ⅰ終止のあとに足されることも、よくあります。フレーズの終わり（4番・8番、または最後の駒）で決まります。',
+    variants: {},
+  },
+  cliche: {
+    no: 25, group: 'inner', name: 'クリシェ', sub: 'ライン・クリシェ', color: '#8cc7b0',
+    explain: '同じ和音（同じルート）が続くあいだ、内側の声が、半音ずつ、同じ向きに動き続ける技（ライン・クリシェ）。ルートと3度は動かさず、5度・6度・7度などの1つの声が、なめらかな線を描きます（Ⅰ→ⅠM7→Ⅰ7 の「ド → シ → シ♭」・Ⅰ→Ⅰaug→Ⅰ6→Ⅰ7 の「ソ → ソ♯ → ラ → シ♭」・Ⅵm→ⅥmM7→Ⅵm7→Ⅵm6 の「ラ → ソ♯ → ソ → ファ♯」など）。同じ和音を長くのばすときに、動きと切なさを足せます。盤の、どの位置でも決まります。',
+    variants: {
+      '4つの和音': '同じルートの和音が4つ続いて、半音の線が3回動きます。ⅠM7→Ⅰ7→Ⅰ6 のあとに Ⅰaug をつなぐ、のように、さらに長くなるほど、聞きごたえがあります。',
+      '5つの和音': '同じルートの和音が5つ続いて、半音の線が4回動きます。',
+    },
+  },
+  passing_dim: {
+    no: 26, group: 'motion', name: 'パッシング・ディミニッシュ', color: '#a99be0',
+    explain: '全音はなれた2つのコードの間に、ディミニッシュ（dim7）を、経過的にはさむ技。ルートが半音ずつ、なめらかにつながります（Ⅴ → Ⅴ♯dim7 → Ⅵm は「ソ → ソ♯ → ラ」）。ディミニッシュは、次のコードの属七の和音（Ⅲ7 など）の、ルートのない形に似ているので、次のコードへ強く解決します。のぼる形も、くだる形（Ⅵm → Ⅴ♯dim7 → Ⅴ）もあります。盤の、どの位置でも決まります。',
+    variants: {
+      'のぼる形': 'ルートが半音ずつのぼります（例: Ⅴ → Ⅴ♯dim7 → Ⅵm）。',
+      'くだる形': 'ルートが半音ずつくだります（例: Ⅵm → Ⅴ♯dim7 → Ⅴ）。',
+    },
+  },
   blues8: {
     no: 20, group: 'named', name: 'ブルース進行', color: '#6a95dc',
     explain: 'Ⅰ→Ⅴ→Ⅳ→Ⅳ→Ⅰ→Ⅴ→Ⅰ→Ⅴ。ブルースの形のひとつ。定番は12小節ですが盤は8つなので、8小節の形です。1番から8番までぜんぶ使います。',
@@ -186,13 +207,18 @@ export const HEAD_V = {
 };
 
 // 点数（仮。遊びながら調整する）
+//   2026-11-24 に、配分を見直した（ご指摘: 名前のついた進行の点と倍率が、内声・ほかの技にくらべて大きすぎる / 駒を載せれば載せるだけ点がふえる「載せ得」）
+//     ① 名前のついた進行の基本の点を、約6割に / コンボの倍率を、最大 ×3 → ×2 に / 種類の数の倍率を、1種類ごとに +10% → +5% に
+//     ② 駒をふやしても、技や耳に馴染むつながりに使われていない駒は、1つにつき −15（sense.js の idle）。同じ駒を並べると −20（dup）
+//     ③ 「コードの難しさ」の加点は、技や、耳に馴染むつながりに使われた駒だけ（使われていない難しい駒を、ならべても、点にならない）
+//   名前のついた進行は、その進行を、ふつうのつながりに分けたときの合計より、いつも高くなるようにしてある（テストで確かめている）
 export const SCORE = {
   repeatMult: [1, 0.6, 0.4, 0.3, 0.2],       // 同じ種類の技の、1回目・2回目・…（5回目以降は 0.2）
-  comboMult: [1, 1, 1.5, 2, 2.5, 3],         // つながった技の数（0, 1, 2, 3, 4, 5以上）
-  varietyStep: 0.1,                          // 種類が1つ増えるごとに +10%
+  comboMult: [1, 1, 1.15, 1.3, 1.45, 1.6],   // つながった技の数（0, 1, 2, 3, 4, 5以上）
+  varietyStep: 0.05,                         // 種類が1つ増えるごとに +5%
   headVPenalty: HEAD_V_PENALTY,
-  // コードの難しさ（駒のレベル）のボーナス: 盤の上で使っている「ちがう駒」ごとに、1回だけ足す。Lv1 は 0（技の点だけ）。技の倍率には、含めない
-  levelBonus: { 1: 0, 2: 10, 3: 20, 4: 30, 5: 40 },
+  // コードの難しさ（駒のレベル）のボーナス: 盤の上で、技に使われた「ちがう駒」ごとに、1回だけ足す。Lv1 は 0（技の点だけ）。技の倍率には、含めない
+  levelBonus: { 1: 0, 2: 5, 3: 10, 4: 20, 5: 30 },
 };
 
 // ------------------------------------------------------------
@@ -236,6 +262,41 @@ const DOMINANT_ENDING_FROM = (c) => !c.isRepeat && ((c.rootPc === 0 && MAJ.inclu
 
 // 辺（2つのコード）の、ルートの動き（上向きに何半音か。0〜11）
 const rootMotion = (a, b) => (((b.rootPc - a.rootPc) % 12) + 12) % 12;
+
+// ---- クリシェ（ライン・クリシェ）の判定（2026-11-24）----
+//   同じルートの和音が続くあいだ、内側の声（3度以外。ルート・5度・6度・7度など）が、半音ずつ、同じ向きに動き続けること（出典: docs/theory_audit.md の「2026-11-24 の追加」）。
+//   例: Ⅰ → ⅠM7 → Ⅰ7（ド → シ → シ♭）/ Ⅰ → Ⅰaug → Ⅰ6 → Ⅰ7（ソ → ソ♯ → ラ → シ♭）/ Ⅵm → ⅥmM7 → Ⅵm7 → Ⅵm6（ラ → ソ♯ → ソ → ファ♯）
+//   evs: 並びの駒（2つ以上でも調べられる。ヒントが「途中」を調べるときのため）。3度が変わる（長 ↔ 短）ものは、クリシェではない（3度は動かさない）
+const ANY_PIECE = (c) => !c.isRepeat;
+export function isLineCliche(evs) {
+  if (!evs || evs.length < 2) return false;
+  const cs = evs.map((e) => e.chord);
+  if (cs.some((c) => c.isRepeat)) return false;
+  const root = cs[0].rootPc, third = thirdPc(cs[0]);
+  if (cs.some((c) => c.rootPc !== root || thirdPc(c) !== third)) return false;
+  for (const d of [1, 11]) {
+    for (const p0 of cs[0].pcs) {
+      let cur = p0, ok = p0 !== third;
+      for (let k = 1; ok && k < cs.length; k++) { cur = (cur + d) % 12; ok = cs[k].pcs.includes(cur) && cur !== third; }
+      if (ok) return true;
+    }
+  }
+  return false;
+}
+
+// ---- パッシング・ディミニッシュの判定（2026-11-24）----
+//   全音はなれたダイアトニックの2つのコードの間に、ディミニッシュ（dim7）を、経過的にはさむ。ルートが半音ずつ、のぼる（X → X♯dim → Y）かくだる。例: Ⅴ → Ⅴ♯dim7 → Ⅵm
+const DIATONIC_ROOTS = [0, 2, 4, 5, 7, 9, 11];
+export function isPassingDim(evs) {
+  if (!evs || evs.length < 2) return false;
+  const a = evs[0].chord, d = evs[1].chord, b = evs[2] ? evs[2].chord : null;
+  if (a.isRepeat || d.isRepeat || d.type !== 'dim7' || a.type === 'dim7' || !DIATONIC_ROOTS.includes(a.rootPc)) return false;
+  const up = rootMotion(a, d) === 1, down = rootMotion(d, a) === 1;
+  if (!up && !down) return false;
+  if (!b) return true;
+  if (b.isRepeat || b.type === 'dim7' || !DIATONIC_ROOTS.includes(b.rootPc)) return false;
+  return up ? rootMotion(d, b) === 1 : rootMotion(b, d) === 1;
+}
 
 // セカンダリードミナント: ドミナント（ドミナント7th。Ⅵ の長三和音も、Ⅱm のドミナント）が、Ⅰ（主和音）以外のコードへ、ルートが4度上がって進む動き（Ⅴ7→Ⅰ は、ふつうのドミナントなので、含めない）
 function isSecondaryDominant(a, b) { return (a.type === 'dom7' || (a.type === 'maj' && a.rootPc === 9)) && b.rootPc !== 0; }
@@ -283,38 +344,47 @@ const HEAD = [0, 4];   // 固有進行が始まれる位置（1番・5番）
 export const PATTERNS = [
   // ---- tier 100: 4つ以上の、名前のついた進行 ----
   // 王道進行: Ⅳ→Ⅴ→Ⅲ→Ⅵm。Ⅲ は、Ⅲm・Ⅲm7 のほか、Ⅲ7 でもよい（Ⅲ7 の王道も、よく使われる）
-  { id: 'oudou', kind: 'oudou', tier: 100, startAt: HEAD, steps: [IV, V, III_ANY, VIm], points: 600, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ'], ['Ⅲm7', 'Ⅲm'], ['Ⅵm7', 'Ⅵm']] },
+  { id: 'oudou', kind: 'oudou', tier: 100, startAt: HEAD, steps: [IV, V, III_ANY, VIm], points: 380, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ'], ['Ⅲm7', 'Ⅲm'], ['Ⅵm7', 'Ⅵm']] },
   // 丸サ進行: ⅣM7→Ⅲ7→Ⅵm7（3つ）。続けて Ⅰ7（4つ）、Ⅴm7→Ⅰ7（5つ）なら、長い形
-  { id: 'maru_sa', kind: 'maru_sa', tier: 98, startAt: HEAD, steps: [IV_MAJ7, III7, VIm7], points: 500,
-    extend: [{ steps: [Vm7, I7], points: 500, variant: '完全な形' }, { steps: [I7], points: 200, variant: 'Ⅰ7まで' }],
+  { id: 'maru_sa', kind: 'maru_sa', tier: 98, startAt: HEAD, steps: [IV_MAJ7, III7, VIm7], points: 300,
+    extend: [{ steps: [Vm7, I7], points: 300, variant: '完全な形' }, { steps: [I7], points: 120, variant: 'Ⅰ7まで' }],
     prefer: [['ⅣM7'], ['Ⅲ7'], ['Ⅵm7'], ['Ⅴm7', 'Ⅰ7'], ['Ⅰ7']] },
   // コンファーメーション: ⅠM7→Ⅶm7♭5→Ⅲ7→Ⅵm7（4つ）。続けて Ⅴm7→Ⅰ7 なら、完全な形（6つ）。「→」は、つなぎ目として無視する。ツーファイブワン（Ⅶm7♭5→Ⅲ7→Ⅵm7）より優先
-  { id: 'confirmation', kind: 'confirmation', tier: 97, startAt: HEAD, steps: [I, on([11], ['min7b5']), III7, VIm7], points: 500,
-    extend: [{ steps: [Vm7, I7], points: 300, variant: '完全な形' }], prefer: [['ⅠM7', 'Ⅰ'], ['Ⅶm7-5'], ['Ⅲ7'], ['Ⅵm7'], ['Ⅴm7'], ['Ⅰ7']] },
+  { id: 'confirmation', kind: 'confirmation', tier: 97, startAt: HEAD, steps: [I, on([11], ['min7b5']), III7, VIm7], points: 400,
+    extend: [{ steps: [Vm7, I7], points: 280, variant: '完全な形' }], prefer: [['ⅠM7', 'Ⅰ'], ['Ⅶm7-5'], ['Ⅲ7'], ['Ⅵm7'], ['Ⅴm7'], ['Ⅰ7']] },
   // ブルース進行（8小節）: Ⅰ→Ⅴ→Ⅳ→Ⅳ→Ⅰ→Ⅴ→Ⅰ→Ⅴ。Ⅳ をのばす（Ⅳ → ）形でもよい
-  { id: 'blues8', kind: 'blues8', variant: '8小節ブルース', tier: 96, startAt: [0], steps: [BLUES_I, BLUES_V, IV, IV, BLUES_I, BLUES_V, BLUES_I, BLUES_V], points: 900,
+  { id: 'blues8', kind: 'blues8', variant: '8小節ブルース', tier: 96, startAt: [0], steps: [BLUES_I, BLUES_V, IV, IV, BLUES_I, BLUES_V, BLUES_I, BLUES_V], points: 550,
     prefer: [['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ'], ['Ⅳ'], ['Ⅳ'], ['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ'], ['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ']] },
-  { id: 'blues8_held', kind: 'blues8', variant: '8小節ブルース', tier: 96, startAt: [0], steps: [BLUES_I, BLUES_V, IV, BLUES_I, BLUES_V, BLUES_I, BLUES_V], points: 900,
+  { id: 'blues8_held', kind: 'blues8', variant: '8小節ブルース', tier: 96, startAt: [0], steps: [BLUES_I, BLUES_V, IV, BLUES_I, BLUES_V, BLUES_I, BLUES_V], points: 550,
     check: (evs) => evs.length < 3 || evs[2].last - evs[2].first === 1, prefer: [['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ'], ['Ⅳ'], ['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ'], ['Ⅰ7', 'Ⅰ'], ['Ⅴ7', 'Ⅴ']] },
   // カノン進行: Ⅰ→Ⅴ→Ⅵm→Ⅲm→Ⅳ（5つ）。続けて Ⅰ→Ⅳ→Ⅴ（合わせて8つ）なら、完全な形
-  { id: 'canon', kind: 'weak_motion', variant: 'カノン進行', tier: 95, startAt: [0], steps: [I, V, VIm, IIIm, IV], points: 500,
-    extend: [{ steps: [I, IV, V], points: 500, variant: 'カノン進行（完全な形）' }], prefer: [['Ⅰ'], ['Ⅴ'], ['Ⅵm'], ['Ⅲm'], ['Ⅳ'], ['Ⅰ'], ['Ⅳ'], ['Ⅴ']] },
+  { id: 'canon', kind: 'weak_motion', variant: 'カノン進行', tier: 95, startAt: [0], steps: [I, V, VIm, IIIm, IV], points: 300,
+    extend: [{ steps: [I, IV, V], points: 300, variant: 'カノン進行（完全な形）' }], prefer: [['Ⅰ'], ['Ⅴ'], ['Ⅵm'], ['Ⅲm'], ['Ⅳ'], ['Ⅰ'], ['Ⅳ'], ['Ⅴ']] },
   // ---- tier 92: 4つの、名前のついた進行 ----
   // ラグタイム進行（2026-11-18）: 冒頭（1番）から。Ⅲ7→Ⅵ7→Ⅱ7→Ⅴ7 のあと、Ⅰ が2つぶん以上（Ⅰ →・Ⅰ Ⅰ）。ドミナントが冒頭に来るので、この形のときだけ、冒頭の減点を外す（headExempt）
   { id: 'ragtime_held', kind: 'ragtime', tier: 92, startAt: [0], steps: [III7, VI7, II7, V7, I], points: 800,
     check: (evs) => evs.length < 5 || evs[4].last - evs[4].first >= 1, prefer: [['Ⅲ7'], ['Ⅵ7'], ['Ⅱ7'], ['Ⅴ7'], ['ⅠM7', 'Ⅰ']] },
   { id: 'ragtime', kind: 'ragtime', tier: 92, startAt: [0], steps: [III7, VI7, II7, V7, I, I], points: 800, prefer: [['Ⅲ7'], ['Ⅵ7'], ['Ⅱ7'], ['Ⅴ7'], ['ⅠM7', 'Ⅰ'], ['ⅠM7', 'Ⅰ']] },
-  { id: 'junkan', kind: 'junkan', tier: 92, startAt: HEAD, steps: [I, VI_ANY, IIm, V], points: 500, prefer: [['ⅠM7', 'Ⅰ'], ['Ⅵm7', 'Ⅵm', 'Ⅵ7'], ['Ⅱm7', 'Ⅱm'], ['Ⅴ7', 'Ⅴ']] },
-  { id: 'fifties', kind: 'fifties', tier: 92, startAt: HEAD, steps: [I, VIm, IV, V], points: 500, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅵm', 'Ⅵm7'], ['Ⅳ', 'ⅣM7'], ['Ⅴ', 'Ⅴ7']] },
-  { id: 'pop_punk', kind: 'pop_punk', tier: 92, startAt: HEAD, steps: [I, V, VIm, IV], points: 500, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅴ', 'Ⅴ7'], ['Ⅵm', 'Ⅵm7'], ['Ⅳ', 'ⅣM7']] },
-  { id: 'andalusian', kind: 'andalusian', tier: 92, startAt: HEAD, steps: [VIm, V, IV, III7], points: 550, prefer: [['Ⅵm', 'Ⅵm7'], ['Ⅴ', 'Ⅴ7'], ['Ⅳ', 'ⅣM7'], ['Ⅲ7']] },
-  { id: 'full_cadence', kind: 'full_cadence', tier: 92, startAt: HEAD, steps: [I, IV, V, I], points: 450, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅳ', 'ⅣM7'], ['Ⅴ', 'Ⅴ7'], ['Ⅰ', 'ⅠM7']] },
+  { id: 'junkan', kind: 'junkan', tier: 92, startAt: HEAD, steps: [I, VI_ANY, IIm, V], points: 300, prefer: [['ⅠM7', 'Ⅰ'], ['Ⅵm7', 'Ⅵm', 'Ⅵ7'], ['Ⅱm7', 'Ⅱm'], ['Ⅴ7', 'Ⅴ']] },
+  { id: 'fifties', kind: 'fifties', tier: 92, startAt: HEAD, steps: [I, VIm, IV, V], points: 300, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅵm', 'Ⅵm7'], ['Ⅳ', 'ⅣM7'], ['Ⅴ', 'Ⅴ7']] },
+  { id: 'pop_punk', kind: 'pop_punk', tier: 92, startAt: HEAD, steps: [I, V, VIm, IV], points: 300, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅴ', 'Ⅴ7'], ['Ⅵm', 'Ⅵm7'], ['Ⅳ', 'ⅣM7']] },
+  { id: 'andalusian', kind: 'andalusian', tier: 92, startAt: HEAD, steps: [VIm, V, IV, III7], points: 330, prefer: [['Ⅵm', 'Ⅵm7'], ['Ⅴ', 'Ⅴ7'], ['Ⅳ', 'ⅣM7'], ['Ⅲ7']] },
+  { id: 'full_cadence', kind: 'full_cadence', tier: 92, startAt: HEAD, steps: [I, IV, V, I], points: 400, prefer: [['Ⅰ', 'ⅠM7'], ['Ⅳ', 'ⅣM7'], ['Ⅴ', 'Ⅴ7'], ['Ⅰ', 'ⅠM7']] },
   // ---- tier 90: 3つの、名前のついた進行 ----
-  { id: 'komuro', kind: 'komuro', tier: 90, startAt: HEAD, steps: [VIm, IV, V], points: 400, prefer: [['Ⅵm7', 'Ⅵm'], ['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ']] },
-  { id: 'iv_iii_vi', kind: 'iv_iii_vi', tier: 90, startAt: HEAD, steps: [IV, III_ANY, VIm], points: 400, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅲ7', 'Ⅲm7'], ['Ⅵm7', 'Ⅵm']] },
-  { id: 'iv_v_vi', kind: 'iv_v_vi', tier: 90, startAt: HEAD, steps: [IV, V, VIm], points: 300, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ'], ['Ⅵm7', 'Ⅵm']] },
+  { id: 'komuro', kind: 'komuro', tier: 90, startAt: HEAD, steps: [VIm, IV, V], points: 240, prefer: [['Ⅵm7', 'Ⅵm'], ['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ']] },
+  { id: 'iv_iii_vi', kind: 'iv_iii_vi', tier: 90, startAt: HEAD, steps: [IV, III_ANY, VIm], points: 240, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅲ7', 'Ⅲm7'], ['Ⅵm7', 'Ⅵm']] },
+  { id: 'iv_v_vi', kind: 'iv_v_vi', tier: 90, startAt: HEAD, steps: [IV, V, VIm], points: 380, prefer: [['ⅣM7', 'Ⅳ'], ['Ⅴ7', 'Ⅴ'], ['Ⅵm7', 'Ⅵm']] },
   // バックドア進行: Ⅳm7→Ⅶ♭7→Ⅰ。終止の形（2026-11-18）なので、フレーズの終わりで成立する（1番か5番から、ではない）
-  { id: 'backdoor', kind: 'backdoor', tier: 90, end: 'phrase', steps: [IVm7, VII_FLAT7, I], points: 450, prefer: [['Ⅳm7'], ['Ⅶ♭7'], ['ⅠM7', 'Ⅰ']] },
+  { id: 'backdoor', kind: 'backdoor', tier: 90, end: 'phrase', steps: [IVm7, VII_FLAT7, I], points: 280, prefer: [['Ⅳm7'], ['Ⅶ♭7'], ['ⅠM7', 'Ⅰ']] },
+  // ---- tier 88〜86: 内声・経過の技（2026-11-24）----
+  // クリシェ: 同じルートの和音が3つ以上続いて、内側の声が、半音ずつ動き続ける。4つなら +100・5つなら +150
+  { id: 'cliche', kind: 'cliche', tier: 88, steps: [ANY_PIECE, ANY_PIECE, ANY_PIECE], check: (evs) => isLineCliche(evs), points: 150,
+    extend: [{ steps: [ANY_PIECE, ANY_PIECE], check: (evs) => isLineCliche(evs), points: 150, variant: '5つの和音' }, { steps: [ANY_PIECE], check: (evs) => isLineCliche(evs), points: 100, variant: '4つの和音' }],
+    advancedHint: true, hintAdvanced: true, noStartHint: true },
+  // パッシング・ディミニッシュ: X → X♯dim7 → Y（ルートが半音ずつ、のぼる・くだる）
+  { id: 'passing_dim', kind: 'passing_dim', tier: 86, steps: [ANY_PIECE, (c) => !c.isRepeat && c.type === 'dim7', ANY_PIECE], check: (evs) => isPassingDim(evs), points: 120,
+    bonus: (evs) => ({ points: 0, variant: rootMotion(evs[0].chord, evs[1].chord) === 1 ? 'のぼる形' : 'くだる形' }),
+    advancedHint: true, hintAdvanced: true, noStartHint: true },
   // ---- tier 85: ツーファイブワン（強進行が2回つながる。短調の ⅶm7-5→Ⅲ7→Ⅵm7 なども含む）----
   { id: 'two_five_one', kind: 'dominant_motion', variant: 'ツーファイブワン', tier: 85,
     steps: [(c) => !c.isRepeat && ['min', 'min7', 'min7b5'].includes(c.type), (c) => !c.isRepeat && (c.type === 'dom7' || (c.type === 'maj' && c.rootPc === 7)),
@@ -324,30 +394,32 @@ export const PATTERNS = [
     prefer: [['Ⅱm7', 'Ⅱm'], ['Ⅴ7'], ['ⅠM7', 'Ⅰ']] },
   // ---- tier 80: 終止（2つのコード。フレーズの終わりでだけ成立する）----
   { id: 'authentic_cadence', kind: 'authentic_cadence', tier: 80, end: 'phrase', steps: [V_ANY, I], points: 200 },
+  // プラガル終止（変格終止・アーメン終止）: Ⅳ（ⅣM7）→ Ⅰ（ⅠM7）。Ⅴ-Ⅰ終止より、やわらかい。2026-11-24 に追加（出典: docs/theory_audit.md の「2026-11-24 の追加」）
+  { id: 'plagal', kind: 'plagal_cadence', tier: 80, end: 'phrase', steps: [IV, I], points: 160, prefer: [['Ⅳ', 'ⅣM7'], ['Ⅰ', 'ⅠM7']] },
   // ピカルディ終止: 短調の主和音 Ⅵm で終わるところを、長三和音の Ⅵ で終える。直前は、イ短調で終止に向かう和音（Ⅲ7 = Ⅴ7 / Ⅴ・Ⅴ7 = ♭Ⅶ / Ⅱm = Ⅳm / Ⅵm = 主和音 / Ⅵsus4 = サス）
-  { id: 'picardy', kind: 'picardy', tier: 80, end: 'phrase', steps: [PICARDY_FROM, VI_MAJOR], points: 250, hintAdvanced: true,
+  { id: 'picardy', kind: 'picardy', tier: 80, end: 'phrase', steps: [PICARDY_FROM, VI_MAJOR], points: 200, hintAdvanced: true,
     bonus: (evs) => (isSus(evs[0].chord) ? { points: 50, variant: 'サスつき' } : null),
     soft: (evs) => !(evs[0].chord.rootPc === 4 || evs[0].chord.rootPc === 9) },     // soft = ヒントでは、フレーズの終わり（4番・8番）でだけ出す（Ⅲ7・Ⅵm 系・Ⅵsus4 からの形は、いつでも）
   // 偽終止: Ⅵm（Ⅵm7）で終わる。前のコードは何でもよい（ただし、同じルートへの繰り返しは除く）。本来の形（Ⅴ → Ⅵm）は、上乗せの点。Ⅴ のあとなら、借用のⅥ♭M7 でもよい
-  { id: 'deceptive_cadence', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [(c) => !c.isRepeat, VI_MINOR], check: (evs) => evs[0].chord.rootPc !== evs[1].chord.rootPc, points: 200,
+  { id: 'deceptive_cadence', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [(c) => !c.isRepeat, VI_MINOR], check: (evs) => evs[0].chord.rootPc !== evs[1].chord.rootPc, points: 150,
     bonus: (evs) => (V_ANY(evs[0].chord) ? { points: 50 } : null),
     soft: (evs) => !V_ANY(evs[0].chord) },        // soft = どのコードのあとでも成立する形（ヒントでは、おすすめにしない。小節の終わりでだけ出す）
-  { id: 'deceptive_cadence_flat6', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [V_ANY, VI_FLAT_MAJ7], points: 250 },
-  { id: 'dominant_ending', kind: 'dominant_ending', tier: 80, end: 'phrase', steps: [DOMINANT_ENDING_FROM, V_ANY], points: 150 },
+  { id: 'deceptive_cadence_flat6', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [V_ANY, VI_FLAT_MAJ7], points: 200 },
+  { id: 'dominant_ending', kind: 'dominant_ending', tier: 80, end: 'phrase', steps: [DOMINANT_ENDING_FROM, V_ANY], points: 100 },
   // ---- tier 82〜75: 借用和音（サブドミナントマイナーと、その代理）。Ⅳ→Ⅳm→Ⅰ（Ⅴ）は、終止（80）より先に取る（技として、いちばん高く評価する）。ほかは、名前のついた進行・終止が取らなかったつながりで、自然に着地したとき ----
-  { id: 'sdm_classic', kind: 'sdm', tier: 82, variant: 'Ⅳ→Ⅳm→Ⅰ', advancedHint: true, steps: [isIvPlain, isMinorIv, (c) => isTonicFamily(c) || isDominantV(c)], points: 300 },
-  { id: 'neapolitan', kind: 'sdm_sub', tier: 77, variant: 'ネアポリタン進行', advancedHint: true, steps: [on([1], ['maj7']), isDominantV, isTonicFamily], points: 240 },
-  { id: 'sdm', kind: 'sdm', tier: 75, steps: [isMinorIv, (c) => !c.isRepeat], check: (evs) => naturalAfterBorrowed(evs[0].chord, evs[1].chord), points: 120 },
-  { id: 'sdm_sub', kind: 'sdm_sub', tier: 75, steps: [isSubstitute, (c) => !c.isRepeat], check: (evs) => naturalAfterBorrowed(evs[0].chord, evs[1].chord), points: 100,
+  { id: 'sdm_classic', kind: 'sdm', tier: 82, variant: 'Ⅳ→Ⅳm→Ⅰ', advancedHint: true, steps: [isIvPlain, isMinorIv, (c) => isTonicFamily(c) || isDominantV(c)], points: 220 },
+  { id: 'neapolitan', kind: 'sdm_sub', tier: 83, variant: 'ネアポリタン進行', advancedHint: true, steps: [on([1], ['maj7']), isDominantV, isTonicFamily], points: 300 },
+  { id: 'sdm', kind: 'sdm', tier: 75, steps: [isMinorIv, (c) => !c.isRepeat], check: (evs) => naturalAfterBorrowed(evs[0].chord, evs[1].chord), points: 90 },
+  { id: 'sdm_sub', kind: 'sdm_sub', tier: 75, steps: [isSubstitute, (c) => !c.isRepeat], check: (evs) => naturalAfterBorrowed(evs[0].chord, evs[1].chord), points: 70,
     bonus: (evs) => ({ points: 0, variant: SUB_VARIANTS[borrowKey(evs[0].chord)] || null }) },
   // ---- tier 70: 裏コード（♭Ⅱ7 → Ⅰ）----
-  { id: 'ura', kind: 'half_step_down', variant: '裏コード', tier: 70, steps: [on([1], DOM), I], points: 350 },
+  { id: 'ura', kind: 'half_step_down', variant: '裏コード', tier: 70, steps: [on([1], DOM), I], points: 250 },
   // ---- tier 60: ふつうのつながり（ルートの動きだけで決まる。どこでも成立する）----
   { id: 'strong', kind: 'dominant_motion', tier: 60, steps: [(c) => !c.isRepeat, (c) => !c.isRepeat],
     check: (evs) => rootMotion(evs[0].chord, evs[1].chord) === 5, points: 100,
     bonus: (evs) => (isSecondaryDominant(evs[0].chord, evs[1].chord) ? { points: 50, variant: 'セカンダリードミナント' } : { points: 0, variant: '強進行' }) },
   { id: 'weak', kind: 'weak_motion', tier: 60, steps: [(c) => !c.isRepeat, (c) => !c.isRepeat], check: (evs) => rootMotion(evs[0].chord, evs[1].chord) === 7, points: 60 },
-  { id: 'half_down', kind: 'half_step_down', tier: 60, steps: [(c) => !c.isRepeat, (c) => !c.isRepeat], check: (evs) => rootMotion(evs[0].chord, evs[1].chord) === 11, points: 120 },
+  { id: 'half_down', kind: 'half_step_down', tier: 60, steps: [(c) => !c.isRepeat, (c) => !c.isRepeat], check: (evs) => rootMotion(evs[0].chord, evs[1].chord) === 11, points: 80 },
 ];
 
 // ------------------------------------------------------------
@@ -387,11 +459,6 @@ export function buildSegments(board, table, split = null) {
 
 // 技の目印（画面が、「新しく決まった技」と「前からある技」を見分けるのに使う）
 export function instanceKey(ins) { return `${ins.id}|${ins.startPos}|${ins.endPos}|${ins.variant || ''}`; }
-
-// 並びのイベント seg[idx] が、フレーズの終わりか（4番・8番に着いている。または、その後に続く駒がない）
-function endsPhrase(seg, idx) {
-  return idx === seg.length - 1 || (seg[idx].last % PHRASE === PHRASE - 1 && seg[idx].half !== 0);       // 分割したマスの前半は、そのマスの終わりではない（後半が続く）
-}
 
 // ------------------------------------------------------------
 // ループのつなぎ目（8番 → 1番）。盤は輪になって演奏されるので、最後の駒と最初の駒も、つながっている（2026-11-18）。
@@ -487,10 +554,11 @@ export function analyze(board, table, opts = {}) {
             if (i + len + n > seg.length) continue;
             const more = seg.slice(i + len, i + len + n);
             if (more.some((e) => e.blocked) || !ex.steps.every((m, k) => m(more[k].chord))) continue;
+            if (ex.check && !ex.check(seg.slice(i, i + len + n), ctx)) continue;          // 長い形だけの条件（クリシェが、4つ・5つと続いているか）
             total = len + n; extraPoints = ex.points; variant = ex.variant || variant;
             break;
           }
-          if (pat.end === 'phrase' && !endsPhrase(seg, i + total - 1)) continue;   // 終止: フレーズの終わりでだけ
+          if (pat.end === 'phrase' && !endsPhrase(seg, i + total - 1, ctx.phrase)) continue;   // 終止: フレーズの終わりでだけ（あとに、同じルートの和音がつづいて、終わりに着くときも。sense.js の endsPhrase）
           if (pat.bonus) { const b = pat.bonus(seg.slice(i, i + len)); if (b) { extraPoints += b.points; if (b.variant) variant = b.variant; } }
           cands.push({ pat, si, i, total, variant, extraPoints });
         }
@@ -552,19 +620,29 @@ export function analyze(board, table, opts = {}) {
   const kinds = new Set(instances.map((i) => i.kind));
   const variety = 1 + SCORE.varietyStep * Math.max(0, kinds.size - 1);
   const penalty = oddities.reduce((s, o) => s + o.penalty, 0);
-  // コードの難しさのボーナス: 盤の上の「ちがう駒」ごとに、1回だけ（「→」と、「？」の駒は除く）。技にならなくても、高いレベルの駒を使えば、点が入る
+  // ジャッジ（講評）: 名前のついた技にならなかったつながりを見て、耳に馴染む並びには加点、進行感のない並びには減点・指摘（sense.js）
+  const critiques = judge(segments, claimed, { phrase: ctx.phrase, kinds: claimedKinds }).concat(board.length === 8 ? loopNote(board.length, segments, instances) : []);
+  // 技・耳に馴染むつながり（加点の講評）に使われている位置。使われていない駒は、「コードの難しさ」の加点がつかず、盤に3つ以上の駒があるときは、減点（役に立っていない駒）
+  const inTrick = new Set(), inUse = new Set();
+  for (const ins of instances) for (const p of ins.positions) { inTrick.add(p); inUse.add(p); }
+  for (const c of critiques) if (c.points > 0) for (const p of c.positions) inUse.add(p);
+  const isUsed = (ev) => ev.positions.some((p) => inUse.has(p));
+  // コードの難しさのボーナス: 盤の上の、技に使われている「ちがう駒」ごとに、1回だけ（「→」と、「？」の駒は除く）。技に使われていない駒は、数えない
   const levelPieces = [];
   const usedIds = new Set();
   segments.forEach((seg) => seg.forEach((ev) => {
-    if (ev.blocked || ev.chord.isRepeat || usedIds.has(ev.chord.id)) return;
+    if (ev.blocked || ev.chord.isRepeat || !ev.positions.some((p) => inTrick.has(p)) || usedIds.has(ev.chord.id)) return;
     usedIds.add(ev.chord.id);
     const bonus = SCORE.levelBonus[ev.chord.level] || 0;
     if (bonus > 0) levelPieces.push({ pos: ev.first, name: ev.chord.name, symbol: ev.chord.symbol, level: ev.chord.level, bonus });
   }));
   levelPieces.sort((a, b) => a.pos - b.pos);
   const levelBonus = levelPieces.reduce((s, p) => s + p.bonus, 0);
-  // ジャッジ（講評）: 名前のついた技にならなかったつながりを見て、耳に馴染む並びには加点、進行感のない並びには減点・指摘（sense.js）
-  const critiques = judge(segments, claimed, { phrase: ctx.phrase, kinds: claimedKinds }).concat(board.length === 8 ? loopNote(board.length, segments, instances) : []);
+  const pieces = segments.flatMap((seg) => seg.filter((ev) => !ev.blocked && !ev.chord.isRepeat));
+  if (pieces.length >= 3) {
+    const idle = pieces.filter((ev) => !isUsed(ev));
+    if (idle.length) critiques.push(idleCritique(idle));
+  }
   const sense = senseTotals(critiques);
   const raw = Math.round(base * variety) + levelBonus + sense.good - sense.bad - penalty;                     // 0点で切る前の合計（メロディのステージが、メロディの点を足してから、0点で切る）
   const total = Math.max(0, raw);                                                                               // 減点しても、0点より下にはならない

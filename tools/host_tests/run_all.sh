@@ -60,8 +60,13 @@ echo "== スマホ（iPhone の大きさ・タッチ。縦持ち・横持ち）�
 python3 tools/host_tests/test_mobile_ui.py
 echo "== 第7弾: クリアの結果・スマホ縦持ちの配置・チャレンジステージ・分割したマス（マウス・指の操作）=="
 python3 tools/host_tests/test_round7_ui.py
+echo "== 第8弾: スタンプ・画面の記録・分割の駒・ガイドと盤の位置・指の範囲選択（スマホの縦・横）=="
+python3 tools/host_tests/test_round8_ui.py
 echo "== 公開ページ（https。ブリッジなし）: リズム・コード編集の内容の取り込み =="
 python3 tools/host_tests/test_pages_ui.py
+echo "== 全端末への共有（にせの Firebase）: ブリッジが書く側・ゲームが読む側 =="
+python3 tools/host_tests/test_cloud_sync.py
+python3 tools/host_tests/test_cloud_game.py
 echo "== 編集画面が作った「公開ページ用のリンク」を、ゲーム側の読み取りで読み直す（通しの確認）=="
 python3 tools/host_tests/test_editor_pages.py
 echo "== でたらめ操作（開いた画面・結果・盤と3Dの一致が、こわれないか。PC・スマホ縦・横・タブレット）=="

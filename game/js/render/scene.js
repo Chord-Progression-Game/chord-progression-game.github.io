@@ -308,7 +308,7 @@ export class SceneManager {
     }
     if (this.phoneMode && this.region && this.region.top !== undefined) {                                           // スマホ: 盤を、上のバー・得点・メロディの帯と、下のトレイの、あいだの、まん中に（入りきらなければ、引く。横持ちは、最低でも phoneZoom まで引く）
       const fit = this._fitBoard(d0, w, h, this.region, this.viewZoom * this.phoneZoom);
-      zoom = fit.zoom; downPx = fit.shiftPx;
+      zoom = fit.zoom; downPx = fit.shiftPx; shiftX = fit.shiftX;
     }
     this.camDist = d0 * zoom;
     if (Math.abs(downPx) > 0.5 || Math.abs(shiftX) > 0.5) this.camera.setViewOffset(w, h, -Math.round(shiftX), -Math.round(downPx), w, h); else this.camera.clearViewOffset();      // 画像全体を、下・右へずらす（遠近は、変えない）
@@ -320,16 +320,20 @@ export class SceneManager {
     const cam = this._fitCam || (this._fitCam = new THREE.PerspectiveCamera(this.baseFov, w / h, 0.1, 80));
     cam.aspect = w / h; cam.fov = this.baseFov; cam.updateProjectionMatrix();
     const v = new THREE.Vector3();
+    const hasX = region.left !== undefined && region.right !== undefined;                       // 横持ちで、左にガイドの欄が立っているとき: 左右のあいだにも、収める
     const span = (dist) => {
       cam.position.set(this.shiftX, 0.1 + dist * 0.74, dist * 0.62); cam.lookAt(this.shiftX, 0.1, 0); cam.updateMatrixWorld(true);
-      let top = Infinity, bottom = -Infinity;
+      let top = Infinity, bottom = -Infinity, left = Infinity, right = -Infinity;
       for (const x of [-4.05, 4.05]) for (const z of [-2.3, 2.3]) for (const y of [-0.4, 1.25]) { v.set(x, y, z).project(cam); const py = (-v.y * 0.5 + 0.5) * h; top = Math.min(top, py); bottom = Math.max(bottom, py); }
-      return { top, bottom };
+      if (hasX) for (const x of [-3.4, 3.4]) for (const z of [-1.6, 1.6]) for (const y of [-0.1, 1.25]) { v.set(x, y, z).project(cam); const px = (v.x * 0.5 + 0.5) * w; left = Math.min(left, px); right = Math.max(right, px); }       // 駒のある範囲（板のふちは、欄の下に入ってよい）
+      return { top, bottom, left, right };
     };
     const room = Math.max(60, region.bottom - region.top) * 0.94;
+    const roomX = hasX ? Math.max(120, region.right - region.left) : Infinity;
+    const tooBig = (s) => (s.bottom - s.top) > room * 1.01 || (hasX && (s.right - s.left) > roomX * 1.01);
     let zoom = Math.max(1, minZoom), s = span(d0 * zoom);
-    for (let i = 0; i < 3 && (s.bottom - s.top) > room * 1.01; i++) { zoom *= (s.bottom - s.top) / room; s = span(d0 * zoom); }
-    return { zoom, shiftPx: (region.top + region.bottom) / 2 - (s.top + s.bottom) / 2 };
+    for (let i = 0; i < 4 && tooBig(s); i++) { zoom *= Math.max(1.01, (s.bottom - s.top) / room, hasX ? (s.right - s.left) / roomX : 0); s = span(d0 * zoom); }
+    return { zoom, shiftPx: (region.top + region.bottom) / 2 - (s.top + s.bottom) / 2, shiftX: hasX ? (region.left + region.right) / 2 - (s.left + s.right) / 2 : 0 };
   }
 
   // 盤を、いまのカメラの姿勢で画面に映したときの、左右の位置（px）から、左右の欄のあいだ（region.left〜right）に収まる引き具合（zoom ≧ 1）と、まん中に置くためのずらし量（px）を求める
