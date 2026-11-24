@@ -182,9 +182,32 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .col-dot.found { background: var(--c); color: #161412; border-color: var(--c); }
 #collection-title .col-dot { height: 2.9rem; font-size: 0.95rem; border-radius: 4px; }
 
+/* ---------- シークバー（演奏の位置。2026-11-25）---------- */
+/* 上のバーのすぐ下の真ん中。8つに区切った帯（1〜8番）+ 演奏の位置の線。つかんで動かすと、巻き戻し・早送り（動かしているあいだは、演奏が止まって、巻き戻しの音が鳴る）。
+   帯の下の、技のスタンプ・メロディの帯・3D の盤は、この高さ（--seek-h）だけ、下がる（--seek-h は、:root で決める。スマホは mobile.css）*/
+:root { --seek-h: 2rem; }
+#seekbar { position: absolute; left: 50%; top: calc(var(--topbar-h, 3.4rem) + 0.3rem); transform: translateX(-50%); width: min(34rem, calc(100vw - 41rem)); height: 1.7rem; z-index: 3; touch-action: none; cursor: ew-resize; outline: 0; -webkit-tap-highlight-color: transparent; }
+body.melody-mode #seekbar { width: min(50rem, calc(100vw - 41rem)); }                  /* メロディの帯と、同じ幅（8つの区切りが、帯の8つの列と、そろう）*/
+.sk-track { position: absolute; inset: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; transition: border-color 0.12s; }
+.sk-seg { position: relative; border-left: 1px solid var(--line); }
+.sk-seg:first-child { border-left: 0; }
+.sk-seg.mid { border-left-color: var(--line-2); }
+.sk-seg b { position: absolute; left: 0.4rem; top: 50%; transform: translateY(-50%); font-family: var(--num); font-weight: 700; font-size: 0.64rem; color: var(--faint); font-variant-numeric: tabular-nums; pointer-events: none; }
+.sk-seg.now b { color: var(--accent); }
+.sk-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(242, 193, 78, 0.13); pointer-events: none; }
+.sk-thumb { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.sk-thumb::before { content: ""; position: absolute; left: 50%; top: 0; width: 0.62rem; height: 0.36rem; transform: translateX(-50%); background: var(--accent); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.sk-dir { position: absolute; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 800; line-height: 1; letter-spacing: -0.12em; color: var(--accent); white-space: nowrap; opacity: 0; transition: opacity 0.1s; pointer-events: none; }
+#seekbar.dir-back .sk-dir { right: 0.5rem; opacity: 1; }
+#seekbar.dir-fwd .sk-dir { left: 0.5rem; opacity: 1; }
+#seekbar.is-disabled { opacity: 0.4; cursor: default; }
+#seekbar.is-disabled .sk-thumb { display: none; }
+#seekbar.is-scrubbing .sk-track, #seekbar:focus-visible .sk-track { border-color: var(--accent); }
+#seekbar:focus-visible .sk-track { border-color: var(--text); }
+
 /* ---------- 技のスタンプ ---------- */
 /* 技が決まったときに出る札。小さめにまとめる（3D の技のラベルと、重ならないように）。くわしい説明は、右の「理由」に残す */
-#stamp-layer { position: absolute; left: 0; right: 0; top: 4.1rem; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; pointer-events: none; }
+#stamp-layer { position: absolute; left: 0; right: 0; top: calc(var(--topbar-h, 3.4rem) + 0.7rem + var(--seek-h)); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; pointer-events: none; }
 .stamp { text-align: center; background: var(--panel); border: 2px solid var(--c, var(--text)); border-radius: var(--r); padding: 0.3rem 1.2rem 0.4rem; box-shadow: 0.28rem 0.28rem 0 rgba(0, 0, 0, 0.55); animation: stampin 0.3s cubic-bezier(.2, 1.25, .4, 1) both, stampout 0.4s ease-in 2.4s forwards; }
 .stamp .kicker { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.14em; color: var(--dim); }
 .stamp .kicker em { font-style: normal; color: var(--bg); background: var(--accent); border-radius: 2px; padding: 0.02rem 0.4rem; margin-left: 0.6rem; letter-spacing: 0.06em; }
@@ -324,7 +347,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* ---------- メロディの帯（「メロディにコードをつける」ステージ）---------- */
 /* 画面の上の真ん中。流れているメロディを、8つのステップに分けて見せる。音の棒の色 = いまの和音に対しての聞こえ方（和音は、駒のある場所の、すぐ下に出る） */
 .k-chord { --k: var(--ok); } .k-tension { --k: #6fb7d9; } .k-passing { --k: #8f8a7c; } .k-unstable { --k: #d9b24c; } .k-avoid { --k: var(--danger); } .k-none { --k: transparent; }
-#melody-roll { position: absolute; left: 50%; top: 3.9rem; transform: translateX(-50%); width: min(50rem, calc(100vw - 41rem)); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.3rem 0.7rem 0.4rem; z-index: 3; }
+#melody-roll { position: absolute; left: 50%; top: calc(var(--topbar-h, 3.4rem) + 0.5rem + var(--seek-h)); transform: translateX(-50%); width: min(50rem, calc(100vw - 41rem)); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.3rem 0.7rem 0.4rem; z-index: 3; }
 .mr-head { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.28rem; }
 .mr-label { font-family: var(--num); font-weight: 800; letter-spacing: 0.1em; font-size: 0.72rem; color: var(--faint); }
 .mr-title { font-weight: 800; font-size: 0.98rem; }
@@ -358,7 +381,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mr-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent); opacity: 0; pointer-events: none; }
 .mr-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; margin: 0.6rem 0 0.2rem; font-size: 0.74rem; color: var(--dim); }
 .lg-k::before { content: ""; display: inline-block; width: 0.75rem; height: 0.42rem; margin-right: 0.3rem; vertical-align: middle; border-radius: 2px; background: var(--k); }
-.melody-mode #stamp-layer { top: 11.6rem; }
+.melody-mode #stamp-layer { top: calc(var(--topbar-h, 3.4rem) + 8.2rem + var(--seek-h)); }
 #melody-chip.good { color: var(--ok); border-color: var(--ok); }
 #melody-chip.bad { color: var(--danger); border-color: var(--danger); }
 #trick-list li.sense.melody .nm::before { content: "メロディ"; }

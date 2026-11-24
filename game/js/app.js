@@ -21,6 +21,7 @@ import { LibImport } from './ui/libimport.js';
 import { SoundMenu } from './ui/soundmenu.js';
 import { HowTo } from './ui/howto.js';
 import { VolumeMenu } from './ui/volumemenu.js';
+import { SeekBar } from './ui/seekbar.js';
 import { MelodyView } from './ui/melodyview.js';
 import { PresetMenu } from './ui/presetmenu.js';
 import { PresetStore, placementPlan, applyMelodyPlan } from './game/presets.js';
@@ -53,7 +54,7 @@ async function main() {
   const melodyDoc = new MelodyDoc((save.userMelody || {}).notes || []);                  // フリープレイの、自分でつくった（自動でつけた）メロディ
   const canvas = $('#gl');
   const scene = new SceneManager(canvas);
-  watchLayout(({ phone, portrait, region }) => { scene.setPhoneMode(phone, portrait); scene.setBoardRegion(region); });          // スマホ（縦持ち・横持ち）: 盤の位置・大きさを、見える場所（上のバー・得点・メロディの帯の下〜トレイの上）のまん中に
+  watchLayout(({ phone, portrait, region, inset }) => { scene.setPhoneMode(phone, portrait); scene.setBoardRegion(region); scene.setTopInset(inset); });          // スマホ（縦持ち・横持ち）: 盤の位置・大きさを、見える場所（上のバー・得点・メロディの帯の下〜トレイの上）のまん中に
   const chordStore = new ChordStore(save, table);                                          // 自作コード・編集したコード（フリープレイだけで見える。table.setMode）
   const game = new Game({ table, presets, save });
   const hud = new HUD({ table, save });
@@ -342,6 +343,7 @@ async function main() {
     if (trickDetail.isOpen) trickDetail.close();
     if (libImport.isOpen) libImport.close();
     if (howto.isOpen) howto.close();
+    if (app.seekbar) app.seekbar.cancel();                      // シークバーをつかんでいたら、そこではなす（演奏が、止まったままにならないように）
     closeSheets();
   }
   function closeSheets() { document.body.classList.remove('side-open', 'guide-open'); syncSheetButtons(); }
@@ -765,6 +767,35 @@ async function main() {
   });
   app.volumeMenu = volumeMenu;
   applyVolume();                                                                  // 保存してあった音量を、ボタンの文字に出す
+  // ============================================================ シークバー（演奏の位置。巻き戻し・早送り。2026-11-25）
+  //   上のバーの下の真ん中。演奏に合わせて動く。つかんで動かすと、演奏が止まって、巻き戻しの音だけが鳴る（engine.scrubBegin / scrubTo）。はなすと、その位置から続く（scrubEnd）
+  function seekInfo() {
+    const en = app.engine;
+    if (!en || en.ctx.state !== 'running' || !en.playing) return { enabled: false, pos: 0, len: wantLoopSteps() * 8 };
+    const p = en.loopPosAt(en.ctx.currentTime - (en.ctx.outputLatency || 0));           // 耳に届いている位置（出力の遅れのぶん、少し前）
+    const v = en.scrub ? en.scrub.v : 0;
+    return { enabled: true, pos: p.pos, len: p.len, dir: Math.abs(v) >= 0.5 / en.slotSeconds() ? Math.sign(v) : 0 };      // dir: 通常の演奏の半分以上の速さで動かしているとき、◀◀ ▶▶ を出す
+  }
+  function followScrub(pos) {                                                         // つかんでいるあいだ、3D の盤の「いま」の印を、つかんでいるステップに（通りすぎた駒は、ひと光り）
+    const step = Math.floor(pos / 8);
+    if (step === app.scrubStep) return;
+    app.scrubStep = step;
+    scene.setPlayhead(step); scene.glowPiece(step, 0.7);
+  }
+  const seekbar = new SeekBar({
+    root: $('#seekbar'),
+    onBegin: (shown) => !!app.engine && app.state === 'play' && app.engine.scrubBegin(shown),
+    onMove: (pos) => { if (app.engine) { app.engine.scrubTo(pos); followScrub(pos); } },
+    onEnd: (pos) => { app.scrubStep = -1; if (app.engine) app.engine.scrubEnd(pos); },
+    onKey: ({ delta, to }) => {                                                       // キーボード: ← → で 1ステップ・Home・End
+      const en = app.engine;
+      if (!en || !en.playing || app.state !== 'play') return;
+      const p = en.loopPosAt(en.ctx.currentTime - (en.ctx.outputLatency || 0));
+      const target = to !== undefined ? to : Math.round(p.pos / 8) * 8 + delta;
+      en.seekTo(((target % p.len) + p.len) % p.len);
+    },
+  });
+  app.seekbar = seekbar; app.scrubStep = -1;
   function togglePlay() {
     if (!app.engine) return;
     app.playing = !app.engine.playing;
@@ -979,6 +1010,8 @@ async function main() {
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (app.engine && app.engine.ctx.state === 'running') for (const e of app.engine.pollEvents()) handleAudioEvent(e);
+    if (app.engine && app.engine.scrub) app.engine.scrubTick(now);                       // シークバーを動かしていない間は、巻き戻しの音を、消していく
+    seekbar.update(seekInfo());
     if (!app.paused) game.tick(dt);
     if (melodyView.visible) {                                                          // メロディの帯の、再生位置の線
       const en = app.engine;

@@ -28,6 +28,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
    ===================================================================== */
 @media (max-width: 900px) and (min-height: 521px) {
   html { font-size: 14px; }
+  :root { --seek-h: 2.8rem; }                                                           /* シークバー: 上のバーの下の、画面いっぱいの1行（高さ 2.6rem + すきま 0.2rem）*/
   .phone-only { display: inline-flex; }
   body { padding-top: env(safe-area-inset-top); }
 
@@ -67,19 +68,19 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #btn-guide-toggle, #btn-side-toggle { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
 
   /* ---- ガイド: シート（下から出る）。ふだんは、しまう。チュートリアルでは、手順を、上の細い帯に出す ---- */
-  #guide { display: none; position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 62dvh; border-radius: 10px 10px 0 0; border-bottom: 0; padding: 0.2rem 1rem calc(1rem + env(safe-area-inset-bottom)); z-index: 22; box-shadow: 0 -0.6rem 2rem rgba(0, 0, 0, 0.5); }
+  #guide { display: none; position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: calc(62dvh - var(--seek-h)); border-radius: 10px 10px 0 0; border-bottom: 0; padding: 0.2rem 1rem calc(1rem + env(safe-area-inset-bottom)); z-index: 22; box-shadow: 0 -0.6rem 2rem rgba(0, 0, 0, 0.5); }
   body.guide-open #guide { display: block; }
   body.guide-open #guide.collapsed #guide-body { display: block; }
   #guide-toggle { width: 2.4rem; height: 2.4rem; }
-  #step-bar { display: none; position: absolute; left: 0.6rem; right: 0.6rem; top: calc(var(--topbar-h, 5.8rem) + 0.3rem); z-index: 2; align-items: center; gap: 0.6rem; background: var(--panel); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 0.4rem 0.7rem; font-size: 0.9rem; font-weight: 800; line-height: 1.35; }
+  #step-bar { display: none; position: absolute; left: 0.6rem; right: 0.6rem; top: calc(var(--topbar-h, 5.8rem) + 0.3rem + var(--seek-h)); z-index: 2; align-items: center; gap: 0.6rem; background: var(--panel); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 0.4rem 0.7rem; font-size: 0.9rem; font-weight: 800; line-height: 1.35; }
   #step-bar.show { display: flex; }
   #step-bar .n { flex: none; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border-radius: 2px; background: var(--text); color: var(--bg); font-family: var(--num); font-size: 0.8rem; }
   #step-bar.done { border-left-color: var(--ok); color: var(--ok); }
   #step-bar.done .n { background: var(--ok); }
 
   /* ---- 得点・技の一覧: 得点は、いつも見える（小さく）。技の一覧・理由・図鑑は「技 ▾」で開く ---- */
-  #side { left: 0.6rem; right: 0.6rem; top: calc(var(--topbar-h, 5.8rem) + 0.3rem); width: auto; max-height: calc(100dvh - var(--topbar-h, 5.8rem) - 15rem); overflow: hidden; pointer-events: none; padding: 0; }
-  body.step-bar-on #side { top: calc(var(--topbar-h, 5.8rem) + 3.1rem); }
+  #side { left: 0.6rem; right: 0.6rem; top: calc(var(--topbar-h, 5.8rem) + 0.3rem + var(--seek-h)); width: auto; max-height: calc(100dvh - var(--topbar-h, 5.8rem) - var(--seek-h) - 15rem); overflow: hidden; pointer-events: none; padding: 0; }
+  body.step-bar-on #side { top: calc(var(--topbar-h, 5.8rem) + 3.1rem + var(--seek-h)); }
   .score-card { pointer-events: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.7rem; width: max-content; max-width: 100%; padding: 0.3rem 0.7rem; background: rgba(28, 26, 23, 0.9); }
   .score-label { display: none; }
   .score-num b { font-size: 2rem; }
@@ -95,7 +96,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #btn-side-toggle { margin-left: auto; }
 
   /* ---- 技のスタンプ・知らせ ---- */
-  #stamp-layer, body.melody-mode #stamp-layer { top: calc(var(--stack-bottom, calc(var(--topbar-h, 5.8rem) + 2.8rem)) + 0.4rem); padding: 0 0.6rem; }       /* body.melody-mode: PC 用の固定の位置（game.css）より強く */
+  #stamp-layer, body.melody-mode #stamp-layer { top: calc(var(--stack-bottom, calc(var(--topbar-h, 5.8rem) + 2.8rem + var(--seek-h))) + 0.4rem); padding: 0 0.6rem; }       /* body.melody-mode: PC 用の固定の位置（game.css）より強く */
   .stamp { padding: 0.25rem 0.8rem 0.3rem; }
   .stamp .name { font-size: 1.5rem; }
   .stamp .name.long { font-size: 1.25rem; }
@@ -149,6 +150,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
    ===================================================================== */
 @media (max-height: 520px) and (max-width: 1000px) {
   html { font-size: 12.5px; }
+  :root { --seek-h: 2.2rem; }                                                           /* シークバー: 上のバーの下。左のガイド・右の得点の列のあいだ（高さ 2rem + すきま 0.2rem）*/
   .phone-only { display: inline-flex; }
   #splash { padding: 8vh 7vw 6vh; gap: 1rem; }
   .logo-main { font-size: 3.6rem; }
@@ -178,7 +180,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
   body.guide-open #guide { display: block; }
   body.guide-open #step-bar { visibility: hidden; }                                                                                               /* ガイドの中に、同じ手順があるので、重なる帯は、見せない */
   body.guide-open #guide.collapsed #guide-body { display: block; }
-  #step-bar { display: none; position: absolute; left: 0.8rem; top: 3.5rem; max-width: 22rem; z-index: 2; align-items: center; gap: 0.5rem; background: var(--panel); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 0.3rem 0.6rem; font-size: 0.82rem; font-weight: 800; line-height: 1.35; }
+  #step-bar { display: none; position: absolute; left: 0.8rem; top: calc(var(--topbar-h, 3.4rem) + 0.1rem + var(--seek-h)); max-width: 22rem; z-index: 2; align-items: center; gap: 0.5rem; background: var(--panel); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 0.3rem 0.6rem; font-size: 0.82rem; font-weight: 800; line-height: 1.35; }
   #step-bar.show { display: flex; }
   #step-bar .n { flex: none; width: 1.4rem; height: 1.4rem; display: grid; place-items: center; border-radius: 2px; background: var(--text); color: var(--bg); font-family: var(--num); font-size: 0.8rem; }
   #step-bar.done { border-left-color: var(--ok); color: var(--ok); }
@@ -202,7 +204,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
   #guide-toggle { width: 2.45rem; height: 2.45rem; }
   #btn-guide-toggle { font-size: 0.78rem; }
 
-  #stamp-layer { top: 3.2rem; }
+  #stamp-layer { top: calc(var(--topbar-h, 3.4rem) + var(--seek-h)); }
   .stamp .name { font-size: 1.5rem; }
   .stamp .name.long { font-size: 1.25rem; }
   .stamp .pts { font-size: 1.1rem; }
@@ -282,7 +284,7 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
 
 /* 横持ち（高さ 520px 以下）: メロディの帯は、左の上に、小さく（右の列の得点・技の一覧をよける）。押すボタンは、28px 以上 */
 @media (max-height: 520px) and (max-width: 1000px) {
-  #melody-roll { left: 0.8rem; right: 15.8rem; top: 3.5rem; transform: none; width: auto; padding: 0.2rem 0.5rem 0.25rem; }
+  #melody-roll { left: 0.8rem; right: 15.8rem; top: calc(var(--topbar-h, 3.4rem) + 0.1rem + var(--seek-h)); transform: none; width: auto; padding: 0.2rem 0.5rem 0.25rem; }
   .mr-head { gap: 0.5rem; margin-bottom: 0.15rem; flex-wrap: nowrap; }
   .mr-label { display: none; }
   .mr-title { font-size: 0.88rem; white-space: nowrap; }
@@ -330,4 +332,29 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
 @media (max-width: 900px) and (min-height: 521px) {
   .modal .cl-card { padding-bottom: 0; }
   .cl-foot { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+}
+
+/* =====================================================================
+   2026-11-25 追加: シークバー（演奏の位置。ドラッグで巻き戻し・早送り）
+   ===================================================================== */
+/* 縦持ち: 上のバーの下の、画面いっぱいの1行。指でつかみやすいよう、押せる高さは 2.6rem（見える帯は 1.9rem）*/
+@media (max-width: 900px) and (min-height: 521px) {
+  #seekbar { left: 0.6rem; right: 0.6rem; transform: none; width: auto; top: calc(var(--topbar-h, 5.8rem) + 0.2rem); height: 2.6rem; }
+  body.melody-mode #seekbar { width: auto; }
+  .sk-track { top: 0.35rem; bottom: 0.35rem; }
+  .sk-seg b { font-size: 0.72rem; left: 0.45rem; }
+  .sk-thumb { width: 3px; margin-left: -1.5px; }
+  .sk-thumb::before { width: 0.8rem; height: 0.45rem; }
+  .sk-dir { font-size: 0.82rem; }
+  #seekbar::before { content: ""; position: absolute; left: 0; right: 0; top: -0.3rem; bottom: -0.3rem; }       /* 指でつかめる範囲を、見える帯より、上下に少し広く */
+}
+/* 横持ち: 上のバーの下。左のガイドの欄・右の得点の列のあいだ（ガイドが開いているときは、その右）*/
+@media (max-height: 520px) and (max-width: 1000px) {
+  #seekbar { left: 0.8rem; right: 15.8rem; transform: none; width: auto; top: calc(var(--topbar-h, 3.4rem) + 0.1rem); height: 2rem; }
+  body.melody-mode #seekbar { width: auto; }
+  body.guide-open #seekbar { left: 23.8rem; }
+  .sk-track { top: 0.1rem; bottom: 0.1rem; }
+  .sk-seg b { font-size: 0.78rem; }
+  .sk-thumb { width: 3px; margin-left: -1.5px; }
+  #seekbar::before { content: ""; position: absolute; left: 0; right: 0; top: -0.35rem; bottom: -0.35rem; }       /* 指でつかめる範囲を、見える帯より、上下に広く（高さ 約 35px）*/
 }

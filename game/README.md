@@ -54,6 +54,7 @@ sh tools/game.sh 8801         # ポートを変える
 | Esc | 選ぶ・ドラッグを取りやめ（何もないときは MENU） |
 | H | ヒント ON/OFF（次に置く候補が、盤の上と駒の置き場に、うっすら出る） |
 | **?**（上のバーの「**？**」・タイトルの「**使い方**」・MENU の「使い方」）| **使い方**（動く図で、操作と機能を説明。10ページ。◀ ▶・矢印キーで進む・Esc で閉じる。2026-11-24 追加） |
+| **上のバーの下の「シークバー」をつかんで動かす**（2026-11-25）| 演奏の位置を動かす（**左 = 巻き戻し・右 = 早送り**）。つかんでいる間は、演奏が止まって、**動かした分だけ、DJ の巻き戻しのような音**が鳴る（止めている間は無音）。はなすと、その位置から続く。帯の途中を押すと、そこへ飛ぶ（短い音）。ステップの頭に 2マス以内なら、頭に吸いつく。演奏を止めている間は使えない。← → Home End（帯にフォーカスがあるとき）。仕様・音の作り・確認ずみ/未確認は `docs/seek_bar.md` |
 | Space | 演奏 ON/OFF |
 | M | ミュート ON/OFF |
 | 上のバーの「音」 | 音量のメニュー（バー3本: **全体・ドラム・バッキング**。どれも 0〜100%。ミュート）。全体は、はじめ 50%（2026-11-24 から。バーの目盛りを2倍の見かたにした。出音は、これまでの 25% と同じ。バーの 100% = これまでの 50%）。**ドラム・バッキングも、はじめ 50% = これまでと同じ大きさ**（100% で 2倍 = +6dB・0% で無音。`engine.js` の `mixGainFor`）。「ドラム・バッキングを標準にもどす」のボタンつき。バーをはなすと、演奏が止まっているときだけ、聴き比べの音が鳴る（ドラム = キック・スネア・ハイハット / バッキング = 和音）。**バッキング = 演奏中の和音の伴奏**（駒を置いたときの試聴・メロディ・技の効果音は、別の通り道なので、このバーでは変わらない）。音量は保存される（「進み具合をリセット」でも残る） |
@@ -135,9 +136,9 @@ game/
     usermelody.js       ユーザーのメロディ（音の追加・動かす・長さ・元に戻す・保存の形。画面に触らない）
     chordstore.js       自作コード・編集したコードの出し入れ（追加・変更・削除・もとにもどす）
     save.js             進み具合の保存（ブラウザの localStorage。クリア・図鑑・ベスト・メロディの記録・プリセット）
-  js/audio/             engine.js ピアノ + ドラム + メロディ（先読みの予約）/ instruments.js ピアノ以外の音色（合成）とメロディの音色（lead）/ sfx.js 効果音（その和音の音から合成）
+  js/audio/             engine.js ピアノ + ドラム + メロディ（先読みの予約。**演奏の位置・シーク**）/ **scrub.js 巻き戻しの音（シークバー）** / instruments.js ピアノ以外の音色（合成）とメロディの音色（lead）/ sfx.js 効果音（その和音の音から合成）
   js/render/            scene.js 3D の盤・駒・囲み・演出 / textures.js 文字や床の絵
-  js/ui/                hud.js 得点・技の一覧・スタンプ・理由・駒のカード / **chordlab.js コードの編集画面（ピアノロール）/ chordmenu.js 右クリック（長押し）のメニュー / trickdetail.js 技の詳細 / **howto.js 使い方（動く図で、操作と機能を説明）** / layout.js スマホの判定** / screens.js / input.js ドラッグ・ダブルクリック・長押し / soundmenu.js 音のメニュー / melodyview.js メロディの帯 / **melodystudio.js メロディの画面（ピアノロール）** / presetmenu.js プリセットの画面 / dom.js
+  js/ui/                hud.js 得点・技の一覧・スタンプ・理由・駒のカード / **chordlab.js コードの編集画面（ピアノロール）/ chordmenu.js 右クリック（長押し）のメニュー / trickdetail.js 技の詳細 / **howto.js 使い方（動く図で、操作と機能を説明）** / **seekbar.js シークバー（演奏の位置・巻き戻し）** / layout.js スマホの判定** / screens.js / input.js ドラッグ・ダブルクリック・長押し / soundmenu.js 音のメニュー / melodyview.js メロディの帯 / **melodystudio.js メロディの画面（ピアノロール）** / presetmenu.js プリセットの画面 / dom.js
   js/net/device.js      実機の盤（ブリッジの /api/events）につなぐ / library.js リズム・コード編集の画面から届く、名前つきの内容
   audio/                ピアノ（21個）・ドラム（8個）の音。出どころは audio/CREDITS.md
   vendor/three/         three.js r168（MIT）を、そのまま置いてある（オフラインで動くように）
@@ -168,6 +169,9 @@ python3 tools/host_tests/test_melody_studio_ui.py   # メロディの画面（�
 python3 tools/host_tests/test_chordbook_ui.py       # 自作コード・コードの編集・ダブルクリックで置く・技の詳細（曲の例）を、マウス・キーボードの操作どおりに
 python3 tools/host_tests/test_mobile_ui.py          # スマホの大きさ・タッチ（縦持ち・横持ち）で、動くか（Chrome のスマホ表示）
 python3 tools/host_tests/test_round8_ui.py          # 第8弾: スタンプ・画面の記録・分割の駒・ガイドと盤の位置・指の範囲選択（スマホの縦・横）
+python3 tools/host_tests/test_round10_ui.py         # 第10弾: 使い方の画面（動く図）
+python3 tools/host_tests/test_round11_ui.py         # 第11弾: 音量のメニュー（ドラム・バッキングを別々に）・もとの駒をもとにしたコードは「自作」の段
+python3 tools/host_tests/test_round12_ui.py         # 第12弾: シークバー（演奏の位置・巻き戻し）。本物のマウス・指。PC・スマホ縦・横
 python3 tools/host_tests/test_cloud_sync.py         # 全端末への共有: ブリッジが書く側（にせの Firebase）
 python3 tools/host_tests/test_cloud_game.py         # 全端末への共有: ゲームが読む側（にせの Firebase。本物の Chrome）
 python3 tools/host_tests/test_game_server.py        # サーバーと、ブリッジへの中継

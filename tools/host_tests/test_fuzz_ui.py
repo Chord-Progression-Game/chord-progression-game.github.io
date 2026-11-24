@@ -14,6 +14,7 @@
     ・自作コードを足す・変える・消す・置く操作（駒の描き直し）をまぜる（以前は、分割したマスの前半が、正方形にもどった）
     ・クリアの結果が出るはずの時刻をすぎても、出ていない（別の画面を開いていないのに）ことがない
     ・知らせ（トースト）が、積み上がりすぎない
+    ・シークバー（2026-11-25）: バーの「つかんでいる」と、エンジンの「つかんでいる」が、一致する（つかんだまま、演奏が止まりっぱなしにならない）/ 位置が、範囲の中
 実行:  python3 tools/host_tests/test_fuzz_ui.py [操作の回数（既定 260）] [seed]
 Chrome がなければ、省略する（終了コード 0）。
 """
@@ -87,6 +88,17 @@ INVARIANTS = r"""
   { const txt = (document.querySelector('#ui') || document.body).innerText || ''; const m = /(^|[^A-Za-z0-9_])(null|undefined|NaN)([^A-Za-z0-9_]|$)|\[object /.exec(txt); if (m) bad.push('画面の文字に「' + m[0].trim() + '」が出ている'); }
   // クリアの結果が出るはずなのに出ていない
   if (A.clearPending && A.clearPending === g.stage && g.cleared && A.state === 'play' && performance.now() > (A.clearDueAt || 0) + 2500 && !vis('result') && document.querySelector('#clear-bar').classList.contains('hidden')) bad.push('クリアの結果が、出るはずの時刻をすぎても、出ていない');
+  // シークバー（2026-11-25）: つかんでいる状態が、バーとエンジンで一致する（片方だけ残ると、演奏が止まりっぱなし・巻き戻しの音が鳴りっぱなしになる）・位置が範囲の中
+  { const sb = A.seekbar, en = A.engine;
+    if (!sb) bad.push('シークバーがない');
+    else {
+      if (en && en.scrub && !sb.dragging) bad.push('シークバー: エンジンはつかんでいるのに、バーは、つかんでいない（演奏が止まったまま）');
+      if (en && sb.dragging && !en.scrub && en.playing) bad.push('シークバー: バーはつかんでいるのに、エンジンは、つかんでいない');
+      if (!(sb.pos >= 0 && sb.pos <= sb.len)) bad.push('シークバー: 位置が範囲の外: ' + sb.pos + ' / ' + sb.len);
+      if (en && en.playing && en.ctx.state === 'running') { const p = en.loopPosAt(); if (!(p.pos >= 0 && p.pos < p.len)) bad.push('エンジンの演奏の位置が、範囲の外: ' + p.pos + ' / ' + p.len); }
+      if (en && en.scrubSound && !en.scrub && en.scrubSound.active) bad.push('巻き戻しの音が、鳴りっぱなし（つかんでいないのに）');
+    }
+  }
   if (document.querySelectorAll('#toasts .toast').length > 4) bad.push('知らせが積み上がっている: ' + document.querySelectorAll('#toasts .toast').length);
   return JSON.stringify(bad);
 })()
@@ -151,7 +163,19 @@ def actions(rng, phone):
     def js_lab_save():
         return "(() => { if (__app.chordLab.isOpen) { const l = __app.chordLab; if (l.s.mode === 'new' && l.s.notes.length >= 2) { l.s.notes = l.s.notes.concat([%d]).filter((x, i, a) => a.indexOf(x) === i).slice(0, 8); l.recompute(); } document.querySelector('#cl-save').click(); } return 1; })()" % rng.choice([61, 66, 70, 74])
 
+    def seek_js(kind, a=0.0, b=0.0):
+        pre = "const el = document.querySelector('#seekbar'), r = document.querySelector('#seekbar .sk-track').getBoundingClientRect(); const ev = (t, f) => el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, clientX: r.left + r.width * f, clientY: r.top + r.height / 2, pointerId: 41, pointerType: 'mouse', button: 0, buttons: 1 }));"
+        if kind == "drag":
+            return "(() => { %s ev('pointerdown', %f); for (let i = 1; i <= 5; i++) ev('pointermove', %f + (%f - %f) * i / 5); ev('pointerup', %f); return 1; })()" % (pre, a, a, b, a, b)
+        if kind == "down":
+            return "(() => { %s ev('pointerdown', %f); ev('pointermove', %f); return 1; })()" % (pre, a, b)
+        if kind == "up":
+            return "(() => { %s ev('pointerup', %f); return 1; })()" % (pre, a)
+        return "(() => { const sb = __app.seekbar; if (sb.enabled) sb.onKey(%s); return 1; })()" % rng.choice(["{ delta: 8 }", "{ delta: -8 }", "{ to: 0 }", "{ to: 56 }"])
+
     base = [
+        (8, "シークバー: ドラッグ", lambda: seek_js("drag", rng.random(), rng.random())), (2, "シークバー: つかむだけ", lambda: seek_js("down", rng.random(), rng.random())),
+        (2, "シークバー: はなす", lambda: seek_js("up", rng.random())), (2, "シークバー: キー", lambda: seek_js("key")),
         (6, "自作コードを足す", js_custom_add), (3, "自作コードを変える", js_custom_update), (2, "自作コードを消す", js_custom_remove), (4, "自作コードを置く", js_custom_place),
         (2, "もとの駒を編集（画面）", js_open_edit), (2, "コードの編集: 保存", js_lab_save),
         (14, "駒を置く", js_place), (8, "左右に置く", js_place_at), (5, "はずす", js_remove), (4, "動かす", js_move),
@@ -252,8 +276,10 @@ def main():
     srv, port = serve()
     total_fail = 0
     try:
-        for label, w, h, mobile, seed, audio in [("PC", 1280, 720, False, seed0, False), ("スマホ縦", 390, 844, True, seed0 + 1, False), ("スマホ横", 844, 390, True, seed0 + 2, False), ("タブレット縦", 768, 1024, True, seed0 + 3, False),
-                                                  ("スマホ縦（音あり・デモが動く）", 390, 844, True, seed0 + 4, True), ("小さいスマホ縦（SE）", 375, 667, True, seed0 + 5, True), ("大きいスマホ縦", 430, 932, True, seed0 + 6, False), ("スマホ横（小）", 667, 375, True, seed0 + 7, True)]:
+        configs = [("PC", 1280, 720, False, seed0, False), ("スマホ縦", 390, 844, True, seed0 + 1, False), ("スマホ横", 844, 390, True, seed0 + 2, False), ("タブレット縦", 768, 1024, True, seed0 + 3, False),
+                   ("スマホ縦（音あり・デモが動く）", 390, 844, True, seed0 + 4, True), ("小さいスマホ縦（SE）", 375, 667, True, seed0 + 5, True), ("大きいスマホ縦", 430, 932, True, seed0 + 6, False), ("スマホ横（小）", 667, 375, True, seed0 + 7, True),
+                   ("PC（音あり。シークバーを、つかんで動かす）", 1280, 720, False, seed0 + 8, True)]
+        for label, w, h, mobile, seed, audio in configs:
             fails, log = run_one(label, w, h, mobile, n, seed, port, audio)
             if fails:
                 total_fail += 1
@@ -264,7 +290,7 @@ def main():
                 print("ok   [%s seed=%d] %d 回の操作で、決まりは、こわれなかった" % (label, seed, n))
     finally:
         srv.shutdown()
-    print("でたらめ操作: %d 通り中 %d 通り 失敗" % (8, total_fail))
+    print("でたらめ操作: %d 通り中 %d 通り 失敗" % (len(configs), total_fail))
     return 1 if total_fail else 0
 
 

@@ -38,7 +38,7 @@ export function boardRegion(portrait = true) {
   const tb = visibleRect($('#topbar')), tw = visibleRect($('#tray-wrap'));
   if (!tb || !tw) return null;
   let top = tb.bottom;
-  for (const sel of portrait ? ['#side .score-card', '#melody-roll', '#step-bar.show'] : ['#melody-roll', '#step-bar.show']) {      // 横持ちは、得点が、右の列にあるので、盤の上には、かぶらない
+  for (const sel of portrait ? ['#seekbar', '#side .score-card', '#melody-roll', '#step-bar.show'] : ['#seekbar', '#melody-roll', '#step-bar.show']) {      // 横持ちは、得点が、右の列にあるので、盤の上には、かぶらない。シークバーは、どちらでも、盤の上
     const r = visibleRect($(sel));
     if (r) top = Math.max(top, r.bottom + 4);
   }
@@ -70,10 +70,13 @@ export function watchLayout(onChange = () => {}) {
     if (tw && tw.offsetHeight) root.style.setProperty('--tray-h', `${tw.offsetHeight}px`);
     const sc = visibleRect($('#side .score-card'));
     if (sc) root.style.setProperty('--score-bottom', `${Math.round(sc.bottom)}px`); else root.style.removeProperty('--score-bottom');
-    let stack = sc ? sc.bottom : 0;                                        // 得点・メロディの帯・手順の帯のうち、いちばん下（技のスタンプは、この下に出す）
-    for (const sel of ['#melody-roll', '#step-bar.show']) { const r = visibleRect($(sel)); if (r) stack = Math.max(stack, r.bottom); }
+    let stack = sc ? sc.bottom : 0;                                        // 得点・シークバー・メロディの帯・手順の帯のうち、いちばん下（技のスタンプは、この下に出す）
+    for (const sel of ['#seekbar', '#melody-roll', '#step-bar.show']) { const r = visibleRect($(sel)); if (r) stack = Math.max(stack, r.bottom); }
     if (stack) root.style.setProperty('--stack-bottom', `${Math.round(stack)}px`); else root.style.removeProperty('--stack-bottom');
-    onChange({ phone, portrait, region: phone ? boardRegion(portrait) : boardRegionX() });
+    const sk = visibleRect($('#seekbar')), tbr = visibleRect($('#topbar'));
+    const rem = parseFloat(getComputedStyle(root).fontSize) || 14;
+    const inset = !phone && sk && tbr ? Math.max(0, Math.round(sk.bottom + 0.3 * rem - tbr.bottom - 1.1 * rem)) : 0;       // PC: 3D の盤を、シークバーにかからないぶん（上のバーの下 1.1rem は、もともと、技のラベルの上があく。バーの下 0.3rem + その空きをのぞいた量）下げる
+    onChange({ phone, portrait, region: phone ? boardRegion(portrait) : boardRegionX(), inset });
   };
   const mq = window.matchMedia(PHONE_QUERY);
   if (mq.addEventListener) mq.addEventListener('change', update); else if (mq.addListener) mq.addListener(update);
@@ -85,7 +88,7 @@ export function watchLayout(onChange = () => {}) {
     let pending = 0;
     const later = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; update(); }); };
     const ro = new ResizeObserver(later);
-    for (const sel of ['#topbar', '#tray-wrap', '#side', '#side .score-card', '#melody-roll', '#step-bar', '#guide']) { const el = $(sel); if (el) ro.observe(el); }
+    for (const sel of ['#topbar', '#tray-wrap', '#side', '#side .score-card', '#melody-roll', '#step-bar', '#guide', '#seekbar']) { const el = $(sel); if (el) ro.observe(el); }
   }
   update();
   return update;

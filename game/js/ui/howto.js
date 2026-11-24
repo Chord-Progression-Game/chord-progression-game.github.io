@@ -19,6 +19,10 @@ const tray = (names) => h('div', { class: 'ht-tray' }, ...names.map(([n, fn]) =>
 const tag = (text, cls = '') => h('span', { class: `ht-tag ${cls}` }, text);
 const row = (...kids) => h('div', { class: 'ht-row' }, ...kids);
 const art = (...kids) => h('div', { class: 'ht-art' }, ...kids);
+// シークバーの図（演奏の位置。8つの区切り + 動く線 + 巻き戻しのしるし）
+const seekArt = () => h('div', { class: 'ht-seek' },
+  h('div', { class: 'ht-seek-track' }, ...Array.from({ length: 8 }, (_, i) => h('i', {}, String(i + 1))), h('span', { class: 'ht-seek-fill' }), h('span', { class: 'ht-seek-thumb' }, h('em', {}, '◀◀'))),
+  h('div', { class: 'ht-seek-cap' }, 'つかんで動かす = 巻き戻し・早送り'));
 
 // ---- ページ ----
 //   title: 見出し / lead: 1行の説明 / art: 図を作る関数 / notes: 短い説明（3つまで）
@@ -58,8 +62,9 @@ export const HOWTO_PAGES = [
     art: () => art(
       board({ 1: ['Ⅰ', 'T'], 2: ['Ⅵm', 'T'], 3: ['Ⅳ', 'SD'], 4: ['Ⅴ7', 'D'], 5: ['Ⅰ', 'T'], 6: ['Ⅵm', 'T'], 7: ['Ⅳ', 'SD'], 8: ['Ⅴ7', 'D'] }, { run: true }),
       h('div', { class: 'ht-loop' }, h('span', {}, '8番のあとは、1番へ（ループ）')),
-      row(tag('スペース = 演奏', 'num'), tag('BPM 120', 'num'), tag('1マス = 2拍', 'num'))),
-    notes: ['上の「− ＋」で、速さ（BPM）を変えられます。', '8番から1番へのつながり（ループのつなぎ目）も、技になります。', 'チュートリアルは、駒が4つ以内なら、4マスでループします。'],
+      row(tag('スペース = 演奏', 'num'), tag('BPM 120', 'num'), tag('1マス = 2拍', 'num')),
+      seekArt()),
+    notes: ['上のバーの下の「シークバー」は、演奏といっしょに動きます。つかんで左へ動かすと巻き戻し・右へ動かすと早送りです。動かしているあいだは、巻き戻しの音が鳴ります。はなすと、そこから続きます。', '上の「− ＋」で、速さ（BPM）を変えられます。8番から1番へのつながり（ループのつなぎ目）も、技になります。', 'チュートリアルは、駒が4つ以内なら、4マスでループします。'],
   },
   {
     id: 'trick', title: '技と、得点',

@@ -125,9 +125,23 @@
 .ht-modes .m span { font-size: 0.82rem; font-weight: 700; line-height: 1.35; }
 .ht-modes .m em { display: block; font-style: normal; color: var(--dim); font-size: 0.74rem; font-weight: 500; }
 
+/* 演奏と、ループ: シークバー。演奏の位置の線が、つかんで左へ動かされる（巻き戻し ◀◀）→ そこから続く */
+.ht-seek { display: flex; flex-direction: column; gap: 0.45rem; align-items: center; padding-top: 0.7rem; border-top: 1px solid var(--line); }
+.ht-seek-track { position: relative; width: 82%; height: 1.7rem; display: grid; grid-template-columns: repeat(8, 1fr); border: 1px solid var(--line); background: var(--panel); border-radius: 3px; overflow: hidden; }
+.ht-seek-track > i { font: 700 0.62rem var(--num); font-style: normal; color: var(--faint); padding: 0.55rem 0 0 0.35rem; border-left: 1px solid var(--line); }
+.ht-seek-track > i:first-child { border-left: 0; }
+.ht-seek-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 26%; background: rgba(242, 193, 78, 0.13); animation: ht-seekfill 5.6s infinite; }
+.ht-seek-thumb { position: absolute; top: 0; bottom: 0; left: 26%; width: 2px; margin-left: -1px; background: var(--accent); animation: ht-seekthumb 5.6s infinite; }
+.ht-seek-thumb em { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 0.74rem; font-weight: 800; letter-spacing: -0.12em; color: var(--accent); white-space: nowrap; opacity: 0; animation: ht-seekdir 5.6s infinite; }
+.ht-seek-cap { color: var(--accent); font-size: 0.85rem; font-weight: 700; }
+@keyframes ht-seekthumb { 0%, 12% { left: 74%; } 48%, 62% { left: 12%; } 100% { left: 26%; } }
+@keyframes ht-seekfill { 0%, 12% { width: 74%; } 48%, 62% { width: 12%; } 100% { width: 26%; } }
+@keyframes ht-seekdir { 0%, 12% { opacity: 0; } 16%, 46% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .ht-board.run .ht-cell, .ht-fly, .ht-ghost.on, .ht-zones .z { animation: none; }
+  .ht-board.run .ht-cell, .ht-fly, .ht-ghost.on, .ht-zones .z, .ht-seek-fill, .ht-seek-thumb, .ht-seek-thumb em { animation: none; }
   .ht-fly { left: 13.2%; top: 11%; }
+  .ht-seek-thumb em { opacity: 1; }
 }
 
 /* はじめてのとき: タイトルの「使い方」に、差し色の印 */
@@ -151,6 +165,7 @@
   .ht-split { grid-template-columns: 1fr; }
   .ht-lv { grid-template-columns: repeat(3, 1fr); }
   .ht-modes { grid-template-columns: 1fr; }
+  .ht-seek-track { width: 100%; }
   .ht-tag { font-size: 0.74rem; padding: 0.2rem 0.45rem; white-space: normal; }
   .ht-notes li { font-size: 0.88rem; }
 }

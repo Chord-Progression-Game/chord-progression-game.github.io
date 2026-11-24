@@ -3,6 +3,7 @@ import { ChordTable } from '../js/core/chords.js';
 import { AudioEngine, parseCell, holdSlots, SLOTS_PER_STEP, masterGainFor, MASTER_GAIN, VOLUME_TOP, DRUM_BUS_GAIN, PIANO_BUS_GAIN, MIX_DEFAULT, mixGainFor } from '../js/audio/engine.js';
 import { DEFAULT_VOLUME, DEFAULT_MIX } from '../js/game/save.js';
 import { Sfx } from '../js/audio/sfx.js';
+import { ScrubSound, scrubParams, snapSlot, SCRUB_MAX_SPEED, SCRUB_SILENT_BELOW } from '../js/audio/scrub.js';
 import { INSTRUMENTS, INSTRUMENT_IDS, driveCurve } from '../js/audio/instruments.js';
 import { BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../js/core/voicing.js';
 import { MELODY_STAGES } from '../js/game/melodies.js';
@@ -53,22 +54,25 @@ export async function run(t) {
     while (out.length < 8) out.push(null);
     return out;
   };
-  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120, voicing = 'off', octave = null, mix = null, master = null } = {}) => {
+  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120, voicing = 'off', octave = null, mix = null, master = null, seeks = [], split = null, melody = null } = {}) => {
     const ctx = new OfflineAudioContext(2, SR * seconds, SR);
     const e = new AudioEngine(ctx, table, presets);
     await e.load('../audio/');
     e.getBoard = () => board(spec);
+    if (split) e.getSplit = () => board(split);
+    if (melody) e.setMelody(melody);
     e.setPatterns({ drumId, backingId }); e.setBpm(bpm);
     e.setVoicing(voicing);                                                    // 和音のつなぎ方（'off' / 'mid' / 'high'）
     if (octave !== null) e.octave = octave;
     if (mix) e.setMix(mix);                                                   // ドラム・バッキングの音量（0〜100%）
     if (master !== null) e.master.gain.value = master;                        // 全体の音量（アプリのはじめの値。最後の圧縮が、ほとんど働かない大きさ）
     // 鳴らす指示を記録する（音は、そのまま鳴らす）
-    e.rec = { piano: [], drum: [] };
-    const pp = e.playPianoNote.bind(e), pd = e.playDrum.bind(e);
+    e.rec = { piano: [], drum: [], lead: [] };
+    const pp = e.playPianoNote.bind(e), pd = e.playDrum.bind(e), pl = e.playLead.bind(e);
     e.playPianoNote = (n, w, d, v, dest) => { e.rec.piano.push({ note: n, when: w, dur: d, vel: v }); return pp(n, w, d, v, dest); };
     e.playDrum = (l, w, lv, dest) => { e.rec.drum.push({ lane: l, when: w, level: lv }); return pd(l, w, lv, dest); };
-    const buf = await e.renderOffline(seconds);
+    e.playLead = (n, w, d, v) => { e.rec.lead.push({ note: n, when: w, dur: d }); return pl(n, w, d, v); };
+    const buf = await e.renderOffline(seconds, { seeks });
     return { e, buf };
   };
 
@@ -545,5 +549,197 @@ export async function run(t) {
     const pd = await preview('drums'), pb = await preview('backing'), pp = await preview('backing', true), pn = await preview('???');
     t.ok(`ミックス: ドラムのバーをはなすと、ドラムが鳴る（${pd.level.toFixed(4)}）・バッキングのバーをはなすと、和音が鳴る（${pb.level.toFixed(4)}）`, pd.r === true && pd.level > 0.003 && pb.r === true && pb.level > 0.01);
     t.ok('ミックス: 演奏中は、聴き比べの音を、鳴らさない（ほんとうの演奏で聴ける）・知らない種類も鳴らさない', pp.r === false && pp.level < 1e-6 && pn.r === false && pn.level < 1e-6);
+  }
+
+  // ============ シークバー（巻き戻し・早送り。2026-11-25）============
+  {
+    // ---- 巻き戻しの音の性質（純粋な計算）----
+    t.eq('巻き戻しの音: ほとんど動かさなければ無音（しきい値より遅い・0・NaN）', [scrubParams(0).amp, scrubParams(SCRUB_SILENT_BELOW * 0.5).amp, scrubParams(NaN).amp], [0, 0, 0]);
+    const speeds = [0.1, 0.5, 1, 2, 5, 10, 30];
+    const ps = speeds.map((v) => scrubParams(v, -1));
+    t.ok('巻き戻しの音: 速く動かすほど、大きく・高く（風切り音の帯域も、のこぎり波も）なる（単調）', ps.every((p, i) => i === 0 || (p.amp > ps[i - 1].amp && p.noiseHz > ps[i - 1].noiseHz && p.whineHz > ps[i - 1].whineHz)));
+    t.ok('巻き戻しの音: ゆっくり動かしても聞こえる（0.5倍速で、最大の 25% 以上）・上限をこえない', scrubParams(0.5).amp > 0.25 * scrubParams(SCRUB_MAX_SPEED).amp && scrubParams(1e6).amp === scrubParams(SCRUB_MAX_SPEED).amp);
+    t.ok('巻き戻しの音: 向きで、のこぎり波の高さが変わる（早送りは、巻き戻しより高い）。大きさは同じ', scrubParams(4, 1).whineHz > scrubParams(4, -1).whineHz && scrubParams(4, 1).amp === scrubParams(4, -1).amp);
+    // ---- つかんだ位置の、まるめ方（はなしたとき）----
+    t.eq('はなした位置: ステップの頭に 2マス以内なら、頭に吸いつく（0.9 → 0・7 → 8・17 → 16・18 → 16・19 → 19（3マス離れている））', [snapSlot(0.9, 64), snapSlot(7, 64), snapSlot(17, 64), snapSlot(18, 64), snapSlot(19, 64)], [0, 8, 16, 16, 19]);
+    t.eq('はなした位置: 頭から遠ければ、いちばん近いマス（5 → 5・12.4 → 12・13.6 → 14）', [snapSlot(5, 64), snapSlot(12.4, 64), snapSlot(13.6, 64)], [5, 12, 14]);
+    t.eq('はなした位置: 周回の終わりをこえたら、頭（0）へ（62.5 → 0・63.9 → 0・4ステップ（32マス）で 31 → 0）', [snapSlot(62.5, 64), snapSlot(63.9, 64), snapSlot(31, 32)], [0, 0, 0]);
+    t.eq('はなした位置: 変な値は 0（NaN・マイナス）', [snapSlot(NaN, 64), snapSlot(-5, 64)], [0, 0]);
+
+    // ---- 演奏の位置（周回の何マス目か）----
+    {
+      const { e } = await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 3, drumId: 0 });
+      t.eq('演奏の位置: 0.02秒 = 0マス・1.02秒 = 8マス（1ステップ = 1秒）・8.02秒で、頭にもどる（8ステップ = 64マス）', [e.loopPosAt(0.02).pos, e.loopPosAt(1.02).pos, e.loopPosAt(8.02).pos, e.loopPosAt(1.02).len], [0, 8, 0, 64]);
+      t.ok('演奏の位置: 途中は小数（0.52秒 = 4マス・0.645秒 = 5マス）', Math.abs(e.loopPosAt(0.52).pos - 4) < 1e-9 && Math.abs(e.loopPosAt(0.645).pos - 5) < 1e-9);
+      t.eq('演奏の位置: 始まる前（時刻が基準より前）は 0（最後にまわりこまない）', e.loopPosAt(-1).pos, 0);
+      t.eq('loopSlotAt は、同じ値（メロディの帯・シークバーの、表示用）', [e.loopSlotAt(1.02), e.loopSlotAt(8.52)], [8, 4]);
+    }
+    {
+      const ctx = new OfflineAudioContext(2, SR * 6, SR);
+      const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+      e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 1 }); e.wantLoopSteps = () => 4;
+      await e.renderOffline(5);
+      t.eq('演奏の位置: 4ステップでループするとき、周回は 32マス（4秒）。4.02秒で頭にもどる・5.02秒 = 8マス', [e.loopPosAt(1.02).len, e.loopPosAt(3.52).pos, e.loopPosAt(4.02).pos, e.loopPosAt(5.02).pos], [32, 28, 0, 8]);
+    }
+
+    // ---- ステップの途中から続きを演奏する（シーク）----
+    const hitsAt = (rec, when) => rec.filter((x) => Math.abs(x.when - when) < 1e-6);
+    const CHORD_I = [48, 52, 55, 60], CHORD_V = [55, 59, 62, 67];
+    {
+      // Ⅰ Ⅴ ⅣM7 Ⅰ。2.02秒（= 3ステップ目の頭）に、2ステップ目の 3マス目（slot 11）へ動かす。バッキング「ロング」（ステップの頭に和音を1回。8マスのばす）・ドラムなし
+      const { e } = await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 4, drumId: 0, seeks: [{ at: 2.02, slot: 11 }] });
+      const atSeek = hitsAt(e.rec.piano, 2.02).map((x) => x.note).sort((a, b) => a - b);
+      t.eq('シーク（ステップの途中へ）: 動かした時刻から、そのステップのコード（Ⅴ）が、つづきから鳴る', atSeek, [...CHORD_V].sort((a, b) => a - b));
+      const carried = hitsAt(e.rec.piano, 2.02)[0];
+      t.ok(`シーク: つづきの音の長さは、ステップの終わりまで（残り 5マス = ${(5 * 0.125 * 0.95).toFixed(3)}秒）`, Math.abs(carried.dur - 5 * 0.125 * 0.95) < 1e-6);
+      const nextStep = e.rec.piano.filter((x) => x.when > 2.02 + 1e-6).map((x) => x.when);
+      t.ok('シーク: 次のステップは、残り 5マスぶん（0.625秒）あとに始まる', nextStep.length > 0 && Math.abs(Math.min(...nextStep) - (2.02 + 5 * 0.125)) < 1e-6);
+      const stepEv = e.events.filter((x) => x.type === 'step');
+      t.eq('シーク: 画面への知らせ。動かした時刻に、2ステップ目（step 1）が、シークとして届く（技の「きらっ」は鳴らさない）。そのあとは、ふつうの知らせ', [stepEv.map((x) => x.step).slice(0, 4), stepEv.map((x) => !!x.seek).slice(0, 4)], [[0, 1, 1, 2], [false, false, true, false]]);
+      t.eq('シーク: 動かしたあとの位置は、基準が取りなおされる（動かした時刻 = 11マス目）', [e.loopPosAt(2.02).pos, Math.abs(e.loopPosAt(2.02 + 0.625).pos - 16) < 1e-9], [11, true]);
+    }
+    {
+      // ステップの頭（slot 0 と 16）へ: ふつうに、そのステップが始まる（和音が、頭から鳴る）
+      const { e } = await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 4, drumId: 0, seeks: [{ at: 2.02, slot: 0 }, { at: 3.02, slot: 16 }] });
+      t.eq('シーク（頭へ）: 1番へ巻きもどすと、Ⅰ が頭から鳴る', hitsAt(e.rec.piano, 2.02).map((x) => x.note).sort((a, b) => a - b), CHORD_I);
+      const c3 = hitsAt(e.rec.piano, 3.02);
+      t.ok('シーク（頭へ）: 3番（slot 16）へ進めると、ⅣM7 の頭から。長さは、まる 1ステップぶん', c3.length >= 4 && Math.abs(c3[0].dur - 8 * 0.125 * 0.95) < 1e-6);
+      t.eq('シーク（頭へ）: 画面への知らせは、「シーク」ではなく、ふつうのステップ', e.events.filter((x) => x.type === 'step' && x.time >= 2.02 - 1e-6).map((x) => !!x.seek).slice(0, 2), [false, false]);
+    }
+    {
+      // ドラムは、動かした位置の続きから（パターンの位置が、ずれない）。8ビート: K = 'x.......x.x.....' S = '....x.......x...'（16マス）
+      const { e } = await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 4, drumId: 2, backingId: 0, seeks: [{ at: 2.02, slot: 12 }] });
+      const kit = presets.drums.find((d) => d.id === 2);
+      const want = Object.entries(kit.lanes).filter(([, tx]) => tx[12 % kit.length] !== '.').map(([lane]) => lane).sort();
+      t.eq(`シーク: ドラムは、動かした位置（slot 12）のパターンから始まる（${want.join('・')}）`, e.rec.drum.filter((x) => Math.abs(x.when - 2.02) < 1e-6).map((x) => x.lane).sort(), want);
+    }
+    {
+      // 4分チョップ（C...C...C...C... = 短い和音）: 和音が終わっている位置（slot 3）へ動かすと、ふつうの演奏と同じで、次の和音（slot 4）まで無音。その和音は、ちょうど 1マス後
+      const { e } = await make('Ⅰ Ⅴ', { seconds: 3, drumId: 0, backingId: 2, seeks: [{ at: 1.02, slot: 3 }] });
+      t.eq('シーク（短い和音のパターン）: 和音が終わっている位置では、鳴らさない（ふつうの演奏と同じ）', hitsAt(e.rec.piano, 1.02).length, 0);
+      t.eq('シーク（短い和音のパターン）: 次の和音は、1マスあと（slot 4）に、ステップのコード（Ⅰ）で鳴る', hitsAt(e.rec.piano, 1.02 + 0.125).map((x) => x.note).sort((a, b) => a - b), CHORD_I);
+    }
+    {
+      // 4分チョップ（C...C...C...C...）の、ちょうど和音の位置（slot 12 = 2ステップ目の 5マス目）へ動かす: その和音が、すぐ鳴る
+      const { e } = await make('Ⅰ Ⅴ', { seconds: 3, drumId: 0, backingId: 2, seeks: [{ at: 1.02, slot: 12 }] });
+      t.eq('シーク（和音の位置へ）: その位置の和音が、すぐ鳴る（Ⅴ。slot 12 = 2ステップ目の 5マス目）', hitsAt(e.rec.piano, 1.02).map((x) => x.note).sort((a, b) => a - b), [...CHORD_V].sort((a, b) => a - b));
+    }
+    {
+      // 分割したマス: 2ステップ目の後半（slot 14）へ動かすと、後半のコード（ⅣM7）が、つづきから鳴る
+      const { e } = await make('Ⅰ Ⅴ', { seconds: 3, drumId: 0, split: '- ⅣM7', seeks: [{ at: 1.02, slot: 14 }] });
+      const hit = hitsAt(e.rec.piano, 1.02), c = hit.map((x) => x.note).sort((a, b) => a - b);
+      const fm7 = table.byName('ⅣM7');
+      t.ok(`シーク（分割したマスの後半へ）: 後半のコード（ⅣM7 = ${c.join(' ')}）が、つづきから鳴る（前半の Ⅴ ではない）。残り 2マス`, c.length >= 4 && !CHORD_V.every((n) => c.includes(n)) && c.some((n) => n % 12 === fm7.rootPc) && Math.abs(hit[0].dur - 2 * 0.125 * 0.95) < 1e-6);
+    }
+    {
+      // メロディ: のびている音（slot 0 から 32 マス）の途中へ動かすと、その音を、つづきから（残りの長さで）鳴らす
+      const { e } = await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 4, drumId: 0, backingId: 0, melody: { notes: [[0, 32, 72], [40, 8, 76]] }, seeks: [{ at: 2.02, slot: 10 }] });
+      const l = hitsAt(e.rec.lead, 2.02);
+      t.ok(`シーク（メロディ）: のびている音（C5）を、残りの 22マスぶんで、つづきから鳴らす`, l.length === 1 && l[0].note === 72 && Math.abs(l[0].dur - 22 * 0.125 * 0.97) < 1e-6);
+    }
+
+    // ---- つかんで動かす（scrubBegin / scrubTo / scrubEnd）の、状態の動き ----
+    {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+      e.getBoard = () => board('Ⅰ Ⅴ ⅣM7 Ⅰ'); e.setPatterns({ drumId: 2, backingId: 1 });
+      t.eq('つかむ: 演奏していないときは、つかめない（シークバーは、使えない）', [e.scrubBegin(), e.scrub], [false, null]);
+      e.start();
+      const idx0 = e.slotIndex;
+      t.ok('つかむ: 演奏中なら、つかめる。つかんだ位置は、いまの演奏の位置', e.scrubBegin() === true && e.scrub !== null && e.scrub.len === 64 && e.scrub.pos >= 0);
+      e._tick(); e._tick();
+      t.eq('つかんでいる間: 演奏は進まない（予約するマスが、増えない）・もう一度つかめない', [e.slotIndex, e.scrubBegin()], [idx0, false]);
+      e.scrubTo(40.4, 1000); e.scrubTo(44.9, 1016);
+      t.ok('動かす: つかんでいる位置が動く（44.9）・向きは右（早送り）・速さがつく', Math.abs(e.scrub.pos - 44.9) < 1e-9 && e.scrub.v > 0);
+      e.scrubTo(60, 1032); e.scrubTo(-5, 1048);
+      t.ok('動かす: 範囲の外は、はしにおさまる（0 〜 64 の手前）', e.scrub.pos === 0 && e.scrub.v < 0);
+      e.scrubTo(100, 1064);
+      t.ok('動かす: 右はしをこえても、周回の中（64 未満）', e.scrub.pos < 64 && e.scrub.pos > 63.9);
+      e.scrubTo(36.3, 1080);
+      const slot = e.scrubEnd(36.3, { nowMs: 5000 });
+      t.eq('はなす: ステップの頭（32）に 2マス以内ではないので、いちばん近いマス（36）から続ける。つかみが外れる', [slot, e.scrub], [36, null]);
+      t.ok('はなす: 続きの位置が、36マス目になる（基準・予約の位置・周回の記録）', e.refSlot === 36 && e.slotIndex >= 36 && e.loopStart === 0 && Math.abs(e.loopPosAt(e.refTime).pos - 36) < 1e-9);
+      t.ok('はなす: 続きが、すぐ予約される（0.05秒あとの 36マス目から）', e.slotIndex >= 37);
+      t.eq('はなした直後（続きの演奏が始まる前）: 位置は、はなした位置（36）のまま。後ろにもどらない（0.01秒・0.049秒）。始まる時刻（0.05秒）からは、36 から進む', [e.loopPosAt(0.01).pos, e.loopPosAt(0.049).pos, e.loopPosAt(0.05).pos, Math.abs(e.loopPosAt(0.175).pos - 37) < 1e-9], [36, 36, 36, true]);
+      e.scrubBegin(); e.scrubTo(31, 10);
+      t.eq('はなす（頭に吸いつく）: 31 → 4ステップ目の頭（32）に近いので、32 から', e.scrubEnd(31, { nowMs: 20 }), 32);
+      e.scrubBegin(); e.scrubTo(63, 10);
+      t.eq('はなす（周回の終わり）: 63 → 次の周回の頭（64 = 0）に近いので、頭（0）から', e.scrubEnd(63, { nowMs: 20 }), 0);
+      e.scrubBegin(); e.scrubTo(21, 10);
+      t.eq('はなす: 吸いつかせない指定（snap: false）なら、そのまま（21）', e.scrubEnd(21, { snap: false, nowMs: 20 }), 21);
+      e.scrubBegin();
+      e.stop();
+      t.eq('つかんでいる途中で、演奏を止めたら、つかみも外れる', [e.scrub, e.playing], [null, false]);
+    }
+    {
+      // seekTo（キーボード・テスト用）: つかまずに、位置を動かす
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+      e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 1 });
+      t.eq('seekTo: 演奏していなければ、何もしない', e.seekTo(8), null);
+      e.start();
+      t.eq('seekTo: 演奏中は、その位置から続く（8 → 8）', [e.seekTo(8), e.refSlot, e.scrub], [8, 8, null]);
+      t.eq('seekTo: 範囲の外は、はしにおさまる（500 → 63）', e.seekTo(500), 63);
+      e.stop();
+    }
+
+    // ---- 巻き戻しの音を、書き出して調べる ----
+    const scrubRender = async (script, seconds = 1.2) => {
+      const ctx = new OfflineAudioContext(2, SR * seconds, SR);
+      const snd = new ScrubSound(ctx, ctx.destination);
+      snd.begin(0);
+      for (const [when, speed, dir] of script) snd.update(speed, dir, when);
+      snd.end(seconds - 0.2);
+      return ctx.startRendering();
+    };
+    {
+      const buf = await scrubRender([[0, 0, -1], [0.1, 6, -1], [0.5, 0, -1]]);
+      const moving = rms(buf, 0.2, 0.45), still = rms(buf, 0.8, 1.0);
+      t.ok(`巻き戻しの音: 動かしている間は鳴る（${moving.toFixed(4)}）・止めているあいだは、ほぼ無音（${still.toExponential(1)}）`, moving > 0.01 && still < moving * 0.01);
+    }
+    {
+      const r = [];
+      for (const v of [0.3, 1.5, 6, 24]) r.push(rms(await scrubRender([[0, v, -1]], 0.8), 0.2, 0.6));
+      t.ok(`巻き戻しの音: 速く動かすほど、大きい（${r.map((x) => x.toFixed(3)).join(' < ')}）`, r.every((x, i) => i === 0 || x > r[i - 1]) && r[0] > 0.002);
+      const back = await scrubRender([[0, 6, -1]], 0.8), fwd = await scrubRender([[0, 6, 1]], 0.8);
+      t.ok('巻き戻しの音: 向きで、音色が変わる（早送りのほうが、高い音の成分が多い）', power(fwd, 0, 0.2, 0.6, 1500) !== power(back, 0, 0.2, 0.6, 1500));
+    }
+    {
+      // エンジンを通した音: つかんで動かすと、全体の通り道（マスター）を通って、鳴る。止めると消える
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+      e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 0 });
+      e.start();
+      e.scrubBegin(0); e.scrubTo(30, 0);
+      const buf = await ctx.startRendering();
+      t.ok(`シークバーを動かすと、巻き戻しの音が、エンジンの出口から鳴る（${rms(buf, 0.05, 0.3).toFixed(4)}）`, rms(buf, 0.05, 0.3) > 0.003);
+      e.stop();
+    }
+    {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+      e.master.gain.value = 0;
+      e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 0 });
+      e.start(); e.scrubBegin(0); e.scrubTo(30, 0);
+      const buf = await ctx.startRendering();
+      t.ok('ミュート（全体の音量 0）のとき、巻き戻しの音も鳴らない', rms(buf, 0.05, 0.3) < 1e-6);
+      e.stop();
+    }
+    {
+      // 大きさの目安: 同じ全体の音量で、和音の試聴（Ⅰ）と比べる。巻き戻しの音は、演奏を邪魔しない（和音より、大きくない）が、聞こえる（和音の 1/10 以上）
+      const lvl = async (kind, speed) => {
+        const ctx = new OfflineAudioContext(2, SR, SR);
+        const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
+        e.master.gain.value = masterGainFor(DEFAULT_VOLUME);
+        e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 0 });
+        if (kind === 'chord') e.audition(table.byName('Ⅰ').id, 0.05, 0.8);
+        else { const snd = new ScrubSound(ctx, e.scrubBus); snd.begin(0); snd.update(speed, -1, 0); }
+        return rms(await ctx.startRendering(), 0.1, 0.7);
+      };
+      const chord = await lvl('chord'), slow = await lvl('scrub', 0.5), mid = await lvl('scrub', 4), fast = await lvl('scrub', 20);
+      t.log(`巻き戻しの音の大きさ（和音の試聴 ${chord.toFixed(4)} に対して）: ゆっくり ${slow.toFixed(4)} / ふつう ${mid.toFixed(4)} / 速い ${fast.toFixed(4)}`);
+      t.ok(`巻き戻しの音の大きさ: 速くても、和音より大きくない（${(fast / chord).toFixed(2)}倍）・ゆっくりでも、聞こえる（${(slow / chord).toFixed(2)}倍。0.08 倍以上）`, fast < chord * 1.05 && slow > chord * 0.08);
+    }
+    t.ok('音の通り道: 巻き戻しの音は、専用のバス（試聴・バッキング・ドラムとは別）', (() => { const c = new OfflineAudioContext(2, 100, SR); const e = new AudioEngine(c, table, presets); return !!e.scrubBus && e.scrubBus !== e.sfxBus && e.scrubBus !== e.pianoBus && e.scrubBus !== e.auditionBus; })());
   }
 }

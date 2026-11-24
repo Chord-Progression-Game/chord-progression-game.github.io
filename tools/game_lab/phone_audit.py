@@ -6,7 +6,7 @@
   ・撮るたびに、ページの中で「点検」を走らせる:
       vertical-text … 1文字ずつ縦に折り返された文字（幅が文字の大きさの2.4倍より狭いのに、高さがある）
       offscreen     … 画面の外にはみ出した部品（横になぞる入れ物の中は除く）
-      overlap       … 大きな部品どうしの重なり（上のバー・得点・メロディの帯・手順の帯・ガイド・クリアの欄・トレイ・スタンプ・通知・メニュー）
+      overlap       … 大きな部品どうしの重なり（上のバー・シークバー・得点・メロディの帯・手順の帯・ガイド・クリアの欄・トレイ・スタンプ・通知・メニュー）
       tiny-target   … 指で押すには小さい（28px 未満）ボタン
       tiny-text     … 小さすぎる文字（9.5px 未満）
       page-scroll   … ページ全体が横にはみ出している
@@ -52,7 +52,7 @@ LINT_JS = r"""
   // 画面の文字に、うっかり「null」「undefined」「NaN」「[object …]」が出ていない
   { const m = /(^|[^A-Za-z0-9_])(null|undefined|NaN)([^A-Za-z0-9_]|$)|\[object /.exec(document.querySelector('#ui').innerText || ''); if (m) issues.push({ t: 'stray-text', text: m[0].trim() }); }
   // 大きな部品どうしの重なり
-  const BLOCKS = ['#topbar', '#side .score-card', '#melody-roll', '#step-bar', '#guide', '#clear-bar', '#tray-wrap', '#stamp-layer .stamp', '#toasts .toast', '.soundmenu', '#side'];
+  const BLOCKS = ['#topbar', '#seekbar', '#side .score-card', '#melody-roll', '#step-bar', '#guide', '#clear-bar', '#tray-wrap', '#stamp-layer .stamp', '#toasts .toast', '.soundmenu', '#side'];
   const rects = [];
   for (const sel of BLOCKS) for (const el of document.querySelectorAll(sel)) { if (!shown(el)) continue; const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue; if (sel === '#side' && !document.body.classList.contains('side-open')) continue; rects.push({ sel, el, r }); }
   for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {

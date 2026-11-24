@@ -150,6 +150,7 @@ export class SceneManager {
     this.camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.1, 80);
     this.camTarget = new THREE.Vector3(0, 0.1, 0.0);
     this.shiftX = 0; this.shiftTarget = 0;                  // 画面の中の、盤の左右の位置（タイトルでは、メニューをよけて右へ）
+    this.topInset = 0;                                       // PC: シークバーのぶん（px）、盤を下へ（スマホは、見える範囲 region の上で決まる）
     this.viewZoom = 1; this.viewDown = 0;                   // 盤の大きさ（1 = ふだん。大きいほど、小さく見える）と、画面の高さに対する、下へずらす割合（メロディの帯の場所を、あけるため）
     this.phoneZoom = 1; this.phoneDown = 0;                 // スマホ: 上のバー・下のトレイにはさまれた場所の、まん中に盤を置くための補正（setPhoneMode）
     this.baseFov = 36;
@@ -301,7 +302,7 @@ export class SceneManager {
     // 画面が細いときは、盤が入るように、カメラを引く
     const need = 8.9 / (2 * Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2)) * this.camera.aspect);
     const d0 = Math.max(12.6, need * 1.05);
-    let zoom = this.viewZoom * this.phoneZoom, downPx = h * (this.viewDown + this.phoneDown), shiftX = 0;
+    let zoom = this.viewZoom * this.phoneZoom, downPx = h * (this.viewDown + this.phoneDown) + (this.phoneMode ? 0 : this.topInset), shiftX = 0;
     if (!this.phoneMode && this.region && this.region.left !== undefined) {                     // PC（細い窓・iPad の横持ち）: 左右の説明の欄（ガイド・得点の列）にかからないように、盤を引いて、あいだのまん中に（上下は、そのまま）
       const fit = this._fitBoardX(d0 * this.viewZoom, w, h, this.region);
       zoom = this.viewZoom * fit.zoom; shiftX = fit.shiftPx;
@@ -370,6 +371,14 @@ export class SceneManager {
     const same = (!region && !this.region) || (region && this.region && eq(region.top, this.region.top) && eq(region.bottom, this.region.bottom) && eq(region.left, this.region.left) && eq(region.right, this.region.right));
     this.region = region || null;
     if (!same) this._applyCamera();
+  }
+
+  // PC: 上のバーの下に、シークバーが出るので、盤（と技のラベル）を、そのぶん（px）下へ。0 でもとにもどす
+  setTopInset(px) {
+    const v = Math.max(0, Math.round(Number.isFinite(px) ? px : 0));
+    if (v === this.topInset) return;
+    this.topInset = v;
+    this._applyCamera();
   }
 
   // 盤の見え方（PC のメロディのステージでは、画面の上に、メロディの帯が出るので、盤を、少し小さく・下へ）。zoom: 大きいほど小さい / down: 下へずらす割合
