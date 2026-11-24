@@ -1,6 +1,7 @@
 // ゲームの音（時計・ピアノ・ドラム）のテスト。音を出さずに（OfflineAudioContext）書き出して、中身を調べる。
 import { ChordTable } from '../js/core/chords.js';
-import { AudioEngine, parseCell, holdSlots, SLOTS_PER_STEP, masterGainFor, MASTER_GAIN } from '../js/audio/engine.js';
+import { AudioEngine, parseCell, holdSlots, SLOTS_PER_STEP, masterGainFor, MASTER_GAIN, VOLUME_TOP, DRUM_BUS_GAIN } from '../js/audio/engine.js';
+import { DEFAULT_VOLUME } from '../js/game/save.js';
 import { Sfx } from '../js/audio/sfx.js';
 import { INSTRUMENTS, INSTRUMENT_IDS, driveCurve } from '../js/audio/instruments.js';
 import { BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../js/core/voicing.js';
@@ -52,12 +53,14 @@ export async function run(t) {
     while (out.length < 8) out.push(null);
     return out;
   };
-  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120 } = {}) => {
+  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120, voicing = 'off', octave = null } = {}) => {
     const ctx = new OfflineAudioContext(2, SR * seconds, SR);
     const e = new AudioEngine(ctx, table, presets);
     await e.load('../audio/');
     e.getBoard = () => board(spec);
     e.setPatterns({ drumId, backingId }); e.setBpm(bpm);
+    e.setVoicing(voicing);                                                    // 和音のつなぎ方（'off' / 'mid' / 'high'）
+    if (octave !== null) e.octave = octave;
     // 鳴らす指示を記録する（音は、そのまま鳴らす）
     e.rec = { piano: [], drum: [] };
     const pp = e.playPianoNote.bind(e), pd = e.playDrum.bind(e);
@@ -77,6 +80,32 @@ export async function run(t) {
     const a = (await make('Ⅰ Ⅰ Ⅳ Ⅴ', { seconds: 2.2, drumId: 0, bpm: 240 })).e.events.filter((x) => x.type === 'step').slice(0, 4).map((x) => x.notes.join(','));
     const b = (await make('Ⅰ → Ⅳ Ⅴ', { seconds: 2.2, drumId: 0, bpm: 240 })).e.events.filter((x) => x.type === 'step').slice(0, 4).map((x) => x.notes.join(','));
     t.eq('同じ和音の連続（Ⅰ Ⅰ Ⅳ Ⅴ）と「→」（Ⅰ → Ⅳ Ⅴ）は、同じ音で鳴る', a, b);
+  }
+
+  // ============ スムーズボイスリーディング（中・大）と、低すぎる進行の引き上げ（2026-11-24）: エンジンが、その音で鳴らす ============
+  {
+    const stepsOf = async (spec, opts = {}) => (await make(spec, { seconds: 4.4, drumId: 0, bpm: 240, ...opts })).e.events.filter((x) => x.type === 'step').slice(0, spec.trim().split(/\s+/).length).map((x) => x.notes);
+    t.eq('スムーズ（中）: Dm7 → G7 → CM7 を、DFAC / G（ルート）+ DFGB / CEGB で鳴らす', await stepsOf('Ⅱm7 Ⅴ7 ⅠM7', { voicing: 'mid' }), [[50, 53, 57, 60], [43, 50, 53, 55, 59], [48, 52, 55, 59]]);
+    t.eq('スムーズ（大）: ご指定の例（Am7 Dm7 G7 C7 FM7）は、中と同じつなぎ（どれも、4度上）。ただし、ループのつなぎ目（FM7 → Am7）も、動きが少なくなるように選ぶので、最後の和音が、すこしちがう',
+      (await stepsOf('Ⅵm7 Ⅱm7 Ⅴ7 Ⅰ7 ⅣM7', { voicing: 'high' })).slice(0, 3), [[57, 60, 64, 67], [50, 57, 60, 62, 65], [55, 59, 62, 65]]);
+    t.eq('ふつう（off）: 変わらない（Dm7 → G7 → CM7 = D3 F3 A3 C4 / G3 B3 D4 F4 / C3 E3 G3 B3）', await stepsOf('Ⅱm7 Ⅴ7 ⅠM7'), [[50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59]]);
+    // 音が、実際に鳴る（ルートの G2 = 43 は、別のベースとして鳴る）
+    {
+      const { e } = await make('Ⅱm7 Ⅴ7 ⅠM7', { seconds: 4.4, drumId: 0, bpm: 240, voicing: 'mid' });
+      t.ok('スムーズ（中）: 別のベース（G2 = MIDI 43）が、実際に鳴る・ふつう（off）では、鳴らない', e.rec.piano.some((x) => x.note === 43) && !(await make('Ⅱm7 Ⅴ7 ⅠM7', { seconds: 4.4, drumId: 0, bpm: 240 })).e.rec.piano.some((x) => x.note === 43));
+    }
+    t.eq('分割したマス: 前半 Dm7・後半 G7 でも、スムーズにつなぐ（後半に、別のベースの G2）', await (async () => {
+      const ctx = new OfflineAudioContext(2, SR * 3, SR);
+      const e = new AudioEngine(ctx, table, presets);
+      await e.load('../audio/');
+      e.getBoard = () => board('Ⅱm7 ⅠM7'); e.getSplit = () => board('Ⅴ7 -'); e.setPatterns({ drumId: 0, backingId: 1 }); e.setBpm(240); e.setVoicing('mid');
+      await e.renderOffline(3);
+      return e.events.filter((x) => x.type === 'step' || x.type === 'half').slice(0, 3).map((x) => x.notes);
+    })(), [[50, 53, 57, 60], [43, 50, 53, 55, 59], [48, 52, 55, 59]]);
+    // 低すぎる進行（和音の音に C1 = MIDI 36 以下がある）は、進行ぜんぶを 1オクターブ上げる
+    t.eq('低すぎる進行: 高さ -1（ルートが C2 〜）の Ⅰ Ⅳ は、C1（MIDI 36）を含むので、1オクターブ上がる（C3 E3 G3 C4 / F3 …）', (await stepsOf('Ⅰ Ⅳ', { octave: -1 })).map((n) => n[0]), [48, 53]);
+    t.eq('低すぎる進行: C1 を含まない進行（Ⅳ Ⅴ。いちばん低い音は F2）は、そのまま', (await stepsOf('Ⅳ Ⅴ', { octave: -1 })).map((n) => n[0]), [41, 43]);
+    t.eq('低すぎる進行: ふつうの高さ（C3 〜）の進行は、上がらない', (await stepsOf('Ⅰ Ⅳ')).map((n) => n[0]), [48, 53]);
   }
 
   // ============ パターンの文字 ============
@@ -452,12 +481,14 @@ export async function run(t) {
   }
   // ---- 全体の音量（上のバーの「音」。2026-11-18）----
   {
-    t.eq('音量: 100% = これまでの大きさ（MASTER_GAIN）', masterGainFor(100, false), MASTER_GAIN);
+    t.eq('音量: 100% = これまでの 50% の大きさ（MASTER_GAIN × 0.25）。2026-11-24 に、目盛りを 2倍の見かたにした', masterGainFor(100, false), MASTER_GAIN * VOLUME_TOP * VOLUME_TOP);
+    t.eq('音量: はじめの値 50% の出音は、これまでの 25% と、同じ（MASTER_GAIN × 0.0625）', [DEFAULT_VOLUME, Math.abs(masterGainFor(DEFAULT_VOLUME, false) - MASTER_GAIN * 0.25 * 0.25) < 1e-12], [50, true]);
     t.eq('音量: ミュートは 0（音量のバーの位置にかかわらず）', [masterGainFor(100, true), masterGainFor(40, true)], [0, 0]);
     t.eq('音量: 0% は 0', masterGainFor(0, false), 0);
-    t.ok('音量: 50% は、およそ −12dB（2乗の曲線）', Math.abs(20 * Math.log10(masterGainFor(50, false) / MASTER_GAIN) + 12.04) < 0.05);
+    t.ok('音量: 50% は、100% の、およそ −12dB（2乗の曲線）', Math.abs(20 * Math.log10(masterGainFor(50, false) / masterGainFor(100, false)) + 12.04) < 0.05);
     t.ok('音量: バーを上げるほど、大きくなる（単調）', [0, 10, 25, 50, 75, 100].map((p) => masterGainFor(p, false)).every((g, i, a) => i === 0 || g > a[i - 1]));
-    t.eq('音量: 範囲の外・変な値は、おさまる（-20 → 0・300 → 100%・NaN → 100%）', [masterGainFor(-20), masterGainFor(300), masterGainFor(NaN)], [0, MASTER_GAIN, MASTER_GAIN]);
+    t.eq('音量: 範囲の外・変な値は、おさまる（-20 → 0・300 → 100%・NaN → 100%）', [masterGainFor(-20), masterGainFor(300), masterGainFor(NaN)], [0, masterGainFor(100, false), masterGainFor(100, false)]);
+    t.ok('ドラムの音の通り道は、ピアノ・メロディ（0.9）より小さい（約 −3dB。ご指摘: ドラムが大きい）', DRUM_BUS_GAIN < 0.9 && DRUM_BUS_GAIN > 0.4);
     // 実際の音: マスターのゲインを変えると、書き出した音が、その比率で小さくなる
     const level = async (pct) => {
       const c = new OfflineAudioContext(2, SR, SR);

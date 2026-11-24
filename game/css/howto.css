@@ -1,0 +1,156 @@
+/* 使い方の画面（ui/howto.js）。文字だけの説明のかわりに、動く図で見せる。
+   方針は game.css と同じ: ベタ塗り + 細い罫線。ぼかし・光・グラデーションなし。色は、駒の働き（黄・青・赤・紫）と、差し色の黄だけ。
+   図は、HTML と CSS だけ。動きは、くり返しの、ゆっくりしたもの（動きをへらす設定のときは、止める）。 */
+
+.modal .ht-card { width: 46rem; max-width: calc(100vw - 2rem); max-height: 92vh; padding: 0; gap: 0; overflow: hidden; border-top: 5px solid var(--accent); }
+.ht-head { display: flex; align-items: baseline; gap: 0.8rem; padding: 0.8rem 1.3rem 0.7rem; border-bottom: 1px solid var(--line); }
+.ht-head > b { font-size: 0.78rem; letter-spacing: 0.08em; color: var(--dim); font-weight: 800; }
+.modal .ht-head h3 { margin: 0; padding: 0; border: 0; font-size: 1.3rem; line-height: 1.3; letter-spacing: 0.02em; flex: 1; }
+.ht-count { font-family: var(--num); font-variant-numeric: tabular-nums; color: var(--dim); font-size: 0.85rem; }
+.ht-body { overflow: auto; padding: 1rem 1.3rem 0.8rem; display: flex; flex-direction: column; gap: 0.9rem; min-height: 0; }
+.ht-body > * { flex-shrink: 0; }                                  /* 図が、小さい画面で、つぶれて切れないように（はみ出すぶんは、本文がスクロールする） */
+.ht-lead { margin: 0; font-size: 1.05rem; font-weight: 700; line-height: 1.7; }
+.ht-notes { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; }
+.ht-notes li { position: relative; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.7; color: var(--dim); }
+.ht-notes li::before { content: ""; position: absolute; left: 0.15rem; top: 0.68rem; width: 0.45rem; height: 0.45rem; background: var(--accent); }
+.ht-foot { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 1.3rem; border-top: 1px solid var(--line); }
+.ht-foot .chip { min-width: 5.5rem; }
+.ht-foot .chip:disabled { opacity: 0.35; cursor: default; }
+.ht-foot .chip.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.ht-dots { flex: 1; display: flex; gap: 0.45rem; justify-content: center; flex-wrap: wrap; }
+.ht-dot { width: 0.7rem; height: 0.7rem; padding: 0; border: 1px solid var(--line-2); border-radius: 2px; background: transparent; }
+.ht-dot.on { background: var(--accent); border-color: var(--accent); }
+.ht-dot:hover { border-color: var(--text); }
+
+/* ---- 図 ---- */
+.ht-art { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 1rem 1rem 0.9rem; display: flex; flex-direction: column; gap: 0.8rem; position: relative; overflow: hidden; min-height: 12rem; justify-content: center; }
+.ht-board { display: grid; grid-template-columns: repeat(var(--cols, 8), 1fr); gap: 0.28rem; position: relative; }
+.ht-cell { position: relative; aspect-ratio: 1 / 0.95; min-height: 3rem; border: 1px solid var(--line-2); background: var(--panel); border-radius: 3px; display: flex; align-items: center; justify-content: center; }
+.ht-cell > i { position: absolute; left: 0.28rem; top: 0.12rem; font: 600 0.62rem var(--num); color: var(--faint); font-style: normal; }
+.ht-cell.empty { border-style: dashed; border-color: var(--line); }
+.ht-cell.target { border: 2px dashed var(--accent); }
+.ht-cell.rest { border-style: dashed; border-color: var(--line); }
+.ht-cell.rest::after { content: "休み"; color: var(--dim); font-size: 0.8rem; font-weight: 700; }
+.ht-pc { display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; padding: 0.3rem 0.4rem; border-radius: 3px; font-size: 0.85rem; font-weight: 800; line-height: 1.2; background: var(--T); color: #1c1a17; white-space: nowrap; }
+.ht-pc.SD { background: var(--SD); color: #fff; }
+.ht-pc.D { background: var(--D); color: #fff; }
+.ht-pc.X { background: var(--X); color: #fff; }
+.ht-pc.R { background: var(--R); color: #1c1a17; }
+.ht-cell .ht-pc { width: 84%; min-width: 0; height: 58%; padding: 0; }
+.ht-tag { display: inline-block; padding: 0.22rem 0.65rem; border: 1px solid var(--line-2); border-radius: 3px; font-size: 0.8rem; font-weight: 700; color: var(--text); background: var(--panel); white-space: nowrap; }
+.ht-tag.num { font-family: var(--num); font-variant-numeric: tabular-nums; color: var(--dim); }
+.ht-tag.trick { border-color: var(--accent); color: var(--accent); }
+.ht-tag.on { border-color: var(--text); }
+.ht-row { display: flex; gap: 0.5rem; align-items: center; justify-content: center; flex-wrap: wrap; }
+.ht-arrow { color: var(--dim); font-weight: 800; }
+.ht-tray { display: flex; gap: 0.35rem; justify-content: center; flex-wrap: wrap; padding-top: 0.65rem; border-top: 1px solid var(--line); }
+.ht-brace { grid-column: var(--from) / span var(--span); margin-top: 0.1rem; display: flex; justify-content: center; align-items: flex-start; padding-top: 0.3rem; border: 2px solid var(--accent); border-top: 0; border-radius: 0 0 4px 4px; min-height: 1.9rem; }
+.ht-brace .ht-tag { margin-top: 0.25rem; white-space: normal; text-align: center; }
+
+/* 演奏: 場所が、1つずつ光って、進む */
+.ht-board.run .ht-cell { animation: ht-pulse 6.4s infinite; animation-delay: calc(var(--i) * 0.8s); }
+@keyframes ht-pulse { 0% { border-color: var(--accent); background: #2f2b22; } 12.4% { border-color: var(--accent); background: #2f2b22; } 12.5%, 100% { border-color: var(--line-2); background: var(--panel); } }
+.ht-loop { display: flex; justify-content: center; }
+.ht-loop span { position: relative; padding: 0.3rem 1rem; border: 1px solid var(--line-2); border-top: 0; border-radius: 0 0 8px 8px; width: 90%; text-align: center; color: var(--accent); font-size: 0.85rem; font-weight: 700; }
+.ht-loop span::before, .ht-loop span::after { position: absolute; top: -0.9rem; color: var(--accent); font-size: 0.8rem; }
+.ht-loop span::before { content: "▲"; left: -0.35rem; }
+.ht-loop span::after { content: ""; right: -1px; top: -0.55rem; height: 0.55rem; border-right: 1px solid var(--line-2); }
+
+/* 駒をおく: トレイの駒が、場所へ飛ぶ */
+.ht-stage { position: relative; display: flex; flex-direction: column; gap: 0.6rem; }
+.ht-gap { height: 1.2rem; }
+.ht-stage .ht-tray { border-top: 1px solid var(--line); }
+.ht-fly { position: absolute; left: 36%; top: 70%; animation: ht-fly 4.2s ease-in-out infinite; pointer-events: none; }
+.ht-fly .ht-pc { box-shadow: 0 0 0 2px var(--bg); }
+@keyframes ht-fly { 0%, 12% { left: 36%; top: 66%; opacity: 1; } 55%, 78% { left: 13.2%; top: 11%; opacity: 1; } 90%, 100% { left: 13.2%; top: 11%; opacity: 0; } }
+
+/* 「→」と休み: 音の長さ */
+.ht-wave { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.28rem; align-items: stretch; }
+.ht-wave span { padding: 0.4rem 0.5rem; border-radius: 3px; text-align: center; font-size: 0.82rem; font-weight: 700; }
+.ht-wave .long { background: var(--T); color: #1c1a17; }
+.ht-wave .gap { border: 1px dashed var(--line-2); color: var(--dim); }
+.ht-wave .one { background: var(--SD); color: #fff; }
+
+/* ヒント: 候補の札 */
+.ht-stage.ghosts { gap: 0.4rem; }
+.ht-ghosts { position: absolute; left: calc(37.5% + 0.14rem); top: 0; height: 8.3rem; width: calc(12.5% - 0.2rem); display: flex; flex-direction: column; justify-content: flex-end; gap: 0.45rem; pointer-events: none; }
+.ht-ghosts .g1, .ht-ghosts .g2 { display: flex; flex-direction: column; gap: 0.2rem; position: relative; }
+.ht-ghost { display: block; padding: 0.2rem 0.1rem; text-align: center; border: 1px solid #7d8db0; background: rgba(10, 14, 22, 0.55); color: #cdd6ea; font-size: 0.8rem; font-weight: 800; border-radius: 3px; opacity: 0.55; }
+.ht-ghost.on { border-color: #66ffcc; color: #fff; opacity: 0.95; animation: ht-blink 2.4s ease-in-out infinite; }
+.ht-ghosts em { position: absolute; left: calc(100% + 0.5rem); top: 50%; transform: translateY(-50%); font-style: normal; font-size: 0.78rem; font-weight: 700; color: var(--dim); white-space: nowrap; }
+.ht-ghosts .g1 em { color: #66ffcc; }
+@keyframes ht-blink { 0%, 100% { opacity: 0.95; } 50% { opacity: 0.55; } }
+.ht-stage.ghosts { padding-top: 8.6rem; }
+
+/* 分割したマス */
+.ht-split { display: grid; grid-template-columns: 1fr 1.25fr; gap: 1rem; align-items: center; }
+.ht-bigcell { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; padding: 1.5rem 0.4rem 1.7rem; border: 1px solid var(--line-2); background: var(--panel); border-radius: 3px; }
+.ht-bigcell .ht-pc { height: 3.1rem; }
+.ht-bigcell em { position: absolute; bottom: 0.4rem; font-style: normal; font-size: 0.74rem; color: var(--dim); font-weight: 700; }
+.ht-bigcell em.a { left: 0.7rem; }
+.ht-bigcell em.b { right: 0.7rem; }
+.ht-zones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.2rem; }
+.ht-zones .z { display: flex; flex-direction: column; gap: 0.2rem; align-items: center; padding: 0.7rem 0.2rem; border: 1px solid var(--line-2); border-radius: 3px; background: var(--panel); text-align: center; animation: ht-zone 6s infinite; }
+.ht-zones .z b { font-size: 0.82rem; }
+.ht-zones .z span { font-size: 0.74rem; color: var(--dim); font-weight: 700; }
+.ht-zones .z.m { animation-delay: 2s; }
+.ht-zones .z.r { animation-delay: 4s; }
+@keyframes ht-zone { 0%, 30% { border-color: var(--accent); background: #2f2b22; } 33%, 100% { border-color: var(--line-2); background: var(--panel); } }
+
+/* 下の駒と、自作コード */
+.ht-lv { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; align-items: start; }
+.ht-lv .col { display: flex; flex-direction: column; gap: 0.3rem; align-items: stretch; padding: 0.4rem; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); min-height: 6.4rem; }
+.ht-lv .col b { font: 700 0.72rem var(--num); color: var(--dim); letter-spacing: 0.04em; }
+.ht-lv .col .ht-pc { min-width: 0; }
+.ht-lv .col.mine { border-color: var(--accent); }
+.ht-plus { display: flex; align-items: center; justify-content: center; flex: 1; border: 1px dashed var(--accent); color: var(--accent); font-size: 1.4rem; font-weight: 800; border-radius: 3px; }
+.ht-roll { position: relative; height: 5.6rem; border: 1px solid var(--line); background: var(--panel); border-radius: 3px; }
+.ht-roll i { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--r) * 1.05rem + 0.25rem); width: 40%; height: 0.85rem; background: var(--ok); border-radius: 2px; }
+.ht-roll i.root { background: var(--T); }
+.ht-roll span { position: absolute; right: 0.6rem; bottom: 0.3rem; color: var(--dim); font-size: 0.76rem; font-weight: 700; }
+
+/* 上のバー */
+.ht-bar { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+.ht-menu { align-self: center; width: min(22rem, 100%); border: 1px solid var(--line-2); background: var(--panel); border-radius: 4px; padding: 0.5rem 0.7rem; display: grid; gap: 0.35rem; }
+.ht-menu .r { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
+.ht-menu .r:last-child { border-bottom: 0; padding-bottom: 0; }
+.ht-menu .r em { font-style: normal; color: var(--dim); font-size: 0.78rem; font-weight: 700; }
+.ht-menu .r b { font-size: 0.85rem; }
+.ht-menu .r:last-child b { color: var(--accent); }
+
+/* あそびかた */
+.ht-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.ht-modes .m { display: flex; gap: 0.7rem; align-items: center; padding: 0.5rem 0.7rem; border: 1px solid var(--line-2); border-left: 4px solid var(--accent); background: var(--panel); border-radius: 3px; }
+.ht-modes .m b { font-size: 0.95rem; min-width: 3.2rem; }
+.ht-modes .m span { font-size: 0.82rem; font-weight: 700; line-height: 1.35; }
+.ht-modes .m em { display: block; font-style: normal; color: var(--dim); font-size: 0.74rem; font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ht-board.run .ht-cell, .ht-fly, .ht-ghost.on, .ht-zones .z { animation: none; }
+  .ht-fly { left: 13.2%; top: 11%; }
+}
+
+/* はじめてのとき: タイトルの「使い方」に、差し色の印 */
+#btn-howto-title.attn { border-color: var(--accent); color: var(--accent); }
+
+/* ---- スマホ（縦持ち・横持ち）: 全面。文字は読める大きさ。図は、1列にたたむ ---- */
+@media (max-width: 900px) and (min-height: 521px), (max-height: 520px) and (max-width: 1000px) {
+  .modal .ht-card { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+  .modal .card.ht-card { padding: 0; }                      /* mobile.css の「.modal .card の余白」より強く */
+  .ht-head { padding: 0.7rem 0.9rem 0.6rem; gap: 0.5rem; flex-wrap: wrap; }
+  .modal .ht-head h3 { font-size: 1.15rem; flex-basis: 100%; order: 3; }
+  .ht-count { margin-left: auto; }
+  .ht-body { padding: 0.8rem 0.9rem 0.6rem; flex: 1; }
+  .ht-foot { padding: 0.6rem 0.9rem calc(0.7rem + env(safe-area-inset-bottom)); gap: 0.4rem; }
+  .ht-foot .chip { min-width: 4.5rem; padding: 0.4rem 0.6rem; min-height: 2.4rem; }
+  .ht-dot { width: 0.55rem; height: 0.55rem; }
+  .ht-art { padding: 0.7rem 0.6rem; min-height: 0; }
+  .ht-cell { min-height: 2.4rem; }
+  .ht-pc { min-width: 0; font-size: 0.74rem; padding: 0.25rem 0.2rem; }
+  .ht-cell .ht-pc { width: 90%; }
+  .ht-split { grid-template-columns: 1fr; }
+  .ht-lv { grid-template-columns: repeat(3, 1fr); }
+  .ht-modes { grid-template-columns: 1fr; }
+  .ht-tag { font-size: 0.74rem; padding: 0.2rem 0.45rem; white-space: normal; }
+  .ht-notes li { font-size: 0.88rem; }
+}

@@ -2,7 +2,7 @@
 import { $, $$, h, clear } from './dom.js';
 import { trickTitle, trickSub } from './hud.js';
 
-const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'result'];
+const NAMES = ['splash', 'title', 'stages', 'hud', 'pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'howto', 'result'];
 
 export class Screens {
   constructor() {

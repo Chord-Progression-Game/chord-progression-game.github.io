@@ -53,7 +53,7 @@ def main():
         with ChromeSession(width=1280, height=720) as ch:
             open_game(ch, port, audio=False)
             # ============ タイトル ============
-            check("音量: はじめは 25%（保存がまっさらのとき）。バーを動かすまで「決めた」印はない", ch.eval("[__app.save.volume, __app.save.volumeSet, document.querySelector('#sound-state').textContent]"), [25, False, "25%"])
+            check("音量: はじめは 50%（保存がまっさらのとき。出音は、これまでの 25% と同じ）。バーを動かすまで「決めた」印はない", ch.eval("[__app.save.volume, __app.save.volumeSet, document.querySelector('#sound-state').textContent]"), [50, False, "50%"])
             check("クリアの画面が出るまでの時間: 5〜10秒（盤面を見てもらう。2026-11-23 に、7〜14秒から短くした）", ch.eval("__app.clearDelayMs() >= 5000 && __app.clearDelayMs() <= 10000"), True)
             ch.eval("__app.clearDelayOverride = 500")                     # テストでは、短くする
             check("タイトル: メニューは7つ（学ぶ・選ぶ・合わせる・挑む・遊ぶ・競う。対戦は準備中で押せない）", ch.eval("[document.querySelectorAll('#title .menu button').length, document.querySelector('#title .menu button[data-act=versus]').disabled, !!document.querySelector('#title .menu button[data-act=melody]')]"), [7, True, True])
@@ -247,7 +247,7 @@ def main():
             # ============ ヒント ============
             drag_piece_to_slot(ch, "ⅣM7", 0); time.sleep(0.3)
             click(ch, *center(ch, '#btn-hint')); time.sleep(0.6)
-            check("ヒント ON: おすすめの印（Ⅰ〔Ⅳ-Ⅰ終止〕・Ⅴ7・Ⅲ7）と、3Dの候補", ch.eval("JSON.stringify([[...document.querySelectorAll('.pc.hint1 .nm')].map(e => e.textContent).sort(), __app.scene.ghosts.length > 0, document.querySelector('#hint-state').textContent])"), '[["Ⅰ","Ⅲ7","Ⅴ7"],true,"ON"]')
+            check("ヒント ON: おすすめの印（Ⅴ7・Ⅲ7。Ⅳ-Ⅰ終止の Ⅰ は、フレーズの終わりでだけ。2026-11-24）と、3Dの候補", ch.eval("JSON.stringify([[...document.querySelectorAll('.pc.hint1 .nm')].map(e => e.textContent).sort(), __app.scene.ghosts.length > 0, document.querySelector('#hint-state').textContent])"), '[["Ⅲ7","Ⅴ7"],true,"ON"]')
             check("ヒント ON: 発展の印（Ⅳm7 など）", ch.eval("[...document.querySelectorAll('.pc.hint2 .nm')].map(e => e.textContent).includes('Ⅳm7')"), True)
             # ヒントの候補（盤の上の、透けた札）を、クリックして置く
             gx = ch.eval("(() => { const s = __app.scene; const g = s.ghosts[0]; const v = g.sprite.getWorldPosition(new g.sprite.position.constructor()); v.project(s.camera); const r = s.canvas.getBoundingClientRect(); return [(v.x + 1) / 2 * r.width + r.left, (1 - v.y) / 2 * r.height + r.top, g.id, s.ghostSlot]; })()")
@@ -273,7 +273,7 @@ def main():
             for slot, n in zip((0, 1, 2), ("Ⅰ", "Ⅲ7", "Ⅵ♭M7")):
                 ch.eval("__app.game.place(%d, __app.table.byName(%r).id)" % (slot, n))
             time.sleep(0.4)
-            check("ジャッジ: 進行感のない並び → 減点の行（進行感なし −40・役に立っていない駒 −45）・チップ「ジャッジ −85」", ch.eval("JSON.stringify([document.querySelectorAll('#trick-list li.sense.bad').length, (document.querySelector('#trick-list li.sense.bad .pt') || {}).textContent, document.querySelector('#sense-chip').textContent])"), '[2,"−40","ジャッジ −85"]')
+            check("ジャッジ: 進行感のない並び → 減点の行（進行感なし −40。役に立っていない駒は、0点の指摘で、減点の行には数えない）・チップ「ジャッジ −40」", ch.eval("JSON.stringify([document.querySelectorAll('#trick-list li.sense.bad').length, (document.querySelector('#trick-list li.sense.bad .pt') || {}).textContent, document.querySelector('#sense-chip').textContent])"), '[1,"−40","ジャッジ −40"]')
             ch.eval("__app.game.clear()"); time.sleep(0.3)
             check("ジャッジ: 盤を空にすると、チップも行も消える", ch.eval("JSON.stringify([document.querySelector('#sense-chip').classList.contains('hidden'), document.querySelectorAll('#trick-list li.sense').length])"), '[true,0]')
 
@@ -331,13 +331,23 @@ def main():
             ch.eval("__app.startStage(__free(), 'free')"); time.sleep(0.4)
             check("音のメニュー: 閉じている。ボタンに、いまの音色（ピアノ）", ch.eval("[document.querySelector('#soundmenu').classList.contains('hidden'), document.querySelector('#sound-menu-label').textContent]"), [True, "ピアノ"])
             click(ch, *center(ch, '#btn-soundmenu')); time.sleep(0.2)
-            check("音のメニュー: 開く（音色・ビート・バッキングの3行。どれも「ステージの標準」）", ch.eval("JSON.stringify([!document.querySelector('#soundmenu').classList.contains('hidden'), [...document.querySelectorAll('#soundmenu .sm-row')].map(r => r.dataset.kind), document.querySelectorAll('#soundmenu .sm-row.is-default').length])"), '[true,["instrument","drum","backing"],3]')
+            check("音のメニュー: 開く（音色・ビート・バッキング・和音のつなぎ方の4行。はじめの3行は「ステージの標準」）", ch.eval("JSON.stringify([!document.querySelector('#soundmenu').classList.contains('hidden'), [...document.querySelectorAll('#soundmenu .sm-row')].map(r => r.dataset.kind), document.querySelectorAll('#soundmenu .sm-row.is-default').length])"), '[true,["instrument","drum","backing","voicing"],3]')
             click(ch, *center(ch, '#soundmenu .sm-row[data-kind=instrument] .sm-arrow:last-of-type')); time.sleep(0.2)
             check("音のメニュー: 音色の ▶ で、エレピ（ボタンの文字・保存・「標準」の印が外れる）", ch.eval("JSON.stringify([document.querySelector('#sound-menu-label').textContent, __app.save.sound.instrument, document.querySelector('#soundmenu .sm-row[data-kind=instrument]').classList.contains('is-default'), document.querySelector('#soundmenu .sm-row[data-kind=instrument] .sm-name b').textContent])"), '["エレピ","epiano",false,"エレピ"]')
             click(ch, *center(ch, '#soundmenu .sm-row[data-kind=drum] .sm-arrow:last-of-type')); time.sleep(0.2)
             check("音のメニュー: ビートの ▶ で、次のビート（標準 2 → 3）", ch.eval("__app.save.sound.drum"), 3)
             ch.eval("document.querySelector('#soundmenu .sm-reset').click()"); time.sleep(0.2)
-            check("音のメニュー: 「ステージの標準にもどす」で、選んだものが消える", ch.eval("JSON.stringify([__app.save.sound, document.querySelector('#sound-menu-label').textContent])"), '[{"instrument":null,"drum":null,"backing":null},"ピアノ"]')
+            check("音のメニュー: 「ステージの標準にもどす」で、選んだものが消える", ch.eval("JSON.stringify([__app.save.sound, document.querySelector('#sound-menu-label').textContent])"), '[{"instrument":null,"drum":null,"backing":null,"voicing":"off"},"ピアノ"]')
+            # 和音のつなぎ方（スムーズボイスリーディング。2026-11-24）: ふつう → スムーズ（中）→ スムーズ（大）。「ステージの標準にもどす」では、もどらない
+            check("音のメニュー: 和音のつなぎ方は、はじめ「ふつう」", ch.eval("JSON.stringify([document.querySelector('#soundmenu .sm-row[data-kind=voicing] .sm-name b').textContent, __app.save.sound.voicing])"), '["ふつう","off"]')
+            click(ch, *center(ch, '#soundmenu .sm-row[data-kind=voicing] .sm-arrow:last-of-type')); time.sleep(0.2)
+            check("音のメニュー: つなぎ方の ▶ で、スムーズ（中）（表示・保存）。説明も出る", ch.eval("JSON.stringify([document.querySelector('#soundmenu .sm-row[data-kind=voicing] .sm-name b').textContent, __app.save.sound.voicing, document.querySelector('#soundmenu .sm-row[data-kind=voicing] .sm-desc').textContent.includes('4度・5度')])"), '["スムーズ（中）","mid",true]')
+            click(ch, *center(ch, '#soundmenu .sm-row[data-kind=voicing] .sm-arrow:last-of-type')); time.sleep(0.2)
+            check("音のメニュー: もう1つ ▶ で、スムーズ（大）", ch.eval("JSON.stringify([document.querySelector('#soundmenu .sm-row[data-kind=voicing] .sm-name b').textContent, __app.save.sound.voicing])"), '["スムーズ（大）","high"]')
+            ch.eval("document.querySelector('#soundmenu .sm-reset').click()"); time.sleep(0.2)
+            check("音のメニュー: 「ステージの標準にもどす」でも、和音のつなぎ方は、そのまま（音色・ビート・バッキングだけ、標準に）", ch.eval("JSON.stringify(__app.save.sound)"), '{"instrument":null,"drum":null,"backing":null,"voicing":"high"}')
+            click(ch, *center(ch, '#soundmenu .sm-row[data-kind=voicing] .sm-arrow:last-of-type')); time.sleep(0.2)
+            check("音のメニュー: ▶ で、ふつうにもどる（3つをひとまわり）", ch.eval("__app.save.sound.voicing"), "off")
             click(ch, 5, 5); time.sleep(0.2)
             check("音のメニュー: 外をクリックで閉じる", ch.eval("document.querySelector('#soundmenu').classList.contains('hidden')"), True)
 

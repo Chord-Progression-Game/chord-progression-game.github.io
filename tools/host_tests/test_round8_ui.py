@@ -29,7 +29,7 @@ checks = 0
 CONSISTENT = """(() => {
   const vis = (id) => !document.querySelector('#' + id).classList.contains('hidden');
   const bases = ['splash', 'title', 'stages', 'hud'].filter(vis);
-  const overs = ['pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'result'].filter(vis);
+  const overs = ['pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'howto', 'result'].filter(vis);
   const d = document.body.dataset;
   return JSON.stringify({ ok: bases.length === 1 && overs.length <= 1 && d.screen === bases[0] && (d.overlay || '') === (overs[0] || ''), bases, overs, screen: d.screen, overlay: d.overlay || '' });
 })()"""

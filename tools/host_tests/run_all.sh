@@ -62,6 +62,8 @@ echo "== 第7弾: クリアの結果・スマホ縦持ちの配置・チャレ�
 python3 tools/host_tests/test_round7_ui.py
 echo "== 第8弾: スタンプ・画面の記録・分割の駒・ガイドと盤の位置・指の範囲選択（スマホの縦・横）=="
 python3 tools/host_tests/test_round8_ui.py
+echo "== 第10弾: 使い方の画面（動く図）。タイトル・遊ぶ画面・MENU から開く・矢印キー・Esc・スマホの縦・横 =="
+python3 tools/host_tests/test_round10_ui.py
 echo "== 公開ページ（https。ブリッジなし）: リズム・コード編集の内容の取り込み =="
 python3 tools/host_tests/test_pages_ui.py
 echo "== 全端末への共有（にせの Firebase）: ブリッジが書く側・ゲームが読む側 =="

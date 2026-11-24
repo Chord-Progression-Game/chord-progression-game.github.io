@@ -4,7 +4,7 @@
 import { h, clear } from './dom.js';
 import { mountPopup } from './layout.js';
 
-const ROWS = [['instrument', '音色'], ['drum', 'ビート'], ['backing', 'バッキング']];
+const ROWS = [['instrument', '音色'], ['drum', 'ビート'], ['backing', 'バッキング'], ['voicing', '和音のつなぎ方']];
 
 export class SoundMenu {
   constructor({ root, button, label, getModel, onPick, onReset, onImport = null }) {

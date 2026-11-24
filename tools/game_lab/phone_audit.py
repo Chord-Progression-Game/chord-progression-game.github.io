@@ -142,6 +142,11 @@ def run_size(w, h, out, only):
         ch.eval("__app.libImport.open()")
         a.snap(ch, "06_import_dialog")
         ch.eval("__app.libImport.close()")
+        # 使い方の画面（動く図。10ページ。第10弾）
+        for k in range(int(ch.eval("__app.howto.pages.length"))):
+            ch.eval("__app.howto.close(); __app.howto.open(%d)" % k)
+            a.snap(ch, "07_howto_%02d" % (k + 1))
+        ch.eval("__app.howto.close()")
         # チュートリアル
         ch.eval("__app.startStage(__stages.find(s => s.id === 't01'), 'tutorial')")
         time.sleep(0.8)

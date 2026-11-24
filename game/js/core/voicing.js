@@ -103,14 +103,9 @@ export function planOctaves(nodes, baseC) {
   return shifts;
 }
 
-// 位置ごとの駒（board）から、各ステップ（と、分割したマスの後半）のルートの高さを、まとめて決める。
-//   board: コードIDか null の配列。split: 分割したマスの後半のコードID（なければ null）の配列（省いてもよい）
-//   steps: 周回するステップの数（省くと board の長さ。チュートリアルの4ステップのループでは 4）。「→」は、board 全体を使って解決する（ステップを決めるときと同じ）
-//   enabled: false のときは、いつも本来の高さ
-// 戻り値: { first: [ステップごとの、最初に鳴るコードのルート（MIDI）。休みは null], second: [分割したマスの後半のルート。なければ null], nodes: 計画に使ったノードの数 }
-//   同じ和音が続く（「→」も同じ）ときは、1つのノードにまとめる（同じ高さになる）
-export function planVoicing(board, table, { baseC = BASE_C_DEFAULT, split = null, steps = board.length, enabled = true } = {}) {
-  const first = new Array(steps).fill(null), second = new Array(steps).fill(null);
+// 盤から、鳴る順の「ノード」（同じ和音が続くものは、1つに）を作る。planVoicing と、スムーズボイスリーディング（planSmoothVoicing）が、同じものを使う
+//   ノード: { chord, t0, t1（半ステップ単位の時刻）, members: [{ chord, k（ステップ）, half（前半 0・後半 1）}] }
+function buildNodes(board, table, split, steps) {
   // 鳴る順の出来事。t0・t1: 半ステップ単位の時刻（1つのマス = 2つ。分割したマスは、前半 = [2k, 2k]・後半 = [2k+1, 2k+1]）
   const evs = [];
   for (let k = 0; k < steps; k++) {
@@ -129,6 +124,18 @@ export function planVoicing(board, table, { baseC = BASE_C_DEFAULT, split = null
     if (last && last.chord === e.chord && e.t0 === last.t1 + 1) { last.t1 = e.t1; last.members.push(e); }
     else nodes.push({ chord: e.chord, t0: e.t0, t1: e.t1, members: [e] });
   }
+  return nodes;
+}
+
+// 位置ごとの駒（board）から、各ステップ（と、分割したマスの後半）のルートの高さを、まとめて決める。
+//   board: コードIDか null の配列。split: 分割したマスの後半のコードID（なければ null）の配列（省いてもよい）
+//   steps: 周回するステップの数（省くと board の長さ。チュートリアルの4ステップのループでは 4）。「→」は、board 全体を使って解決する（ステップを決めるときと同じ）
+//   enabled: false のときは、いつも本来の高さ
+// 戻り値: { first: [ステップごとの、最初に鳴るコードのルート（MIDI）。休みは null], second: [分割したマスの後半のルート。なければ null], nodes: 計画に使ったノードの数 }
+//   同じ和音が続く（「→」も同じ）ときは、1つのノードにまとめる（同じ高さになる）
+export function planVoicing(board, table, { baseC = BASE_C_DEFAULT, split = null, steps = board.length, enabled = true } = {}) {
+  const first = new Array(steps).fill(null), second = new Array(steps).fill(null);
+  const nodes = buildNodes(board, table, split, steps);
   const nominal = (c) => baseC + c.rootPc;
   const put = (e, root) => { (e.half === 0 ? first : second)[e.k] = root; };
   if (!enabled || nodes.length < 2) {
@@ -170,4 +177,152 @@ export function resolveChordAtStep(board, step, table, split = null) {
     if (r !== table.repeatId) return split && split[p] !== null && split[p] !== undefined ? split[p] : r;
   }
   return null;
+}
+
+// ---------- ③ スムーズボイスリーディング（中・大。2026-11-24。ご依頼）----------
+//   前の和音の、実際に鳴っている音から、次の和音の音を、できるだけ動かさずに（内声の動きが、最も少なくなるように）つなぐ。
+//   ・中（'mid'）: ルートが、完全4度・完全5度で動くときだけ（Dm7 → G7 → CM7 = DFAC → DFGB → CEGB。ルートの G は、別にベースとして置く）
+//   ・大（'high'）: ぜんぶの和音の動きで
+//   ・和音の音は、閉じた配置（転回形）。ルートは、いちばん下の音がルートでなければ、そのすぐ下に、別のベースとして置く（構成音が、5つになってよい）
+//   ・最初の和音（ループのはじめ）は、ふだんの高さ（ルート位置の配置）。そこから、つなぐ。ループのつなぎ目（最後 → 最初）も、動きが少なくなるように選ぶ
+//   ・ファーム（実機）には、まだ入れていない（ゲームの音だけ）
+export const SMOOTH_MODES = ['off', 'mid', 'high'];
+export const SMOOTH = {
+  lo: -9, hi: 21,         // 上の音を置く範囲（baseC からの半音）。ふだんの和音の高さ（baseC〜baseC+23）の、まわり
+  span: 14,               // 上の音の、いちばん低い音〜いちばん高い音（半音）の上限
+  spanFree: 12,           // これをこえたぶんは、1半音ごとに罰
+  adjacent: 2,            // となりあう音が半音（短2度）で、低い（MIDI 60 より下）とき、1組ごとの罰
+  fifthDouble: 0.5,       // 3和音の、重ねる音を 5度にしたときの罰（ルートが、いちばん自然）
+  thirdDouble: 3,         // 3和音の、重ねる音を 3度にしたときの罰
+  center: 0.15,           // 全体の高さが、ふだんの中心からはなれるとき、1半音ごとの罰（長い進行で、だんだん高く・低くなっていかないように）
+  noRoot: 0.3,            // いちばん下の音がルートでないとき（別にベースを足すとき）の罰
+  skip: 2,                // 前後で、音の数がちがうとき、対応しない音1つごとの罰
+  keep: 150,              // 1つの和音につき、残す候補の数（音の多い自作コードで、遅くならないように）
+};
+const mod12v = (v) => ((v % 12) + 12) % 12;
+const isFourFiveMove = (a, b) => { const d = mod12v(b.rootPc - a.rootPc); return d === 5 || d === 7; };
+
+// 前後の、動きの量: 低い音から順に、1対1で対応づけた、半音の差の合計。音の数がちがうときは、順序を保って、いちばん近くなる対応（あまった音は SMOOTH.skip）
+export function voiceMotion(a, b) {
+  if (a.length === b.length) { let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]); return t; }
+  const [s, l] = a.length < b.length ? [a, b] : [b, a];
+  const n = s.length, m = l.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(Infinity));
+  for (let j = 0; j <= m; j++) dp[0][j] = j * SMOOTH.skip;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) dp[i][j] = Math.min(dp[i - 1][j - 1] + Math.abs(s[i - 1] - l[j - 1]), dp[i][j - 1] + SMOOTH.skip);
+  return dp[n][m];
+}
+
+// 1つの和音の、上の音の候補（閉じた配置）。範囲は、[lo, hi]（MIDI）。戻り値: [{ up: [低→高], cost }]（cost = その配置だけの罰）
+function smoothCandidates(chord, lo, hi, center) {
+  const base = chord.semitones.map((st) => mod12v(chord.rootPc + st));          // 和音の音（3和音は、ルートが2つ）
+  const uniq = [...new Set(base)];
+  const variants = [{ pcs: base, pen: 0 }];
+  if (uniq.length === 3 && base.length === 4) {                                    // 3和音: 重ねる音を、5度・3度にした形も
+    const dup = base.find((p, i) => base.indexOf(p) !== i);
+    const fifth = uniq.find((p) => mod12v(p - chord.rootPc) === 7), third = uniq.find((p) => [3, 4].includes(mod12v(p - chord.rootPc)));
+    const three = uniq.filter((p) => p !== undefined);
+    if (dup !== undefined) {
+      if (fifth !== undefined && fifth !== dup) variants.push({ pcs: [...three, fifth], pen: SMOOTH.fifthDouble });
+      if (third !== undefined && third !== dup) variants.push({ pcs: [...three, third], pen: SMOOTH.thirdDouble });
+    }
+  }
+  const out = new Map();
+  for (const v of variants) {
+    const choices = v.pcs.map((pc) => { const xs = []; for (let m = lo; m <= hi; m++) if (mod12v(m) === pc) xs.push(m); return xs; });
+    const pick = new Array(v.pcs.length);
+    const rec = (i) => {
+      if (i === pick.length) {
+        const up = pick.slice().sort((x, y) => x - y);
+        for (let k = 1; k < up.length; k++) if (up[k] === up[k - 1]) return;                // 同じ高さの音は、重ねない
+        const span = up[up.length - 1] - up[0];
+        if (span > SMOOTH.span) return;
+        const key = up.join(',');
+        let cost = v.pen + Math.max(0, span - SMOOTH.spanFree);
+        for (let k = 1; k < up.length; k++) if (up[k] - up[k - 1] === 1 && up[k - 1] < 60) cost += SMOOTH.adjacent;
+        const mean = up.reduce((x, y) => x + y, 0) / up.length;
+        cost += SMOOTH.center * Math.abs(mean - center);
+        if (mod12v(up[0]) !== chord.rootPc) cost += SMOOTH.noRoot;
+        const cur = out.get(key);
+        if (!cur || cost < cur.cost) out.set(key, { up, cost });
+        return;
+      }
+      for (const m of choices[i]) { pick[i] = m; rec(i + 1); }
+    };
+    rec(0);
+  }
+  const list = [...out.values()].sort((x, y) => x.cost - y.cost);
+  return list.slice(0, SMOOTH.keep);
+}
+
+// 上の音（低→高）から、実際に鳴らす音を作る。いちばん下の音がルートでなければ、そのすぐ下に、ルートを別のベースとして足す
+function smoothVoice(chord, up, baseC) {
+  let notes = up.slice(), root = up[0];
+  if (mod12v(up[0]) !== chord.rootPc) {
+    let b = up[0] - 1;
+    while (mod12v(b) !== chord.rootPc) b--;
+    notes = [b, ...up]; root = b;
+  }
+  return { root, notes, shift: root - (baseC + chord.rootPc), up };          // up: 上の音（別のベースをのぞく）
+}
+
+// 盤から、スムーズボイスリーディング（中・大）の、各ステップ（分割したマスの後半）の和音（{ root, notes, shift }）を、まとめて決める。
+//   roots: planVoicing の結果（ふつうの高さの和音に使う）。mode: 'mid' | 'high'（'off' は、何も決めない）
+//   戻り値: { first: [ステップごと。決めなかったもの（ふつうの高さのまま）は null], second: [...] }
+export function planSmoothVoicing(board, table, { baseC = BASE_C_DEFAULT, split = null, steps = board.length, mode = 'off', roots = null } = {}) {
+  const first = new Array(steps).fill(null), second = new Array(steps).fill(null);
+  if (mode !== 'mid' && mode !== 'high') return { first, second, nodes: 0 };
+  const nodes = buildNodes(board, table, split, steps);
+  if (nodes.length < 2) return { first, second, nodes: nodes.length };
+  const plan = roots || planVoicing(board, table, { baseC, split, steps, enabled: true });
+  const nominal = (nd) => { const e = nd.members[0]; const r = (e.half === 0 ? plan.first : plan.second)[e.k]; return r === null || r === undefined ? baseC + nd.chord.rootPc : r; };
+  const std = nodes.map((nd) => voiceChordAt(nd.chord, nominal(nd), baseC));            // ふだんの高さの和音
+  const smooth = nodes.map((nd, i) => i > 0 && (mode === 'high' || isFourFiveMove(nodes[i - 1].chord, nd.chord)));
+  const lo = baseC + SMOOTH.lo, hi = baseC + SMOOTH.hi;
+  const center = baseC + 6;
+  const cands = nodes.map((nd, i) => (smooth[i] ? smoothCandidates(nd.chord, lo, hi, center) : [{ up: std[i].notes.slice().sort((x, y) => x - y), cost: 0 }]));
+  if (cands.some((c) => c.length === 0)) return { first, second, nodes: nodes.length };         // 範囲に収まる配置がない（ふつうの高さのまま）
+  // 動的計画法（ビタビ）: 前の音からの動きの合計が、いちばん小さくなる配置の列
+  const n = nodes.length;
+  const cost = [cands[0].map((c) => c.cost)];
+  const back = [cands[0].map(() => -1)];
+  for (let i = 1; i < n; i++) {
+    const row = [], bk = [];
+    for (let k = 0; k < cands[i].length; k++) {
+      let best = Infinity, arg = 0;
+      for (let j = 0; j < cands[i - 1].length; j++) {
+        const v = cost[i - 1][j] + (smooth[i] ? voiceMotion(cands[i - 1][j].up, cands[i][k].up) : 0);
+        if (v < best) { best = v; arg = j; }
+      }
+      row.push(best + cands[i][k].cost); bk.push(arg);
+    }
+    cost.push(row); back.push(bk);
+  }
+  // ループのつなぎ目（最後 → 最初）: 最初の和音は、ふだんの高さに決まっている。最後の和音を、そこへ、動きが少なくなるように選ぶ
+  const seam = mode === 'high' || isFourFiveMove(nodes[n - 1].chord, nodes[0].chord);
+  let bestK = 0, bestV = Infinity;
+  for (let k = 0; k < cands[n - 1].length; k++) {
+    const v = cost[n - 1][k] + (seam && smooth[n - 1] ? voiceMotion(cands[n - 1][k].up, cands[0][0].up) : 0);
+    if (v < bestV) { bestV = v; bestK = k; }
+  }
+  const pick = new Array(n);
+  pick[n - 1] = bestK;
+  for (let i = n - 1; i >= 1; i--) pick[i - 1] = back[i][pick[i]];
+  nodes.forEach((nd, i) => {
+    if (!smooth[i]) return;
+    const voice = smoothVoice(nd.chord, cands[i][pick[i]].up, baseC);
+    for (const e of nd.members) (e.half === 0 ? first : second)[e.k] = voice;
+  });
+  return { first, second, nodes: n };
+}
+
+// ---------- ④ 低すぎる進行を、1オクターブ上げる（2026-11-24。ご依頼: 進行の中に C1 が含まれる場合は、進行全体を1オクターブ上げる。この基準は、あとで変えるかもしれない）----------
+//   LOW_LIMIT: この高さ（MIDI ノート番号）以下の音が、進行の中にあれば、進行ぜんぶを LOW_LIFT 上げる。36 = C1（GarageBand・Logic の呼び名。C3 = 60 の数え方。このゲームの画面の C3 = 48 の数え方では C2）
+//   数えるのは、和音の音（別のベースを足したものを含む）。バッキングのパターンの、ベースの音（ルートの1オクターブ下）は、数えない
+export const LOW_LIMIT = 36;
+export const LOW_LIFT = 12;
+export function liftFor(voices) {
+  let low = Infinity;
+  for (const v of voices) if (v) for (const m of v.notes) if (m < low) low = m;
+  return low <= LOW_LIMIT ? LOW_LIFT : 0;
 }

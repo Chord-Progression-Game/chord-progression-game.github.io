@@ -1,8 +1,9 @@
 // ゲームの中心の部品（コードの表・和音の高さ・トリックの判定・ヒント）のテスト。
 import { ChordTable } from '../js/core/chords.js';
-import { voiceChord, chooseOctaveShift, resolveChordAtStep, planVoicing, planOctaves, PLAN } from '../js/core/voicing.js';
+import { voiceChord, voiceChordAt, chooseOctaveShift, resolveChordAtStep, planVoicing, planOctaves, planSmoothVoicing, voiceMotion, liftFor, LOW_LIMIT, LOW_LIFT, PLAN } from '../js/core/voicing.js';
 import { analyze, buildSegments, TRICKS, PATTERNS, HEAD_V_PENALTY, setCustomProgressions } from '../js/core/tricks.js';
 import { suggest, findCursor, isSeventh, sevenBonus, sameSevenFamily } from '../js/core/hints.js';
+import { continuationGrade } from '../js/core/continuation.js';
 import { SENSE, senseTotals, edgeInfo, isBorrowed, naturalAfterBorrowed, borrowKey, flowReason as SENSE_FLOW } from '../js/core/sense.js';
 import * as CB from '../js/core/chordbook.js';
 import { sanitizeChordbook } from '../js/core/chordbook.js';
@@ -462,9 +463,9 @@ export async function run(t) {
   r = analyze(board('Ⅰ Ⅳ Ⅴ'), table);
   t.eq('技が、2つのつながりを両方とも取っているときは、ジャッジは重ねて加点しない（二重に数えない）', [kinds(r), crit(r)], [['dominant_motion|強進行', 'dominant_ending'], []]);
   r = analyze(board('Ⅰ Ⅲ7 Ⅵ♭M7'), table);
-  t.eq('進行感なし（3つの和音で、どのつながりにも「つながる理由」がない）: −40', [kinds(r), crit(r), r.score.senseBad], [[], ['incoherent:-40', 'idle:-45'], 85]);       // 進行感なし −40 と、役に立っていない駒（3つ × −15）
+  t.eq('進行感なし（3つの和音で、どのつながりにも「つながる理由」がない）: −40', [kinds(r), crit(r), r.score.senseBad], [[], ['incoherent:-40', 'idle:0'], 40]);       // 進行感なし −40。役に立っていない駒は、0点の指摘（表示だけ。減点なし）
   r = analyze(board('- Ⅲ7 Ⅵ♭M7 Ⅱ♭7'), table);
-  t.eq('唐突な借用和音（借りてきた和音が、前後のどちらとも、つながらない）: −30（と、役に立っていない駒 −15）', crit(r), ['abrupt:-30', 'idle:-15']);
+  t.eq('唐突な借用和音（借りてきた和音が、前後のどちらとも、つながらない）: −30（と、役に立っていない駒の指摘。0点）', crit(r), ['abrupt:-30', 'idle:0']);
   r = analyze(board('Ⅰ Ⅰ'), table);
   t.eq('同じ和音が続く = 「→」と同じ（2026-11-24。ご指定）: 減点はない・点も、「→」を使ったときと、まったく同じ', [crit(r), crit(analyze(board('Ⅰ →'), table)), r.score.total === analyze(board('Ⅰ →'), table).score.total], [[], [], true]);
   t.eq('同じ和音の連続と「→」: 技・点・講評が同じ（ⅣM7 Ⅴ7 ⅠM7 ⅠM7 と ⅣM7 Ⅴ7 ⅠM7 →。Ⅵm Ⅵm Ⅳ Ⅴ と Ⅵm → Ⅳ Ⅴ（小室進行））', ['ⅣM7 Ⅴ7 ⅠM7 ⅠM7|ⅣM7 Ⅴ7 ⅠM7 →', 'Ⅵm Ⅵm Ⅳ Ⅴ|Ⅵm → Ⅳ Ⅴ', 'Ⅱm7 Ⅱm7 Ⅴ7 ⅠM7|Ⅱm7 → Ⅴ7 ⅠM7'].map((pair) => { const [x, y] = pair.split('|').map((sp) => analyze(board(sp), table)); return JSON.stringify([x.score.total, x.instances.map((i) => [i.id, i.total]), x.critiques.map((c) => [c.id, c.points])]) === JSON.stringify([y.score.total, y.instances.map((i) => [i.id, i.total]), y.critiques.map((c) => [c.id, c.points])]); }), [true, true, true]);
@@ -746,8 +747,10 @@ export async function run(t) {
     t.ok('ヒント: ⅣM7 → Ⅴ7 の3番では、ピカルディ終止（Ⅴ7 → Ⅵ）を、おすすめにしない（4番・8番でだけ出す）', h.cursor === 2 && !h.primary.some((c) => c.name === 'Ⅵ' && /ピカルディ/.test(c.reason)));
     h = suggest(board('Ⅰ Ⅳ Ⅵm7'), table, ALL);
     t.ok('ヒント: 4番（フレーズの終わり）で、Ⅵm7 → Ⅵ のピカルディ終止も出る。ただし、「おすすめ」ではなく「発展」', h.cursor === 3 && h.advanced.some((c) => c.name === 'Ⅵ' && /ピカルディ/.test(c.reason)) && !h.primary.some((c) => c.name === 'Ⅵ'));
+    h = suggest(board('Ⅰ Ⅳ Ⅲ7'), table, ALL);
+    t.ok('ヒント: Ⅲ7 のあとの Ⅵ（長三和音。イ短調の Ⅴ7 → 主和音）は、4番（フレーズの終わり）で、ピカルディ終止として（発展に）出る。おすすめには、Ⅵm 系（解決先）', h.cursor === 3 && h.advanced.some((c) => c.name === 'Ⅵ') && h.primary.some((c) => /^Ⅵm/.test(c.name)) && !h.primary.some((c) => c.name === 'Ⅵ'));
     h = suggest(board('Ⅰ Ⅲ7'), table, ALL);
-    t.ok('ヒント: Ⅲ7 のあとの Ⅵ（長三和音。イ短調の Ⅴ7 → 主和音）は、3番でも、ピカルディ終止として（発展に）出る', h.cursor === 2 && h.advanced.some((c) => c.name === 'Ⅵ' && /ピカルディ/.test(c.reason)));
+    t.ok('ヒント: Ⅲ7 のあとの 3番には、Ⅵ（長三和音）を勧めない（ご指摘: 3個目のマスでピカルディ終止は不自然）。解決先の Ⅵm 系（Ⅵm7）が、おすすめ', h.cursor === 2 && ![...h.primary, ...h.advanced].some((c) => c.name === 'Ⅵ') && h.primary.some((c) => /^Ⅵm/.test(c.name)));
   }
   // ============ 19. ループのつなぎ目（8番 → 1番）の、進行系の技（2026-11-18）============
   {
@@ -948,15 +951,16 @@ export async function run(t) {
     const a1 = store.add({ name: 'うた', board: b, from: 0, to: 3, melody: mel });
     t.eq('出し入れ: メロディつきを追加 → 保存先にも入る・読み込み直しても、同じ', [a1.ok, sv.presets[0].melody.length, JSON.stringify(new PresetStore({ presets: JSON.parse(JSON.stringify(sv.presets)) }, table).list()[0].melody) === JSON.stringify(a1.preset.melody)], [true, 3, true]);
   }
-  // ============ 23. 音量の保存（はじめは 25%）============
+  // ============ 23. 音量の保存（はじめは 50%。2026-11-24 に、25% から。出音は同じ）============
   {
     const KEY = 'chordlines.v1', keep = localStorage.getItem(KEY);
     const load = (obj) => { if (obj === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(obj)); return loadSave(); };
-    t.eq('音量: はじめの値は 25%', DEFAULT_VOLUME, 25);
-    t.eq('音量: 保存がまっさら → 25%・まだ「決めていない」', (() => { const x = load(null); return [x.volume, x.volumeSet]; })(), [25, false]);
-    t.eq('音量: 以前の版が自動で書いた 100（volumeSet なし）は、はじめの値 25% にもどす', (() => { const x = load({ volume: 100 }); return [x.volume, x.volumeSet]; })(), [25, false]);
-    t.eq('音量: バーで決めた値（volumeSet あり）は、そのまま（100 でも 0 でも 60 でも）', [100, 0, 60].map((v) => load({ volume: v, volumeSet: true }).volume), [100, 0, 60]);
-    t.eq('音量: 範囲の外・変な値は、おさまる（150 → 100・-5 → 0・"x" → 25）', [load({ volume: 150, volumeSet: true }).volume, load({ volume: -5, volumeSet: true }).volume, load({ volume: 'x', volumeSet: true }).volume], [100, 0, 25]);
+    t.eq('音量: はじめの値は 50%（これまでの 25% と、同じ出音）', DEFAULT_VOLUME, 50);
+    t.eq('音量: 保存がまっさら → 50%・まだ「決めていない」', (() => { const x = load(null); return [x.volume, x.volumeSet]; })(), [50, false]);
+    t.eq('音量: 以前の版が自動で書いた 100（volumeSet なし）は、はじめの値 50% にもどす', (() => { const x = load({ volume: 100 }); return [x.volume, x.volumeSet]; })(), [50, false]);
+    t.eq('音量: 新しい目盛りで、バーで決めた値（volumeScale 2・volumeSet あり）は、そのまま（100 でも 0 でも 60 でも）', [100, 0, 60].map((v) => load({ volume: v, volumeSet: true, volumeScale: 2 }).volume), [100, 0, 60]);
+    t.eq('音量: これまでの目盛りで決めた値（volumeScale なし）は、2倍にして、同じ出音に（30 → 60・25 → 50・0 → 0）。100 をこえるぶんは 100', [30, 25, 0, 80].map((v) => load({ volume: v, volumeSet: true }).volume), [60, 50, 0, 100]);
+    t.eq('音量: 範囲の外・変な値は、おさまる（150 → 100・-5 → 0・"x" → 50）', [load({ volume: 150, volumeSet: true, volumeScale: 2 }).volume, load({ volume: -5, volumeSet: true, volumeScale: 2 }).volume, load({ volume: 'x', volumeSet: true, volumeScale: 2 }).volume], [100, 0, 50]);
     if (keep === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, keep);
   }
   // ============ 24. ヒント: Ⅱm7 とセブンスコード（2026-11-23。ユーザーの指摘）============
@@ -1306,5 +1310,189 @@ export async function run(t) {
     // フレーズの終わりに着かない（ちがうルートの和音が、同じフレーズのうちに続く）終止は、いままでどおり、終止ではない
     t.ok('ちがうルートの和音（Ⅱm7）が続くと、フレーズの終わりに着かないので、終止ではない（設計どおり）', !has('ⅣM7 Ⅴ7 ⅠM7 Ⅱm7', 'authentic_cadence'));
     t.ok('4番に着く終止は、5番に何があっても、そのまま決まる（フレーズが、ちがう）', has('Ⅳ Ⅴ7 Ⅰ Ⅰ7 Ⅱm7', 'authentic_cadence') && has('ⅣM7 Ⅴ7 Ⅰ - Ⅱm7', 'authentic_cadence'));
+  }
+
+  // ============ 30. ヒントの自然さ（2026-11-24。ご指摘: Ⅲ7 のあとの第一候補が Ⅵ（長三和音）だけ・Ⅵm7 がない・不可解な候補が多い）============
+  //   continuation.js の「自然さ」（level 0〜3）で、足切りと順位をつける。Piston の表（Ⅰ・Ⅱ の行は、紹介文で確認。ほかは、覚えているとおり）+ 色のついた和音の決まり
+  {
+    const G = (a, b, ctx = {}) => { const g = continuationGrade(table.byName(a), table.byName(b), ctx); return g ? g.level : null; };
+    const names = (hh) => [...hh.primary, ...hh.advanced].map((c) => c.name);
+    const prim = (hh) => hh.primary.map((c) => c.name);
+    const adv = (hh) => hh.advanced.map((c) => c.name);
+    const hint = (spec, split) => {
+      const sp = split ? board(split) : null;                                  // 分割したマスの後半（board と同じ書き方）
+      return suggest(board(spec), table, ALL, { split: sp });
+    };
+
+    // ---- ものさし ----
+    t.eq('自然さ: ふつうの和音どうし（Piston の表）: Ⅴ→Ⅰ = 3・Ⅰ→Ⅳ = 3・Ⅰ→Ⅵm = 2・Ⅰ→Ⅱm = 1・Ⅲm→Ⅵm = 3・Ⅲm→Ⅰ = 0・Ⅵm→Ⅱm = 3・Ⅱm7→Ⅴ7 = 3・Ⅶm7-5→Ⅲm = 3・Ⅳ→Ⅴ = 3',
+      [G('Ⅴ7', 'Ⅰ'), G('Ⅰ', 'Ⅳ'), G('Ⅰ', 'Ⅵm'), G('Ⅰ', 'Ⅱm'), G('Ⅲm', 'Ⅵm'), G('Ⅲm', 'Ⅰ'), G('Ⅵm', 'Ⅱm'), G('Ⅱm7', 'Ⅴ7'), G('Ⅶm7-5', 'Ⅲm'), G('Ⅳ', 'Ⅴ')], [3, 3, 2, 1, 3, 0, 3, 3, 3, 3]);
+    t.eq('自然さ: セカンダリードミナントは、向かう先（4度上）の和音へ解決する（Ⅲ7→Ⅵm7 = 3）。ほかへは進まない（Ⅲ7→Ⅴ7・Ⅲ7→ⅣM7 = 0）。連鎖するドミナント（Ⅲ7→Ⅵ7）は 2',
+      [G('Ⅲ7', 'Ⅵm7'), G('Ⅲ7', 'Ⅵm'), G('Ⅲ7', 'Ⅴ7'), G('Ⅲ7', 'ⅣM7'), G('Ⅲ7', 'Ⅵ7'), G('Ⅵ7', 'Ⅱm7'), G('Ⅱ7', 'Ⅴ7'), G('Ⅰ7', 'ⅣM7')], [3, 3, 0, 0, 2, 3, 3, 3]);
+    t.eq('自然さ: ご指摘のものは 0（Ⅲ7→Ⅲ♭m6・Ⅲ7→Ⅶm7♭5・Ⅴ7→Ⅳ#m7♭5・Ⅲ7→Ⅲm7・Ⅵm7→Ⅳm7・Ⅱm7→Ⅵ7（もどる動き））',
+      [G('Ⅲ7', 'Ⅲ♭m6'), G('Ⅲ7', 'Ⅶm7-5'), G('Ⅴ7', 'Ⅳ#m7-5'), G('Ⅲ7', 'Ⅲm7'), G('Ⅵm7', 'Ⅳm7'), G('Ⅱm7', 'Ⅵ7')], [0, 0, 0, 0, 0, 0]);
+    t.eq('自然さ: Ⅵ（長三和音）は、フレーズの終わり（ピカルディ終止）だけ。Ⅲ7→Ⅵ: ふだん 0・フレーズの終わり 2・サスの解決（Ⅵsus4→Ⅵ）はどこでも 3',
+      [G('Ⅲ7', 'Ⅵ'), G('Ⅲ7', 'Ⅵ', { phraseEnd: true }), G('Ⅴ7', 'Ⅵ', { phraseEnd: true }), G('Ⅵm7', 'Ⅵ', { phraseEnd: true }), G('Ⅵm7', 'Ⅵ'), G('Ⅵsus4', 'Ⅵ')], [0, 2, 2, 2, 0, 3]);
+    t.eq('自然さ: Ⅵsus4 は、フレーズの終わりの1つ前（3番・7番）の、ピカルディ終止の入り口だけ（Ⅴ7・Ⅲ7 から）', [G('Ⅴ7', 'Ⅵsus4'), G('Ⅴ7', 'Ⅵsus4', { phraseThird: true }), G('Ⅲ7', 'Ⅵsus4', { phraseThird: true }), G('Ⅱm7', 'Ⅵsus4', { phraseThird: true })], [0, 2, 2, 0]);
+    t.eq('自然さ: 色のついた和音: Ⅱm7→Ⅱ♭7（裏コード）= 2・Ⅱ♭7→Ⅰ = 3・Ⅳ→Ⅳm7（サブドミナントマイナー）= 2・Ⅳm7→Ⅰ = 3・Ⅴ7→Ⅵ♭M7（借用の偽終止）= 2・Ⅵm7→Ⅴ#dim7（経過）= 1・Ⅱm7 以外から Ⅱ♭7 = 0',
+      [G('Ⅱm7', 'Ⅱ♭7'), G('Ⅱ♭7', 'ⅠM7'), G('Ⅳ', 'Ⅳm7'), G('Ⅳm7', 'Ⅰ'), G('Ⅴ7', 'Ⅵ♭M7'), G('Ⅵm7', 'Ⅴ#dim7'), G('Ⅵm7', 'Ⅱ♭7')], [2, 3, 2, 3, 2, 1, 0]);
+    t.eq('自然さ: Ⅴ・Ⅳ のあとの ♭Ⅶ・♭Ⅵ・ネアポリタン（Ⅰ・Ⅳ のあと）は、3番・7番だけ（どこでも出すと、発展が借用和音でうまる）', [G('ⅣM7', 'Ⅶ♭7'), G('ⅣM7', 'Ⅶ♭7', { phraseThird: true }), G('ⅠM7', 'Ⅵ♭M7'), G('ⅠM7', 'Ⅵ♭M7', { phraseThird: true }), G('ⅠM7', 'Ⅱ♭M7'), G('ⅠM7', 'Ⅱ♭M7', { phraseThird: true })], [0, 1, 0, 1, 0, 1]);
+    t.eq('自然さ: 前の駒がない・「→」のときは null', [continuationGrade(null, table.byName('Ⅰ')), continuationGrade(table.byName('Ⅰ'), table.byId(table.repeatId))], [null, null]);
+
+    // ---- ご指摘のスクリーンショット: ⅠM7 → Ⅶm7♭5｜Ⅲ7（分割したマス）の、3番 ----
+    let h = hint('ⅠM7 Ⅶm7-5', '- Ⅲ7');
+    t.ok(`ヒント（ご指摘の画像）: 3番の第一候補は Ⅵm7（Ⅲ7 の解決先。コンファーメーション）。長三和音の Ⅵ だけ、ではない（おすすめ: ${prim(h).join(' ')}）`, h.cursor === 2 && prim(h)[0] === 'Ⅵm7' && !names(h).includes('Ⅵ'));
+    t.ok(`ヒント（ご指摘の画像）: 不自然な候補（Ⅲ♭m6・Ⅶm7♭5・Ⅲm7・Ⅴ#dim7・Ⅴ7）は、出ない（出た駒: ${names(h).join(' ')}）`, !['Ⅲ♭m6', 'Ⅶm7-5', 'Ⅲm7', 'Ⅴ#dim7', 'Ⅴ7'].some((n) => names(h).includes(n)));
+    t.ok('ヒント（ご指摘の画像）: ほかのダイアトニックコードを差しおいて、1つだけ色のついた和音が、出ることはない（出た駒は、Ⅵm7 と、Ⅲ7 の続き: Ⅵ7・Ⅵsus4 だけ）', names(h).every((n) => ['Ⅵm7', 'Ⅵm', 'Ⅵ7', 'Ⅵsus4'].includes(n)));
+    h = hint('ⅠM7 Ⅶm7-5 Ⅲ7');
+    t.ok(`ヒント（分割なしの 4番）: おすすめは Ⅵm 系（Ⅵm7 か Ⅵm）。Ⅵ（長三和音）は、フレーズの終わりなので、発展に（ピカルディ終止）。おすすめ: ${prim(h).join(' ')} / 発展: ${adv(h).join(' ')}`, h.cursor === 3 && prim(h).length === 1 && /^Ⅵm/.test(prim(h)[0]) && adv(h).includes('Ⅵ'));
+
+    // ---- いつもの続き（level 3）は、おすすめに入る ----
+    for (const [spec, want] of [['ⅠM7 Ⅲ7', 'Ⅵm7'], ['Ⅲm7', 'Ⅵm7'], ['ⅣM7 Ⅲm7', 'Ⅵm7'], ['Ⅱm7', 'Ⅴ7'], ['Ⅱ7', 'Ⅴ7'], ['Ⅵ7', 'Ⅱm7'], ['Ⅶm7-5', 'Ⅲ7'], ['Ⅰ7', 'ⅣM7'], ['ⅠM7 Ⅵm7', 'Ⅱm7'], ['ⅠM7 Ⅵm7', 'Ⅴ7'], ['ⅣM7', 'Ⅴ7'], ['Ⅳm7', 'Ⅰ'], ['ⅠM7 Ⅱm7 Ⅴ7', 'Ⅰ']]) {
+      const hh = hint(spec);
+      t.ok(`ヒント: ${spec} のあとは、いつもの続きの ${want} が、おすすめにある（おすすめ: ${prim(hh).join(' ')}）`, prim(hh).some((n) => n === want || (want === 'Ⅰ' && n === 'ⅠM7')));
+    }
+    t.ok('ヒント: Ⅲm7 のあと、Ⅵ は、Ⅵm7（点数の高い Ⅵ7 ではなく、その場面で自然な和音）。Ⅵ7 は、発展に残る（新しい発見をつぶさない）', (() => { const hh = hint('Ⅲm7'); return prim(hh)[0] === 'Ⅵm7' && !prim(hh).includes('Ⅵ7') && adv(hh).includes('Ⅵ7'); })());
+    t.ok('ヒント: Ⅵm7 のあと、Ⅱm7（循環コード）が、おすすめ。Ⅱ7（セカンダリードミナント）は、発展に残る', (() => { const hh = hint('Ⅵm7'); return prim(hh).includes('Ⅱm7') && adv(hh).includes('Ⅱ7'); })());
+    t.ok('ヒント: 発展も、意味のあるもの（ⅣM7 のあと: Ⅳm7（サブドミナントマイナー）・Ⅱm7・Ⅱ7。Ⅱm7 のあと: Ⅱ♭7（裏コード）。Ⅴ7 のあとの 4番: Ⅵ♭M7・Ⅵ（ピカルディ）は、発展）', (() => {
+      const a = adv(hint('ⅣM7')), b = adv(hint('Ⅱm7')), c = hint('ⅠM7 Ⅱm7 Ⅴ7');
+      return ['Ⅳm7', 'Ⅱm7', 'Ⅱ7'].every((n) => a.includes(n)) && b.includes('Ⅱ♭7') && adv(c).includes('Ⅵ♭M7') && adv(c).includes('Ⅵ') && !prim(c).includes('Ⅵ♭M7') && !prim(c).includes('Ⅵ');
+    })());
+    t.ok('ヒント: 3番・7番では、借用和音・サスが、入り口として出る（ⅠM7 Ⅴ7 のあと: Ⅵ♭M7・Ⅵsus4）。ほかの場所では、出ない', (() => {
+      const a = names(hint('ⅠM7 Ⅴ7')), b = names(hint('Ⅴ7'));
+      return a.includes('Ⅵsus4') && a.includes('Ⅵ♭M7') && !b.includes('Ⅵsus4');
+    })());
+    t.ok('ヒント: 終止（フレーズの終わりの形）は、3番までは、「終止が決まる」と勧めない。ⅣM7 → Ⅰ は、3番（2番の駒のあと）では、おすすめにしない（流れとして、発展に出る）', (() => { const hh = hint('ⅣM7'); return !prim(hh).includes('Ⅰ') && adv(hh).includes('Ⅰ'); })());
+    t.ok('ヒント: ふつうのドミナントの終止（4番の Ⅴ-Ⅰ）は、これまでどおり、おすすめ', (() => { const hh = hint('Ⅳ Ⅱm7 Ⅴ7'); return prim(hh).some((n) => /^Ⅰ/.test(n)); })());
+    t.ok('ヒント: 前の駒につながらない、ループのつなぎ目だけの技（Ⅵm7 → Ⅱ♭7 → 1番の Ⅰ）は、勧めない。Ⅱm7 → Ⅱ♭7 → Ⅰ は、勧める', (() => {
+      const a = names(hint('ⅠM7 Ⅵm7 Ⅱm7 Ⅴ7 ⅣM7 Ⅲm7 Ⅵm7')), b = names(hint('ⅠM7 Ⅵm7 Ⅱm7 Ⅴ7 ⅠM7 Ⅵm7 Ⅱm7'));
+      return !a.includes('Ⅱ♭7') && b.includes('Ⅱ♭7');
+    })());
+    t.ok('ヒント: おすすめが4つをこえたぶんは、つぶさずに、発展に回る（おすすめ ≤ 4・発展 ≤ 5・重ならない）', (() => {
+      for (const spec of ['ⅠM7', 'Ⅰ Ⅳ', 'Ⅴ7', 'ⅣM7', 'ⅠM7 Ⅵm7 Ⅱm7 Ⅴ7']) { const hh = hint(spec); const all = [...hh.primary, ...hh.advanced]; if (hh.primary.length > 4 || hh.advanced.length > 5 || new Set(all.map((c) => c.id)).size !== all.length) return false; }
+      return true;
+    })());
+
+    // ---- 数で確かめる（種つきの乱数。左の駒は、よく使う和音から。1〜3つ）----
+    {
+      let s = 20261124; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+      const common = ['Ⅰ', 'ⅠM7', 'Ⅱm7', 'Ⅲm7', 'Ⅲ7', 'ⅣM7', 'Ⅳ', 'Ⅴ', 'Ⅴ7', 'Ⅵm7', 'Ⅵm', 'Ⅶm7-5', 'Ⅱ7', 'Ⅵ7', 'Ⅳm7', 'Ⅰ7', 'Ⅴm7', 'Ⅱm', 'Ⅲm'];
+      let n = 0, bad = [], majVI = [], sus4 = [], same = [], noNatural = [];
+      for (let k = 0; k < 500; k++) {
+        const len = 1 + Math.floor(rnd() * 3);
+        const seq = []; for (let i = 0; i < len; i++) { let c; do { c = common[Math.floor(rnd() * common.length)]; } while (i > 0 && c === seq[i - 1]); seq.push(c); }
+        const spec = seq.join(' ');
+        const hh = hint(spec);
+        const prev = table.byName(seq[seq.length - 1]), pp = seq.length >= 2 ? table.byName(seq[seq.length - 2]) : null;
+        const ctx = { prevPrev: pp, phraseEnd: hh.cursor % 4 === 3, phraseThird: hh.cursor % 4 === 2 };
+        n++;
+        for (const c of [...hh.primary, ...hh.advanced]) {
+          const g = continuationGrade(prev, table.byId(c.id), ctx);
+          if (g && g.level < 1 && !/の途中|の最初/.test(c.reason)) bad.push(`${spec} → ${c.name}（${c.reason.slice(0, 30)}）`);
+          if (c.name === 'Ⅵ' && !(hh.cursor % 4 === 3 || prev.name === 'Ⅵsus4')) majVI.push(`${spec} → Ⅵ`);
+          if (c.name === 'Ⅵsus4' && hh.cursor % 4 !== 2) sus4.push(`${spec} → Ⅵsus4`);
+          if (c.id === prev.id) same.push(`${spec} → ${c.name}`);
+        }
+        const top = hh.primary.length + hh.advanced.length;
+        if (top === 0) noNatural.push(spec);
+      }
+      t.ok(`ヒント（${n} 通りの進行）: 出る駒は、前の駒から自然につながる（自然さ 1 以上）か、名前のついた進行の途中・最初（出ない: ${bad.slice(0, 3).join(' / ')}）`, n > 400 && bad.length === 0);
+      t.ok(`ヒント（${n} 通り）: Ⅵ（長三和音）は、フレーズの終わり（4番・8番）か、Ⅵsus4 のあとだけ（${majVI.slice(0, 3).join(' / ')}）`, majVI.length === 0);
+      t.ok(`ヒント（${n} 通り）: Ⅵsus4 は、3番・7番だけ（${sus4.slice(0, 3).join(' / ')}）`, sus4.length === 0);
+      t.ok(`ヒント（${n} 通り）: 直前と同じ和音は、すすめない（${same.slice(0, 3).join(' / ')}）`, same.length === 0);
+      t.ok(`ヒント（${n} 通り）: どの進行の続きでも、候補が1つはある（${noNatural.slice(0, 3).join(' / ')}）`, noNatural.length === 0);
+    }
+  }
+
+  // ============ 31. スムーズボイスリーディング（中・大）と、低すぎる進行を上げる（2026-11-24。ご依頼）============
+  {
+    const NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+    const pcName = (m) => NAMES[((m % 12) + 12) % 12];
+    // spec の盤を、モードごとの音（各ステップの、低 → 高。決めなかったものは、ふつうの高さ）にする
+    const voicesOf = (spec, mode, baseC = 48) => {
+      const bd = board(spec), steps = spec.trim().split(/\s+/).length;
+      const roots = planVoicing(bd, table, { baseC, steps });
+      const sm = planSmoothVoicing(bd, table, { baseC, steps, mode, roots });
+      return bd.slice(0, steps).map((id, k) => { const c = table.byId(id); return sm.first[k] || voiceChordAt(c, roots.first[k], baseC); });
+    };
+    const notes = (spec, mode) => voicesOf(spec, mode).map((v) => v.notes);
+    const names = (spec, mode) => voicesOf(spec, mode).map((v) => v.notes.map(pcName).join(''));
+
+    // ---- ご指定の例（中）----
+    t.eq('スムーズ（中）: Dm7 → G7 → CM7 = DFAC / G（ルート）+ DFGB / CEGB', notes('Ⅱm7 Ⅴ7 ⅠM7', 'mid'), [[50, 53, 57, 60], [43, 50, 53, 55, 59], [48, 52, 55, 59]]);
+    t.eq('スムーズ（中）: Am7 → Dm7 → G7 → C7 → FM7 = ACEG / D（ルート）+ ACDF / GBDF / C（ルート）+ GB♭CE / FACE', notes('Ⅵm7 Ⅱm7 Ⅴ7 Ⅰ7 ⅣM7', 'mid'),
+      [[57, 60, 64, 67], [50, 57, 60, 62, 65], [55, 59, 62, 65], [48, 55, 58, 60, 64], [53, 57, 60, 64]]);
+    t.eq('スムーズ（中）: C → G7（弱進行）→ Dm7 = CEGC / G（ルート）+ DFGB / DFAC', notes('Ⅰ Ⅴ7 Ⅱm7', 'mid'), [[48, 52, 55, 60], [43, 50, 53, 55, 59], [50, 53, 57, 60]]);
+    t.eq('スムーズ: 音の名前で（ご指定の書き方）: Dm7 G7 CM7', names('Ⅱm7 Ⅴ7 ⅠM7', 'mid'), ['DFAC', 'GDFGB', 'CEGB']);
+    t.eq('ふつう（off）: これまでどおり（ルート位置の高さ。スムーズの計画は、何も決めない）', [notes('Ⅱm7 Ⅴ7 ⅠM7', 'off'), (() => { const sm = planSmoothVoicing(board('Ⅱm7 Ⅴ7 ⅠM7'), table, { mode: 'off', steps: 3 }); return sm.first.every((v) => v === null); })()], [[[50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59]], true]);
+    t.eq('スムーズ（中）: ルートが4度・5度で動くつながりだけ（Ⅵm → Ⅱm7 は 4度上）。ほかは、ふつうの高さのまま（Ⅰ → Ⅵm は 長6度上・Ⅱm7 → ⅣM7 は 短3度上・ⅣM7 → Ⅴ7 は 全音上）',
+      (() => { const bd = board('Ⅰ Ⅵm Ⅱm7 ⅣM7 Ⅴ7'); const roots = planVoicing(bd, table, { steps: 5 }); const sm = planSmoothVoicing(bd, table, { steps: 5, mode: 'mid', roots }); return sm.first.slice(0, 5).map((v) => v !== null); })(), [false, false, true, false, false]);
+    t.eq('スムーズ（大）: すべてのつながりで、スムーズ（最初の和音だけ、ふつうの高さ）', (() => { const bd = board('Ⅰ Ⅵm Ⅱm7 ⅣM7 Ⅴ7'); const roots = planVoicing(bd, table, { steps: 5 }); const sm = planSmoothVoicing(bd, table, { steps: 5, mode: 'high', roots }); return sm.first.slice(0, 5).map((v) => v !== null); })(), [false, true, true, true, true]);
+
+    // ---- 決まり: いちばん下の音は、いつもルート（別にベースを足す）。上の音は、範囲の中。動きは、ふつうより少ない ----
+    {
+      let s = 98765; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+      const common = ['Ⅰ', 'ⅠM7', 'Ⅱm7', 'Ⅲm7', 'Ⅲ7', 'ⅣM7', 'Ⅳ', 'Ⅴ', 'Ⅴ7', 'Ⅵm7', 'Ⅵm', 'Ⅶm7-5', 'Ⅱ7', 'Ⅵ7', 'Ⅳm7', 'Ⅰ7', 'Ⅴm7', 'Ⅱm', 'Ⅲm', 'Ⅴsus47', 'Ⅵsus4', 'Ⅵ'];
+      let n = 0, rootBad = 0, outRange = 0, highOk = 0, midOk = 0, sumOff = 0, sumHigh = 0;
+      for (let k = 0; k < 200; k++) {
+        const len = 3 + Math.floor(rnd() * 6);
+        const names2 = []; for (let i = 0; i < len; i++) { let c; do { c = common[Math.floor(rnd() * common.length)]; } while (i > 0 && c === names2[i - 1]); names2.push(c); }
+        const spec = names2.join(' ');
+        const bd = board(spec), roots = planVoicing(bd, table, { steps: 8 });
+        const motionOf = (mode, onlySmooth) => {
+          const sm = planSmoothVoicing(bd, table, { steps: 8, mode, roots });
+          let total = 0, prev = null;
+          for (let k2 = 0; k2 < len; k2++) {
+            const c = table.byId(bd[k2]);
+            const v = sm.first[k2] || voiceChordAt(c, roots.first[k2], 48);
+            const up = sm.first[k2] ? v.up : v.notes.slice().sort((a, b) => a - b);
+            if (sm.first[k2]) {
+              if (v.notes[0] % 12 !== c.rootPc) rootBad++;
+              if (v.up.some((m) => m < 39 || m > 69)) outRange++;
+            }
+            if (prev && (!onlySmooth || sm.first[k2])) total += voiceMotion(prev, up);
+            prev = up;
+          }
+          return total;
+        };
+        n++;
+        const off = motionOf('off'), high = motionOf('high');
+        sumOff += off; sumHigh += high;
+        if (high <= off) highOk++;
+        // 中: スムーズにしたつながりだけの動きは、ふつうの高さのときより、小さい
+        const smMid = planSmoothVoicing(bd, table, { steps: 8, mode: 'mid', roots });
+        let midM = 0, offM = 0, prevMid = null, prevOff = null;
+        for (let k2 = 0; k2 < len; k2++) {
+          const c = table.byId(bd[k2]);
+          const stdv = voiceChordAt(c, roots.first[k2], 48).notes.slice().sort((a, b) => a - b);
+          const mv = smMid.first[k2] ? smMid.first[k2].up : stdv;
+          if (smMid.first[k2] && prevMid) { midM += voiceMotion(prevMid, mv); offM += voiceMotion(prevOff, stdv); }
+          prevMid = mv; prevOff = stdv;
+        }
+        if (midM <= offM + 0.001) midOk++;
+      }
+      t.ok(`スムーズ（${n} 通りの進行）: いちばん下の音は、いつもルート（上の音のいちばん下がルートでなければ、そのすぐ下に、別のベース）`, rootBad === 0);
+      t.ok(`スムーズ（${n} 通り）: 上の音は、範囲（D#2〜A4 あたり。MIDI 39〜69）の中`, outRange === 0);
+      t.ok(`スムーズ（大）: ふつうの高さのときより、動きが小さい（${highOk}/${n} 通り。合計 ${sumOff} → ${sumHigh}）`, highOk >= n * 0.97 && sumHigh < sumOff * 0.6);
+      t.ok(`スムーズ（中）: スムーズにしたつながりの動きは、ふつうの高さのときより、小さい（${midOk}/${n} 通り）`, midOk >= n * 0.97);
+    }
+    t.eq('スムーズ（大）: ループのつなぎ目（最後 → 最初）も、動きが少なくなるように選ぶ（Ⅵm7 Ⅱm7 Ⅴ7 Ⅰ7 ⅣM7 のつなぎ目 ⅣM7 → Ⅵm7 の動きが、中より小さい）',
+      (() => { const m = (mode) => { const v = voicesOf('Ⅵm7 Ⅱm7 Ⅴ7 Ⅰ7 ⅣM7', mode); const up = (x) => x.up || x.notes.slice().sort((a, b) => a - b); return voiceMotion(up(v[4]), up(v[0])); }; return m('high') < m('mid'); })(), true);
+    t.eq('スムーズ: 分割したマス（前半・後半）も、つなぐ（Dm7 | G7 → CM7）', (() => {
+      const bd = board('Ⅱm7 ⅠM7'), sp = board('Ⅴ7 -');
+      const roots = planVoicing(bd, table, { steps: 2, split: sp });
+      const sm = planSmoothVoicing(bd, table, { steps: 2, split: sp, mode: 'mid', roots });
+      return [sm.first[0], sm.second[0] && sm.second[0].notes, sm.first[1] && sm.first[1].notes];
+    })(), [null, [43, 50, 53, 55, 59], [48, 52, 55, 59]]);
+    t.eq('スムーズ: 3和音でも、重ねる音は、ルート（ご指定の CEGC）。5度・3度に重ねるのは、動きが少なくなるときだけ', voicesOf('Ⅰ Ⅴ7', 'mid')[0].notes, [48, 52, 55, 60]);
+    t.eq('スムーズ: 駒が1つ・休みだけのとき、何も決めない', [planSmoothVoicing(board('Ⅰ'), table, { steps: 8, mode: 'high' }).first.every((v) => v === null), planSmoothVoicing(board(''), table, { steps: 8, mode: 'high' }).first.every((v) => v === null)], [true, true]);
+    t.eq('動きの量: 同じ数の音は、低い音から順に、差の合計。ちがう数は、あまった音1つごとに 2', [voiceMotion([50, 53, 57, 60], [50, 53, 55, 59]), voiceMotion([50, 53, 57, 60], [50, 53, 57, 60, 62]), voiceMotion([], [60])], [3, 2, 2]);
+
+    // ---- 低すぎる進行を、1オクターブ上げる ----
+    t.eq('低すぎる進行: 和音の音に C1（MIDI 36）以下があれば、進行ぜんぶを 12 上げる（基準は、あとで変えるかもしれない: LOW_LIMIT）', [LOW_LIMIT, LOW_LIFT, liftFor([{ notes: [36, 40, 43] }, { notes: [48, 52] }]), liftFor([{ notes: [37, 40, 43] }, { notes: [48, 52] }]), liftFor([]), liftFor([null])], [36, 12, 12, 0, 0, 0]);
+    t.eq('低すぎる進行: ふつうの高さ（C3 〜）では、上げない（和音の音は、MIDI 41 以上）', (() => {
+      const bd = board('Ⅰ Ⅳ Ⅴ Ⅵm Ⅶm7-5 Ⅲm Ⅱm Ⅰ'); const roots = planVoicing(bd, table, { steps: 8 });
+      return liftFor(bd.map((id, k) => voiceChordAt(table.byId(id), roots.first[k], 48)));
+    })(), 0);
   }
 }

@@ -19,6 +19,7 @@ import { LibraryLink, mergeUserPatterns, libraryChanges, isUserPatternId } from 
 import { decodeShare, sanitizeShared, sanitizeLocal, mergeIntoLibrary, removeFromLibrary } from './net/share.js';
 import { LibImport } from './ui/libimport.js';
 import { SoundMenu } from './ui/soundmenu.js';
+import { HowTo } from './ui/howto.js';
 import { VolumeMenu } from './ui/volumemenu.js';
 import { MelodyView } from './ui/melodyview.js';
 import { PresetMenu } from './ui/presetmenu.js';
@@ -98,6 +99,7 @@ async function main() {
     engine.onStepScheduled = onStepScheduled;
     app.engine = engine; app.sfx = new Sfx(engine);
     applyVolume();                                    // 保存してあった音量を、すぐ反映する
+    engine.setVoicing(effectiveVoicing());           // 保存してあった、和音のつなぎ方（ふつう・スムーズ）も
     engine.setBpm(game.stage ? game.stage.bpm : 120);
   }
 
@@ -115,9 +117,16 @@ async function main() {
   }
   function applySound() {
     const s = effectiveSound();
-    if (app.engine) { app.engine.setInstrument(s.instrument); app.engine.setPatterns({ drumId: s.drum, backingId: s.backing }); }
+    if (app.engine) { app.engine.setInstrument(s.instrument); app.engine.setPatterns({ drumId: s.drum, backingId: s.backing }); app.engine.setVoicing(effectiveVoicing()); }
     soundMenu.render();
   }
+  // 和音のつなぎ方（ステージの標準はない。ユーザーが選んだものだけ。ふつう / スムーズ（中）/ スムーズ（大））
+  const VOICINGS = [
+    { id: 'off', name: 'ふつう', desc: 'ルートの高さを決めて、その上に和音を重ねる（いつもの音）' },
+    { id: 'mid', name: 'スムーズ（中）', desc: 'ルートが4度・5度で動くとき、前の和音から、音の動きを少なくつなぐ（例: Dm7 → G7 → CM7 = DFAC → DFGB → CEGB。ルートの G は、別にベースに）' },
+    { id: 'high', name: 'スムーズ（大）', desc: 'ぜんぶの和音のつなぎで、内声の動きが、いちばん少なくなるように、つなぐ（ルートは、別にベースに）' },
+  ];
+  const effectiveVoicing = () => { const v = (save.sound || {}).voicing; return VOICINGS.some((o) => o.id === v) ? v : 'off'; };
   const soundModel = () => {
     const sp = save.sound || {}, e = effectiveSound();
     const opts = (list) => [{ id: 0, name: 'なし' }, ...list.map((p) => ({ id: p.id, name: p.name, user: !!p.user }))];
@@ -125,16 +134,17 @@ async function main() {
       instrument: { value: e.instrument, isStageDefault: sp.instrument == null, options: INSTRUMENTS },
       drum: { value: e.drum, isStageDefault: sp.drum == null, options: opts(presets.drums) },
       backing: { value: e.backing, isStageDefault: sp.backing == null, options: opts(presets.backings) },
+      voicing: { value: effectiveVoicing(), isStageDefault: false, options: VOICINGS },
     };
   };
   const soundMenu = new SoundMenu({
     root: $('#soundmenu'), button: $('#btn-soundmenu'), label: $('#sound-menu-label'), getModel: soundModel,
     onPick: (kind, id) => {
-      save.sound = Object.assign({ instrument: null, drum: null, backing: null }, save.sound, { [kind]: id }); writeSave(save);
+      save.sound = Object.assign({ instrument: null, drum: null, backing: null, voicing: 'off' }, save.sound, { [kind]: id }); writeSave(save);
       applySound();
       if (kind === 'instrument' && app.engine && !app.muted) app.engine.audition(table.byName('Ⅰ').id);        // 音色を変えたら、すぐ聴ける
     },
-    onReset: () => { save.sound = { instrument: null, drum: null, backing: null }; writeSave(save); applySound(); hud.toast('音はステージの標準にもどしました'); },
+    onReset: () => { save.sound = { instrument: null, drum: null, backing: null, voicing: effectiveVoicing() }; writeSave(save); applySound(); hud.toast('音はステージの標準にもどしました（和音のつなぎ方は、そのまま）'); },
     onImport: () => libImport.open(),                       // 公開ページ: リズム・コード編集の内容の取り込み
   });
   app.soundMenu = soundMenu;
@@ -331,6 +341,7 @@ async function main() {
     if (chordLab.isOpen) chordLab.close(true);
     if (trickDetail.isOpen) trickDetail.close();
     if (libImport.isOpen) libImport.close();
+    if (howto.isOpen) howto.close();
     closeSheets();
   }
   function closeSheets() { document.body.classList.remove('side-open', 'guide-open'); syncSheetButtons(); }
@@ -631,6 +642,7 @@ async function main() {
       if (e.key === ' ' && app.state === 'play' && !e.repeat) { e.preventDefault(); togglePlay(); }
       if ((e.key === 'h' || e.key === 'H') && app.state === 'play') toggleHints();
       if ((e.key === 'm' || e.key === 'M') && app.state !== 'splash') toggleSound();
+      if (e.key === '?' && !e.repeat && !howto.isOpen) howto.open();                           // 使い方（開けるのは、遊ぶ画面・タイトル・ステージ選択のとき）
       if (e.key === 'Escape' && !e.defaultPrevented) { if (app.state === 'play') openPause(); else if (app.state === 'pause') resumeFromPause(); }
       if ((e.key === 'p' || e.key === 'P') && app.state === 'play' && !$('#btn-presets').classList.contains('hidden')) presetMenu.open();
     });
@@ -645,6 +657,8 @@ async function main() {
     }));
     $('#stages .back').addEventListener('click', showTitle);
     $('#btn-import').addEventListener('click', () => libImport.open());
+    $('#btn-howto-title').addEventListener('click', () => howto.open());
+    $('#btn-howto').addEventListener('click', () => howto.open());
     $('#btn-unlock').addEventListener('click', () => { save.unlockAll = !save.unlockAll; writeSave(save); hud.toast(save.unlockAll ? '全ステージを開きました（デモ用）' : '元に戻しました'); });
     $('#btn-reset').addEventListener('click', () => { if (confirm('進み具合（クリア・図鑑・ベスト・メロディの記録）をすべてリセットしますか？\n（保存したプリセットと、つくったメロディ・自作コード・取り込んだリズムは残ります）')) { const keep = { presets: save.presets, library: save.library, chordbook: save.chordbook, userMelody: save.userMelody, userMelodyOn: save.userMelodyOn, volume: save.volume, volumeSet: save.volumeSet }; Object.assign(save, resetSave(), keep); writeSave(save); hud.toast('リセットしました（プリセット・メロディ・自作コード・取り込んだリズムは残してあります）'); showTitle(); } });
     $('#btn-menu').addEventListener('click', openPause);
@@ -652,6 +666,7 @@ async function main() {
       if (app.state !== 'pause') return;                         // メニューが開いているときだけ（見えていないボタンが、押されても、何も起きない）
       const a = b.dataset.act;
       if (a === 'resume') { resumeFromPause(); return; }
+      if (a === 'howto') { resumeFromPause(); howto.open(); return; }                      // メニューから「使い方」: メニューを閉じて（遊ぶ画面にもどって）、使い方を開く（スマホは、上のバーの「？」が、画面の外にあるので、ここからも）
       screens.hide('pause'); app.paused = false;
       if (a === 'restart') startStage(game.stage, game.mode);
       else if (a === 'stages') (game.mode === 'trial' ? showTrials : game.mode === 'melody' ? showMelodies : showStages)();
@@ -847,7 +862,7 @@ async function main() {
   // ============================================================ リズム・コード編集の内容の取り込み（公開ページ。タイトルの「リズムを取り込む」・音のメニューのボタン・リンク（#lib=）から開く）
   const countOf = (r) => ({ drums: r.drums.length, backings: r.backings.length, progressions: r.progressions.length, skipped: r.skipped });
   const libImport = new LibImport({
-    root: $('#libimport'), getLibrary: () => save.library, getCloud: () => ({ enabled: cloud.enabled, state: cloud.state, lib: cloud.lib }), canOpen: () => ['play', 'title', 'stages'].includes(app.state),
+    root: $('#libimport'), getLibrary: () => save.library, getCloud: () => ({ enabled: cloud.enabled, state: cloud.state, lib: cloud.lib }), canOpen: () => ['play', 'title', 'stages'].includes(app.state) && !howto.isOpen,
     onPreview: (text) => { const d = decodeShare(text); return d.ok ? { ok: true, counts: countOf(sanitizeShared(d.data, chordNames)) } : d; },
     onImport: (text) => {
       const d = decodeShare(text);
@@ -875,6 +890,22 @@ async function main() {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 何もしない */ }
     libImport.open({ text: hash });
   }
+
+  // ============================================================ 使い方（動く図で、操作と機能を説明する。タイトルの「使い方」・上のバーの「？」・? キー）
+  const howto = new HowTo({
+    root: $('#howto'), canOpen: () => ['play', 'title', 'stages'].includes(app.state) && !libImport.isOpen,          // 取り込みの画面が開いているときは、開かない（タイトル・ステージ選択の上には、重ねる画面は1つだけ）
+    onOpen: () => {
+      app.howtoPrev = app.state;
+      if (app.input) app.input.cancel();
+      if (!save.howtoSeen) { save.howtoSeen = true; writeSave(save); refreshHowtoMark(); }
+      if (app.state === 'play') { app.state = 'howto'; hud.clearStamps(); screens.show('hud', 'howto'); }
+      else screens.show(app.state === 'stages' ? 'stages' : 'title', 'howto');          // タイトル・ステージ選択の上に重ねる（状態は、そのまま。タイトルのデモも止まらない）
+    },
+    onClose: () => { screens.hide('howto'); if (app.howtoPrev === 'play') returnToPlay(); },
+  });
+  app.howto = howto;
+  const refreshHowtoMark = () => $('#btn-howto-title').classList.toggle('attn', !save.howtoSeen);          // はじめてのとき、タイトルの「使い方」に印をつける
+  refreshHowtoMark();
 
   // ============================================================ 技の詳細（技の枠・「技」の一覧の行・「理由」の「くわしく」を押すと開く）
   const trickDetail = new TrickDetail({

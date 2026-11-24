@@ -40,7 +40,7 @@ INVARIANTS = r"""
   const modals = [...document.querySelectorAll('.screen.modal')].filter((e) => !e.classList.contains('hidden'));
   if (modals.length > 1) bad.push('モーダルが同時に ' + modals.length + ' つ出ている: ' + modals.map((e) => e.id).join(','));
   const vis = (id) => !document.querySelector('#' + id).classList.contains('hidden');
-  const pairs = [['trickdetail', A.trickDetail.isOpen], ['presets', A.presetMenu.isOpen], ['studio', A.studio.isOpen], ['chordlab', A.chordLab.isOpen], ['libimport', A.libImport.isOpen]];
+  const pairs = [['trickdetail', A.trickDetail.isOpen], ['presets', A.presetMenu.isOpen], ['studio', A.studio.isOpen], ['chordlab', A.chordLab.isOpen], ['libimport', A.libImport.isOpen], ['howto', A.howto.isOpen]];
   for (const [id, open] of pairs) if (open !== vis(id)) bad.push(id + ': 「開いている」と覚えている状態（' + open + '）と、見え方（' + vis(id) + '）がちがう');
   if (A.state === 'play' && modals.length) bad.push('遊ぶ画面（play）なのに、モーダルが出ている: ' + modals.map((e) => e.id).join(','));
   if (A.state === 'title' && !vis('title')) bad.push('state=title なのに、タイトルが出ていない');
@@ -48,13 +48,13 @@ INVARIANTS = r"""
   if (A.state === 'pause' && !vis('pause')) bad.push('state=pause なのに、メニューが出ていない');
   if (A.state === 'result' && !vis('result')) bad.push('state=result なのに、結果の画面が出ていない');
   if (A.state !== 'result' && vis('result') && A.state !== 'splash') bad.push('結果の画面が出ているのに、state=' + A.state);
-  if (!['splash', 'title', 'stages', 'play', 'pause', 'result', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport'].includes(A.state)) bad.push('知らない状態: ' + A.state);
+  if (!['splash', 'title', 'stages', 'play', 'pause', 'result', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'howto'].includes(A.state)) bad.push('知らない状態: ' + A.state);
   // 画面の名前（body の data-screen = 土台・data-overlay = 重ねた画面）が、見えている画面と合っている（2026-11-24）
   {
     const mains = ['splash', 'title', 'stages', 'hud'].filter(vis);
     if (mains.length !== 1) bad.push('土台の画面が ' + mains.length + ' つ見えている: ' + mains.join(','));
     else if (document.body.dataset.screen !== mains[0]) bad.push('data-screen が、見えている土台の画面とちがう: ' + document.body.dataset.screen + ' / 見えているのは ' + mains[0]);
-    const overs = ['pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'result'].filter(vis);
+    const overs = ['pause', 'presets', 'studio', 'chordlab', 'trickdetail', 'libimport', 'howto', 'result'].filter(vis);
     const ov = document.body.dataset.overlay || '';
     if (overs.length > 1) bad.push('重ねた画面が ' + overs.length + ' つ見えている: ' + overs.join(','));
     else if ((overs[0] || '') !== ov) bad.push('data-overlay が、見えている重ねた画面とちがう: ' + ov + ' / 見えているのは ' + (overs[0] || 'なし'));
@@ -175,6 +175,9 @@ def actions(rng, phone):
         (2, "コードの編集を閉じる", lambda: "(() => { __app.chordLab.close(); return 1; })()"),
         (2, "取り込みを開く", lambda: "(() => { __app.libImport.open(); return 1; })()"),
         (2, "取り込みを閉じる", lambda: "(() => { __app.libImport.close(); return 1; })()"),
+        (2, "使い方を開く", lambda: "(() => { __app.howto.open(Math.floor(Math.random() * 10)); return 1; })()"),
+        (2, "使い方を閉じる", lambda: "(() => { __app.howto.close(); return 1; })()"),
+        (1, "使い方を、つぎへ・まえへ", lambda: "(() => { if (__app.howto.isOpen) __app.howto.go(__app.howto.index + (Math.random() < 0.5 ? 1 : -1)); return 1; })()"),
         (3, "音のメニュー", lambda: js_click('#btn-soundmenu')),
         (3, "音量のメニュー", lambda: js_click('#btn-sound')),
         (3, "Esc", lambda: js_key('Escape')),

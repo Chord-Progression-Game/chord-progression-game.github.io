@@ -124,7 +124,7 @@ export async function run(t) {
     t.eq('講評: 階段の真ん中を外して（講評が消えて）、置き直すと、もう一度知らせる（3つ分の +60）', [crit.length, crit[crit.length - 1]], [3, ['stairs', 60]]);
     g.clear(); crit.length = 0;
     g.place(0, id('Ⅰ')); g.place(1, id('Ⅲ7')); g.place(2, id('Ⅵ♭M7'));
-    t.eq('講評: 進行感なし（−40）と、役に立っていない駒（3つ × −15）のイベント。減点は、合計に入る（0 より下にはならない）', [crit, g.analysis.score.senseBad, g.analysis.score.total], [[['incoherent', -40], ['idle', -45]], 85, 0]);
+    t.eq('講評: 進行感なし（−40）と、役に立っていない駒（0点の指摘。減点なし）のイベント。減点は、合計に入る（0 より下にはならない）', [crit, g.analysis.score.senseBad, g.analysis.score.total], [[['incoherent', -40], ['idle', 0]], 40, 0]);
   }
   {
     const g = mk(); const st = STAGES[0];                          // はじめに: 技の判定はおやすみ。講評も、出さない

@@ -124,7 +124,7 @@ canvas#gl { height: 100vh; height: 100dvh; }
   /* ---- 技の枠・メニュー・モーダル ---- */
   .chordmenu { min-width: 12rem; }
   .modal { align-items: stretch; }
-  .modal .card, .modal .result-card, .modal .preset-card, .modal .ms-card, .modal .cl-card, .modal .td-card, .modal .li-card { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0.8rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom)); overflow: auto; border-left: 0; border-right: 0; }
+  .modal .card, .modal .result-card, .modal .preset-card, .modal .ms-card, .modal .cl-card, .modal .td-card, .modal .li-card, .modal .ht-card { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0.8rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom)); overflow: auto; border-left: 0; border-right: 0; }
   #pause .card { height: auto; align-self: center; width: min(92vw, 24rem); border-radius: 8px; border: 1px solid var(--line-2); }
   .modal .td-card { padding: 0; }
   .td-head { padding: 0.8rem 0.9rem 0.6rem; }

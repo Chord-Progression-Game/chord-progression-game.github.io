@@ -6,7 +6,7 @@
 // 時計は、画面ではなく、音の時計（AudioContext の currentTime）。少し先まで予約して鳴らすので、ずれない。
 // 本物の AudioContext でも、OfflineAudioContext（テスト用に、音を出さずに書き出す）でも、同じコードで動く。
 
-import { voiceChord, voiceChordAt, planVoicing, resolveChordAtStep, BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../core/voicing.js';
+import { voiceChord, voiceChordAt, planVoicing, planSmoothVoicing, liftFor, resolveChordAtStep, SMOOTH_MODES, BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../core/voicing.js';
 import { playSynth, INSTRUMENT_IDS } from './instruments.js';
 
 export const SLOTS_PER_STEP = 8;       // 1ステップ = 16分音符 8つ
@@ -14,14 +14,18 @@ export const NUM_STEPS = 8;
 export const LOOP_SLOTS = SLOTS_PER_STEP * NUM_STEPS;
 const GATE = 0.95;                     // 音の長さのうち、何%で止めるか（ファームと同じ）
 const LOOKAHEAD = 0.14;                // 何秒先まで予約するか
-// 画面の「音量」（0〜100%）と、ミュートから、全体の大きさ（マスターのゲイン）を決める。100% = これまでの大きさ。
-// バーは、耳に自然なように、2乗の曲線（50% で、およそ −12dB）。ミュートは 0
+// 画面の「音量」（0〜100%）と、ミュートから、全体の大きさ（マスターのゲイン）を決める。
+// 2026-11-24 から、バーの目盛りを、2倍の見かたにした（ご指定: はじめの値を 50% にして、そのかわり、全部の音量を半分に = 出音は、変えない）。
+//   バーの 100% = これまでの 50% の大きさ（VOLUME_TOP = 0.5）。はじめの値 50% = これまでの 25% と、同じ出音
+// バーは、耳に自然なように、2乗の曲線（バーの 50% で、100% の、およそ −12dB）。ミュートは 0
 export function masterGainFor(percent, muted = false) {
-  const p = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 100)) / 100;
+  const p = (Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 100)) / 100) * VOLUME_TOP;
   return muted ? 0 : MASTER_GAIN * p * p;
 }
-export const MASTER_GAIN = 1.35;       // 全体の大きさ（ノートパソコンのスピーカーでも、聞こえるように。割れないよう、最後にリミッターが入っている）
+export const MASTER_GAIN = 1.35;       // 全体の大きさ（ノートパソコンのスピーカーでも、聞こえるように。割れないよう、最後にリミッターが入っている）。音量のバー（masterGainFor）の「これまでの 100%」の大きさ
+export const VOLUME_TOP = 0.5;         // バーの 100% が、これまでの何% の大きさか（2026-11-24）
 const TIMER_MS = 25;
+export const DRUM_BUS_GAIN = 0.57;    // ドラムの音の通り道の大きさ（ピアノ 0.9・メロディ 0.9 に対して）
 const MELODY_GATE = 0.97;              // メロディの音の長さのうち、何%で止めるか（なめらかにつなぐ）
 const MELODY_VELOCITY = 86;
 const AUDITION_DUCK = 0.34;            // 演奏中（ほかのコードが鳴っている間）の試聴は、音の強さをこの倍に下げる（およそ -12dB）。ぶつかって不協和になるのを防ぐ
@@ -42,6 +46,7 @@ export class AudioEngine {
     this.bpm = 120;
     this.octave = OCTAVE_DEFAULT;
     this.voiceLeading = true;
+    this.voicingMode = 'off';                                         // 和音のつなぎ方: 'off'（ふつう）/ 'mid'（スムーズ・中）/ 'high'（スムーズ・大）。core/voicing.js の planSmoothVoicing
     this.backingId = 1;                // ロング
     this.drumId = 2;                   // 8ビート
     this.getBoard = () => Array(NUM_STEPS).fill(null);
@@ -80,7 +85,7 @@ export class AudioEngine {
     this.master.connect(this.comp); this.comp.connect(this.limiter); this.limiter.connect(ctx.destination);
     this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 512; this.limiter.connect(this.analyser);
     this.pianoBus = ctx.createGain(); this.pianoBus.gain.value = 0.9;
-    this.drumBus = ctx.createGain(); this.drumBus.gain.value = 0.8;
+    this.drumBus = ctx.createGain(); this.drumBus.gain.value = DRUM_BUS_GAIN;            // ドラムは、伴奏・メロディより少し小さく（2026-11-24 に、0.8 → 0.57 = 約 −3dB。ご指摘: ドラムが大きい）
     this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = 0.7;
     this.melodyBus = ctx.createGain(); this.melodyBus.gain.value = 0.9;
     this.reverb = ctx.createConvolver();
@@ -341,18 +346,48 @@ export class AudioEngine {
   _voicePlan() {
     const board = this.getBoard(), split = this.getSplit();
     const baseC = BASE_C_DEFAULT + 12 * this.octave, steps = Math.min(this.loopSteps || board.length, board.length);
-    const key = `${board.join(',')}|${split ? split.join(',') : ''}|${baseC}|${steps}|${this.voiceLeading ? 1 : 0}`;
-    if (this._planKey !== key) { this._planKey = key; this._plan = planVoicing(board, this.table, { baseC, split, steps, enabled: this.voiceLeading }); }
+    const key = `${board.join(',')}|${split ? split.join(',') : ''}|${baseC}|${steps}|${this.voiceLeading ? 1 : 0}|${this.voicingMode}`;
+    if (this._planKey !== key) {
+      this._planKey = key;
+      const roots = planVoicing(board, this.table, { baseC, split, steps, enabled: this.voiceLeading });
+      // スムーズボイスリーディング（中・大）: 前の和音の音から、動きが少なくなるように、つなぐ（決めなかった和音は、ふつうの高さ）
+      const smooth = this.voicingMode !== 'off' ? planSmoothVoicing(board, this.table, { baseC, split, steps, mode: this.voicingMode, roots }) : null;
+      const plan = Object.assign({}, roots, { smooth, lift: 0 });
+      // 低すぎる進行（和音の音に、C1 = MIDI 36 以下がある）は、進行ぜんぶを1オクターブ上げる（voicing.js の LOW_LIMIT）
+      const voices = [];
+      for (let k = 0; k < steps; k++) {
+        const id = resolveChordAtStep(board, k, this.table, split);
+        if (id !== null) { const c = this.table.byId(id); voices.push(this._rawVoice(c, roots.first[k], (smooth ? smooth.first[k] : null), baseC)); }
+        const sid = split ? split[k] : null;
+        if (sid !== null && sid !== undefined && this.table.byId(sid) && !this.table.byId(sid).isRepeat) voices.push(this._rawVoice(this.table.byId(sid), roots.second[k], (smooth ? smooth.second[k] : null), baseC));
+      }
+      plan.lift = liftFor(voices);
+      this._plan = plan;
+    }
     return this._plan;
   }
+
+  // 和音の音（高さを上げる前）。スムーズボイスリーディングで決めたものがあれば、それ。なければ、計画のルートの、ふつうの高さ
+  _rawVoice(chord, root, smoothVoice, baseC) {
+    return smoothVoice || voiceChordAt(chord, root === null || root === undefined ? baseC + chord.rootPc : root, baseC);
+  }
+
+  // 実際に鳴らす和音（高さを上げる前の音 + 進行全体の「1オクターブ上げる」）
+  _voiceFor(chord, root, smoothVoice, baseC) {
+    const v = this._rawVoice(chord, root, smoothVoice, baseC), lift = this._voicePlan().lift || 0;
+    return lift ? { root: v.root + lift, notes: v.notes.map((m) => m + lift), shift: v.shift + lift } : v;
+  }
+
+  // 和音のつなぎ方（'off' / 'mid' / 'high'）
+  setVoicing(mode) { this.voicingMode = SMOOTH_MODES.includes(mode) ? mode : 'off'; }
 
   // 分割したマスの、2拍目の頭: 後半のコードに切りかえる（高さは、ループ全体の計画で決まっている）
   _beginHalf(step, when) {
     const id = this._secondHalf(step);
     const chord = this.table.byId(id);
     const baseC = BASE_C_DEFAULT + 12 * this.octave;
-    const root = this._voicePlan().second[step];
-    const voice = voiceChordAt(chord, root === null || root === undefined ? baseC + chord.rootPc : root, baseC);
+    const plan = this._voicePlan();
+    const voice = this._voiceFor(chord, plan.second[step], plan.smooth ? plan.smooth.second[step] : null, baseC);
     this.lastRoot = voice.root;
     this.cur = { step, chordId: id, chord, voice, half: 1 };
     this.events.push({ type: 'half', time: when, step, chordId: id, notes: voice.notes });          // 技の「きらっ」（onStepScheduled）は、ステップの頭だけ（2回鳴らさない）
@@ -365,8 +400,8 @@ export class AudioEngine {
     if (id !== null) {
       const chord = this.table.byId(id);
       const baseC = BASE_C_DEFAULT + 12 * this.octave;
-      const root = this._voicePlan().first[step];                  // ループ全体を見て決めた高さ（強進行は、4度上か 5度下。終止は、5度下を優先）
-      const voice = voiceChordAt(chord, root === null || root === undefined ? baseC + chord.rootPc : root, baseC);
+      const plan = this._voicePlan();                              // ループ全体を見て決めた高さ（強進行は、4度上か 5度下。終止は、5度下を優先）
+      const voice = this._voiceFor(chord, plan.first[step], plan.smooth ? plan.smooth.first[step] : null, baseC);
       this.lastRoot = voice.root;
       this.cur = { step, chordId: id, chord, voice };
     } else {

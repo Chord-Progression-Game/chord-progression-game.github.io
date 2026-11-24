@@ -14,6 +14,7 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="description" content="物理的な駒でコード進行を組み立て、特徴的なつながりを「トリック」として判定するゲームの試作">
 <link rel="stylesheet" href="./css/game.css">
+<link rel="stylesheet" href="./css/howto.css">
 <link rel="stylesheet" href="./css/mobile.css">
 <script>window.__errors = []; addEventListener("error", (e) => window.__errors.push(String(e.message || e.error))); addEventListener("unhandledrejection", (e) => window.__errors.push("promise: " + String(e.reason && e.reason.stack || e.reason)));</script>
 <script>
@@ -58,6 +59,7 @@
         <button data-act="versus" disabled><b>—</b><span>対戦<em>準備中</em></span></button>
       </nav>
       <div class="title-foot">
+        <button id="btn-howto-title" class="chip" title="操作と機能の説明（絵で見る）。? キー">使い方</button>
         <button id="btn-device" class="chip" title="実機（駒を読み取る盤）につなぐ">実機: <span id="device-state">確認中…</span></button>
         <button id="btn-import" class="chip subtle web-only-show" title="リズム・コード編集の画面で作った、ドラム・バッキング・進行を、取り込む">リズムを取り込む</button>
         <button id="btn-unlock" class="chip subtle">ぜんぶ開く（デモ用）</button>
@@ -90,6 +92,7 @@
         <button id="btn-presets" class="chip" title="気に入った進行をプリセットとして保存・呼び出し">☆ プリセット</button>
         <button id="btn-studio" class="chip hidden" title="メロディを自動でつける・書く・直す（フリープレイ）">♪ メロディ</button>
         <div class="sm-wrap"><button id="btn-soundmenu" class="chip" aria-haspopup="true" title="音色・ビート・バッキングをえらぶ">♪ <b id="sound-menu-label">ピアノ</b></button><div id="soundmenu" class="soundmenu hidden"></div></div>
+        <button id="btn-howto" class="chip" title="使い方（操作と機能の説明）。? キー" aria-label="使い方">？</button>
         <div class="sm-wrap"><button id="btn-sound" class="chip toggle on" aria-haspopup="true" title="音量・ミュート（M キーでミュート）"><span class="dot"></span>音 <b id="sound-state">25%</b></button><div id="volmenu" class="soundmenu volmenu hidden"></div></div>
       </div>
     </div>
@@ -141,6 +144,7 @@
     <div class="card">
       <h3>MENU</h3>
       <button data-act="resume">つづける</button>
+      <button data-act="howto">使い方</button>
       <button data-act="restart">このステージをやりなおす</button>
       <button data-act="stages" id="pause-stages">チュートリアルを選ぶ</button>
       <button data-act="title">タイトルへ</button>
@@ -161,6 +165,9 @@
 
   <!-- リズム・コード編集の内容の取り込み（公開ページ用）。中身は ui/libimport.js が作る -->
   <section id="libimport" class="screen modal hidden"></section>
+
+  <!-- 使い方（操作と機能の説明。動く図）。中身は ui/howto.js が作る -->
+  <section id="howto" class="screen modal hidden"></section>
 
   <!-- 結果 -->
   <section id="result" class="screen modal hidden">

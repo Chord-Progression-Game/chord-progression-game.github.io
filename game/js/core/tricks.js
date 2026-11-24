@@ -209,7 +209,7 @@ export const HEAD_V = {
 // 点数（仮。遊びながら調整する）
 //   2026-11-24 に、配分を見直した（ご指摘: 名前のついた進行の点と倍率が、内声・ほかの技にくらべて大きすぎる / 駒を載せれば載せるだけ点がふえる「載せ得」）
 //     ① 名前のついた進行の基本の点を、約6割に / コンボの倍率を、最大 ×3 → ×1.6 に / 種類の数の倍率を、1種類ごとに +10% → +5% に
-//     ② 駒をふやしても、技や耳に馴染むつながりに使われていない駒は、1つにつき −15（sense.js の idle）。※ 同じ和音が続く = 「→」と同じ（buildSegments が1つにまとめる）ので、減点はない（第9弾で、−20 を削除）
+//     ② 駒をふやしても、技や耳に馴染むつながりに使われていない駒は、右の「技」の欄に、0点の指摘で出す（sense.js の idle。第10弾で、−15 の減点をやめた）。※ 同じ和音が続く = 「→」と同じ（buildSegments が1つにまとめる）ので、減点はない（第9弾で、−20 を削除）
 //     ③ 「コードの難しさ」の加点は、技や、耳に馴染むつながりに使われた駒だけ（使われていない難しい駒を、ならべても、点にならない）
 //   名前のついた進行は、その進行を、ふつうのつながりに分けたときの合計より、いつも高くなるようにしてある（テストで確かめている）
 export const SCORE = {
@@ -399,12 +399,12 @@ export const PATTERNS = [
   // ピカルディ終止: 短調の主和音 Ⅵm で終わるところを、長三和音の Ⅵ で終える。直前は、イ短調で終止に向かう和音（Ⅲ7 = Ⅴ7 / Ⅴ・Ⅴ7 = ♭Ⅶ / Ⅱm = Ⅳm / Ⅵm = 主和音 / Ⅵsus4 = サス）
   { id: 'picardy', kind: 'picardy', tier: 80, end: 'phrase', steps: [PICARDY_FROM, VI_MAJOR], points: 200, hintAdvanced: true,
     bonus: (evs) => (isSus(evs[0].chord) ? { points: 50, variant: 'サスつき' } : null),
-    soft: (evs) => !(evs[0].chord.rootPc === 4 || evs[0].chord.rootPc === 9) },     // soft = ヒントでは、フレーズの終わり（4番・8番）でだけ出す（Ⅲ7・Ⅵm 系・Ⅵsus4 からの形は、いつでも）
+    soft: () => true },     // soft = ヒントでは、フレーズの終わり（4番・8番）でだけ出す（2026-11-24 から、Ⅲ7・Ⅵm 系からの形も。3番に Ⅵ（長三和音）を勧めるのは不自然、というご指摘。Ⅵsus4 → Ⅵ は、サスの解決の流れで、いつでも出る）
   // 偽終止: Ⅵm（Ⅵm7）で終わる。前のコードは何でもよい（ただし、同じルートへの繰り返しは除く）。本来の形（Ⅴ → Ⅵm）は、上乗せの点。Ⅴ のあとなら、借用のⅥ♭M7 でもよい
   { id: 'deceptive_cadence', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [(c) => !c.isRepeat, VI_MINOR], check: (evs) => evs[0].chord.rootPc !== evs[1].chord.rootPc, points: 150,
     bonus: (evs) => (V_ANY(evs[0].chord) ? { points: 50 } : null),
     soft: (evs) => !V_ANY(evs[0].chord) },        // soft = どのコードのあとでも成立する形（ヒントでは、おすすめにしない。小節の終わりでだけ出す）
-  { id: 'deceptive_cadence_flat6', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [V_ANY, VI_FLAT_MAJ7], points: 200 },
+  { id: 'deceptive_cadence_flat6', kind: 'deceptive_cadence', tier: 80, end: 'phrase', steps: [V_ANY, VI_FLAT_MAJ7], points: 200, hintAdvanced: true },       // hintAdvanced = ヒントでは、おすすめではなく発展（借用和音の偽終止。第10弾）
   { id: 'dominant_ending', kind: 'dominant_ending', tier: 80, end: 'phrase', steps: [DOMINANT_ENDING_FROM, V_ANY], points: 100 },
   // ---- tier 82〜75: 借用和音（サブドミナントマイナーと、その代理）。Ⅳ→Ⅳm→Ⅰ（Ⅴ）は、終止（80）より先に取る（技として、いちばん高く評価する）。ほかは、名前のついた進行・終止が取らなかったつながりで、自然に着地したとき ----
   { id: 'sdm_classic', kind: 'sdm', tier: 82, variant: 'Ⅳ→Ⅳm→Ⅰ', advancedHint: true, steps: [isIvPlain, isMinorIv, (c) => isTonicFamily(c) || isDominantV(c)], points: 220 },
@@ -628,7 +628,7 @@ export function analyze(board, table, opts = {}) {
   const penalty = oddities.reduce((s, o) => s + o.penalty, 0);
   // ジャッジ（講評）: 名前のついた技にならなかったつながりを見て、耳に馴染む並びには加点、進行感のない並びには減点・指摘（sense.js）
   const critiques = judge(segments, claimed, { phrase: ctx.phrase, kinds: claimedKinds }).concat(board.length === 8 ? loopNote(board.length, segments, instances) : []);
-  // 技・耳に馴染むつながり（加点の講評）に使われている位置。使われていない駒は、「コードの難しさ」の加点がつかず、盤に3つ以上の駒があるときは、減点（役に立っていない駒）
+  // 技・耳に馴染むつながり（加点の講評）に使われている位置。使われていない駒は、「コードの難しさ」の加点がつかず、盤に3つ以上の駒があるときは、0点の指摘（役に立っていない駒。減点はない）
   const inTrick = new Set(), inUse = new Set();
   for (const ins of instances) for (const p of ins.positions) { inTrick.add(p); inUse.add(p); }
   for (const c of critiques) if (c.points > 0) for (const p of c.positions) inUse.add(p);
