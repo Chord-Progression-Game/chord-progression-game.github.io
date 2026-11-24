@@ -19,11 +19,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # 集める（build）と、公開する（deploy）を、2つの job に分ける。
+  #   以前は 1つの job で、アップロードの直後に公開していた。そのとき、GitHub 側で、アップロードした成果物（github-pages）が、まだ見えず、
+  #   「No artifacts named "github-pages" were found」で、まれに失敗した（2026-11-24 に、直近 6回中 3回）。job を分けると、公開の前に、少し間があく
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: 公開するファイルを集める（テストは入れない）
@@ -35,5 +35,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
