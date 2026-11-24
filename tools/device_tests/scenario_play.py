@@ -163,6 +163,9 @@ def nominal(pc, kind, key=0):
     return [r + i for i in SHAPES[kind]]
 
 
+# 【注意（2026-11-24）】ファームの和音の高さは、「直前のルートに一番近い高さ」から、「ループ全体を見て決める計画」（src/voicing.cpp の planBoardShifts）に変わった。
+#   この lead_shift・expected_sequence は、まだ、従来の「一番近い高さ」で期待値を計算している。新しいファームを実機に書き込んでこのシナリオを使う前に、計画に合わせて直すこと。
+#   （計画の決まりは docs/tricks_spec.md の 0-2。ホスト側の確認は tools/host_tests/test_voicing.cpp・test_firmware_sim.cpp）
 def lead_shift(prev_root, nominal_root):
     """ -12 / 0 / +12 のうち、直前のルートに一番近いもの（同じ近さなら 0 を優先） """
     if prev_root is None:
@@ -280,7 +283,7 @@ try:
             check("止める音は、鳴らした音と同じ", nn == nf, "%s vs %s" % (nn, nf))
         gaps = [rel[i + 1][0] - rel[i][0] for i in range(4)]
         print("  BPM120 のステップ間隔(ms): %s" % [round(g * 1000, 1) for g in gaps])
-    check("ボイスリーディングの表示", "[前のコードに近づけて、1オクターブ下]" in log_play, log_play[:400])
+    check("ボイスリーディングの表示", "[ループ全体の流れで、1オクターブ下]" in log_play, log_play[:400])
     check("START の案内: 進行・パターン・音源", "進行: [Ⅰ] [Ⅵm] [Ⅳ] [Ⅴ]" in log_play and "バッキング: ロング" in log_play and "音源: ブリッジ" in log_play, log_play[:500])
     check("休みの表示（位置2が空）", "（休み: 空）" in log_play, log_play)
     check("再生中の交換が表示される", "[位置3] 駒が交換されました: Ⅴ7" in log_play, log_play)

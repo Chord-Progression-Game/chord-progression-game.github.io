@@ -10,7 +10,7 @@
 //     chords       … コードの定義と、Key から実音への変換
 //     groove       … BPM に合わせた、時間の管理（delay を使わない）。ドラム・バッキングのパターンの再生
 //     rhythm       … パターン（ドラム・バッキング）の定義。rhythm_store が保存する
-//     voicing      … ボイスリーディング（前のコードから一番近い高さで鳴らす）
+//     voicing      … ボイスリーディング（ループ全体を見て、コードの高さを決める。強進行は4度上か5度下・終止は5度下を優先）
 //     player       … 上の部品をつないで、コード進行を再生する
 //     midi_out     … 音源への出力（MIDI）
 //     commands     … ターミナルから打つコマンド（START / STOP / BPM / KEY / DRUM / BACKING / STATUS ...）

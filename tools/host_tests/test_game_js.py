@@ -46,6 +46,11 @@ def build_generated():
                         os.path.join(ROOT, "src", "voicing.cpp"), os.path.join(ROOT, "src", "chords.cpp"), "-o", exe], check=True)
         with open(os.path.join(out, "voicing.txt"), "w", encoding="utf-8") as f:
             f.write(subprocess.run([exe], check=True, capture_output=True, text=True).stdout)
+        exe2 = os.path.join(tmp, "dump_voicing_plan")        # ループ全体の高さの計画（2026-11-24）
+        subprocess.run(["g++", "-std=gnu++11", "-I" + os.path.join(ROOT, "src"), os.path.join(ROOT, "tools", "host_tests", "dump_voicing_plan.cpp"),
+                        os.path.join(ROOT, "src", "voicing.cpp"), os.path.join(ROOT, "src", "chords.cpp"), "-o", exe2], check=True)
+        with open(os.path.join(out, "voicing_plan.txt"), "w", encoding="utf-8") as f:
+            f.write(subprocess.run([exe2], check=True, capture_output=True, text=True).stdout)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return out

@@ -76,7 +76,7 @@ export function suggest(board, table, allowedIds, opts = {}) {
   const maxAdvanced = opts.maxAdvanced ?? 5;
   const cursor = findCursor(board);
   if (cursor === null) return { cursor: null, context: [], primary: [], advanced: [] };
-  const allowed = allowedIds.map((id) => table.byId(id)).filter((c) => c && !c.isRepeat);
+  const allowedAll = allowedIds.map((id) => table.byId(id)).filter((c) => c && !c.isRepeat);
   const before = analyze(board, table, opts);
 
   // 左の駒（文脈）
@@ -89,6 +89,7 @@ export function suggest(board, table, allowedIds, opts = {}) {
   const atHead = cursor === 0;                              // 進行の頭（冒頭 = 1番）。5番は、ふつうの位置（2026-11-18）
   const phraseHead = cursor % PHRASE === 0;                 // フレーズの頭（1番・5番）
   const prevChord = seg.length ? seg[seg.length - 1].chord : null;
+  const allowed = allowedAll.filter((c) => !(prevChord && c.id === prevChord.id));          // 直前と同じ和音は、すすめない（同じ和音の連続は「→」と同じ = 進行がふえない。2026-11-24）
   const ctxSeventh = board.slice(0, cursor).concat(opts.split ? opts.split.slice(0, cursor) : []).some((id) => isSeventh(id === null || id === undefined ? null : table.byId(id)));       // それまでの進行に、セブンスコードがある（分割したマスの後半も）
   const resolving = phraseEnd || (!!prevChord && isDominantV(prevChord));                                                           // 着地する場所（フレーズの終わり・Ⅴのあと）
   const gainOf = (r) => r.score.total - r.score.levelBonus;          // 「コードの難しさ」の加点は、ヒントの順位に使わない（高いレベルの駒ばかり勧めないように）
@@ -272,6 +273,7 @@ export function suggest(board, table, allowedIds, opts = {}) {
       if (meloFit && meloFit(y) < 0.5) continue;                       // メロディとぶつかる駒は、出さない
       const b2 = withChord(board, cursor, y.id);
       for (const z of allowed) {
+        if (z.id === y.id) continue;                                  // 同じ和音の連続は、進行がふえない（「→」と同じ）
         const after = analyze(withChord(b2, cursor + 1, z.id), table, opts);
         const hit = after.instances.find((i) => !i.generic && i.positions.includes(cursor + 1) && i.positions.includes(cursor));
         if (hit) {

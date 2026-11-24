@@ -3,6 +3,7 @@
 
 #include "chords.h"
 #include "rhythm.h"
+#include "voicing.h"
 
 // ============================================================
 // グルーヴ: コード進行・ドラム・バッキングを、BPM に合わせて、いっしょに進める「時間の管理」
@@ -12,7 +13,7 @@
 //   ・時間は「ティック」で数える。1拍 = 48ティック、16分音符のマス = 12ティック、1ステップ（1つの位置）= 2拍 = 96ティック。
 //   ・BPM は、いつでも変えられて、すぐに反映される（ティックの進む速さが変わるだけ）。
 //   ・1ステップごとに、4つの位置を順番に進める（最後まで行ったら先頭に戻る）。
-//       そのステップのコードを決める → 「→」なら前のコマと同じ → ボイスリーディングで高さを決める
+//       そのステップのコードを決める → 「→」なら前のコマと同じ → ボイスリーディング（ループ全体の計画）で高さを決める
 //   ・バッキングのパターンは、そのステップのコードの音を、パターンの通りに鳴らす。
 //   ・ドラムのパターンは、コードとは関係なく、パターンの通りに鳴らす。
 //   ・delay() で止まらない。loop() から update() を呼ぶたびに、「時刻が来ていたら進める」。
@@ -109,7 +110,7 @@ class Groove {
   const Key& key() const { return key_; }
   void setOctaveForTriads(bool on) { octaveForTriads_ = on; }   // 3和音の4音目に、ルートのオクターブ上を足す
   bool octaveForTriads() const { return octaveForTriads_; }
-  void setVoiceLeading(bool on) { voiceLeading_ = on; }          // 前のコードから一番近い高さで鳴らす
+  void setVoiceLeading(bool on) { voiceLeading_ = on; }          // ループ全体を見て、コードの高さを決める（OFF なら、いつも本来の高さ）
   bool voiceLeading() const { return voiceLeading_; }
   // パターン（nullptr = なし）。次のマスから反映される。ポインタの先は、使っている間、有効であること
   void setDrumPattern(const DrumPattern* pattern) { drum_ = pattern; }
@@ -153,7 +154,8 @@ class Groove {
   void processDue();
   void processTick(uint32_t tick);
   void beginStep(int step);
-  void computeVoicing(StepInfo* info, const Chord& chord, int previousRoot);
+  int planShiftForStep(int step);
+  void computeVoicing(StepInfo* info, const Chord& chord, int shift);
   void scheduleSlot(uint32_t tick);
   void scheduleBackingHit(uint32_t onTick, uint32_t offTick, BackingShape shape, bool soft);
   void scheduleDrums(uint32_t tick, int slotInLoop);
@@ -182,8 +184,6 @@ class Groove {
   uint32_t nowTick_;      // いまのティック（整数部分）
   uint32_t nextTick_;     // まだ処理していない、最初のティック
   StepInfo cur_;
-  int lastPlayedRoot_;        // 直前に鳴らしたコードのルート（-1 = まだない）
-  int prevRootBeforeStep_;    // いまのステップを始める前の lastPlayedRoot_（キー変更で作り直すため）
   LastHit lastHit_;
   bool keyDirty_;
   Pending queue_[GROOVE_QUEUE_SIZE];

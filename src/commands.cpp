@@ -42,7 +42,7 @@ void commandsPrintHelp() {
   Serial.println("  BPM 120         BPM を設定する（30〜240）。BPM +5 / BPM -5 で、いまの値から変える");
   Serial.println("  KEY D           キーを変える（C D E F G A B と、Eb F# などの # b）。KEY +1 / KEY -1 で、半音ずつ");
   Serial.println("  キー操作        Enter なしで、すぐに効く:  +  -（BPM ±5）   ]  [（キー ±1半音）");
-  Serial.println("  LEAD ON/OFF     ボイスリーディング: 前のコードから一番近い高さで鳴らす（標準 ON。位置1に戻ったら本来の高さに戻る）");
+  Serial.println("  LEAD ON/OFF     ボイスリーディング: ループ全体を見て、コードの高さを決める（標準 ON。最初のコードは本来の高さ。終止は完全5度下）");
   Serial.println("  VOICING 4/3     3和音の4音目に、ルートのオクターブ上を足す（標準 4）/ 足さない（3）");
   Serial.println("  MAP             位置とリーダーの対応（配置）を表示。MAP LEARN で、駒を置いて覚えさせる。MAP 4 3 2 1 5 6 7 8 で直接指定");
   Serial.println("  OCTAVE +1       和音の高さを、オクターブ単位で変える（-1〜3。OCTAVE 2 / OCTAVE -1）。音が低い・高いときに。保存される");
@@ -264,7 +264,7 @@ void doLead(const char* arg) {
   }
   if (strcmp(word, "ON") == 0) {
     playerSetVoiceLeading(true);
-    Serial.println("ボイスリーディング ON: 前に鳴らしたコードから一番近い高さで鳴らします（本来の高さから、上下1オクターブの範囲）。次のコードから。");
+    Serial.println("ボイスリーディング ON: ループ全体を見て、コードの高さを決めます（本来の高さから、上下1オクターブの範囲。強進行は完全4度上か完全5度下・終止は完全5度下を優先）。次のコードから。");
   } else if (strcmp(word, "OFF") == 0) {
     playerSetVoiceLeading(false);
     Serial.println("ボイスリーディング OFF: コードは、いつも同じ高さで鳴ります。次のコードから。");

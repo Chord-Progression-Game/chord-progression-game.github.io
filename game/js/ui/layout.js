@@ -80,7 +80,11 @@ export function watchLayout(onChange = () => {}) {
   window.addEventListener('resize', update);
   window.addEventListener('orientationchange', () => setTimeout(update, 250));
   if (window.ResizeObserver) {
-    const ro = new ResizeObserver(update);
+    // 大きさが変わったときの update は、そのフレームの外（次のフレーム）に回す。update は、観察している部品の大きさに効く値（--tray-h など）を書きかえるので、
+    // 観察の通知の中で、そのまま実行すると、「ResizeObserver loop completed with undelivered notifications」のエラーが出ることがある（2026-11-24。横持ちの小さい画面で、ガイドの高さがトレイの高さに依存するため）
+    let pending = 0;
+    const later = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; update(); }); };
+    const ro = new ResizeObserver(later);
     for (const sel of ['#topbar', '#tray-wrap', '#side', '#side .score-card', '#melody-roll', '#step-bar', '#guide']) { const el = $(sel); if (el) ro.observe(el); }
   }
   update();

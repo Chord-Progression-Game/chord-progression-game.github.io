@@ -1,12 +1,12 @@
 // ゲームの音（ブラウザの Web Audio）。実機の演奏（ファームの groove.cpp）と、同じ規則で鳴らす:
 //   ・1ステップ = 2拍 = 16分音符 8マス。8ステップで1周（位置1→8）。BPM 120 なら 1ステップ 1秒
 //   ・ステップの始まりに、その位置の駒（「→」・空きの解決を含む）から、和音を決める。駒の入れ替えは、次のステップから効く
-//   ・和音の高さは、前のコードに一番近い高さ（ボイスリーディング）。位置1に戻ったら忘れる
+//   ・和音の高さは、ループ全体を見て決める（ボイスリーディング。core/voicing.js の planVoicing。強進行は 4度上か 5度下・終止は 5度下を優先。最初のコードは本来の高さ）
 //   ・バッキング（和音の鳴らし方）とドラムは、プリセット（game/data/presets.json = ファームと同じ）のマスの文字で決まる
 // 時計は、画面ではなく、音の時計（AudioContext の currentTime）。少し先まで予約して鳴らすので、ずれない。
 // 本物の AudioContext でも、OfflineAudioContext（テスト用に、音を出さずに書き出す）でも、同じコードで動く。
 
-import { voiceChord, resolveChordAtStep, BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../core/voicing.js';
+import { voiceChord, voiceChordAt, planVoicing, resolveChordAtStep, BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../core/voicing.js';
 import { playSynth, INSTRUMENT_IDS } from './instruments.js';
 
 export const SLOTS_PER_STEP = 8;       // 1ステップ = 16分音符 8つ
@@ -337,11 +337,22 @@ export class AudioEngine {
     return id === null || id === undefined || !this.table.byId(id) || this.table.byId(id).isRepeat ? null : id;
   }
 
-  // 分割したマスの、2拍目の頭: 後半のコードに切りかえる（前のコードの高さは、ボイスリーディングで、つなぐ）
+  // ループ全体の、ルートの高さの計画（2026-11-24）。盤・分割・高さ・ボイスリーディング・周回のステップ数が変わらないあいだは、使いまわす
+  _voicePlan() {
+    const board = this.getBoard(), split = this.getSplit();
+    const baseC = BASE_C_DEFAULT + 12 * this.octave, steps = Math.min(this.loopSteps || board.length, board.length);
+    const key = `${board.join(',')}|${split ? split.join(',') : ''}|${baseC}|${steps}|${this.voiceLeading ? 1 : 0}`;
+    if (this._planKey !== key) { this._planKey = key; this._plan = planVoicing(board, this.table, { baseC, split, steps, enabled: this.voiceLeading }); }
+    return this._plan;
+  }
+
+  // 分割したマスの、2拍目の頭: 後半のコードに切りかえる（高さは、ループ全体の計画で決まっている）
   _beginHalf(step, when) {
     const id = this._secondHalf(step);
     const chord = this.table.byId(id);
-    const voice = voiceChord(chord, BASE_C_DEFAULT + 12 * this.octave, this.lastRoot, this.voiceLeading);
+    const baseC = BASE_C_DEFAULT + 12 * this.octave;
+    const root = this._voicePlan().second[step];
+    const voice = voiceChordAt(chord, root === null || root === undefined ? baseC + chord.rootPc : root, baseC);
     this.lastRoot = voice.root;
     this.cur = { step, chordId: id, chord, voice, half: 1 };
     this.events.push({ type: 'half', time: when, step, chordId: id, notes: voice.notes });          // 技の「きらっ」（onStepScheduled）は、ステップの頭だけ（2回鳴らさない）
@@ -350,10 +361,12 @@ export class AudioEngine {
   _beginStep(step, when) {
     const board = this.getBoard();
     const id = resolveChordAtStep(board, step, this.table, this.getSplit());
-    if (step === 0) this.lastRoot = -1;                              // 位置1に戻ったら、前のコードの高さは忘れる
+    if (step === 0) this.lastRoot = -1;                              // 位置1に戻ったら、前のコードの高さは忘れる（最初のコードは、いつも本来の高さ。計画も、そこから始まる）
     if (id !== null) {
       const chord = this.table.byId(id);
-      const voice = voiceChord(chord, BASE_C_DEFAULT + 12 * this.octave, this.lastRoot, this.voiceLeading);
+      const baseC = BASE_C_DEFAULT + 12 * this.octave;
+      const root = this._voicePlan().first[step];                  // ループ全体を見て決めた高さ（強進行は、4度上か 5度下。終止は、5度下を優先）
+      const voice = voiceChordAt(chord, root === null || root === undefined ? baseC + chord.rootPc : root, baseC);
       this.lastRoot = voice.root;
       this.cur = { step, chordId: id, chord, voice };
     } else {

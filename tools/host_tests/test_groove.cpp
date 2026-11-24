@@ -175,7 +175,7 @@ int main() {
     ok("止める: 元の和音", sameNotes(off, {45, 48, 52, 57}));
     ok("鳴らし直し: 1オクターブ上（記憶も動くので、引き戻されない）", sameNotes(on, {57, 60, 64, 69}));
     run(g, r, 1031, 2010);
-    ok("次の Ⅳ も、新しい高さ（前の A3=57 に近づけて F3=53 → +12 で 65 ではなく、53）", sameNotes(notesOf(evAt(r, 2000, 3, true, 0)), {53, 57, 60, 65}));
+    ok("次の Ⅳ も、新しい高さ（計画は、高さを変えても同じ形。baseC=48 のときの F3=53 の、1オクターブ上 F4=65）", sameNotes(notesOf(evAt(r, 2000, 3, true, 0)), {65, 69, 72, 77}));
     eqi("baseC() で読める", g.baseC(), 60);
   }
 
@@ -309,8 +309,8 @@ int main() {
   {
     Rec r; Groove g(4, &r); g.setBackingPattern(B1);   // ボイスリーディング ON（標準）
     r.now = 0; g.start(0); run(g, r, 1, 8100);
-    // Ⅰ=48, Ⅵ=45(A2), Ⅳ=41(F2), Ⅴ=43(G2), Ⅰ=48 ...
-    const int roots[8] = {48, 45, 41, 43, 48, 45, 41, 43};
+    // ループ全体の計画（2026-11-24）: Ⅰ=48, Ⅵ=45(A2), Ⅳ=53(F3), Ⅴ=55(G3), Ⅰ=48 ...（つなぎ目の Ⅴ → Ⅰ を、完全5度下にするため、Ⅳ・Ⅴ は上の高さ）
+    const int roots[8] = {48, 45, 53, 55, 48, 45, 53, 55};
     for (int i = 0; i < 8; i++) eqi("王道 ルート " + std::to_string(i), r.steps[i].info.root, roots[i]);
     eqi("Ⅵm の音（A2 C3 E3 A3）", r.steps[1].info.notes[0], 45);
     ok("Ⅵm の4音", sameNotes(notesOf(evAt(r, 1000, 3, true, 0)), {45, 48, 52, 57}));
@@ -335,7 +335,7 @@ int main() {
     Rec r; r.raw[0] = 1; r.raw[1] = 0; r.raw[2] = 2; r.raw[3] = 4;
     Groove g(4, &r); g.setBackingPattern(B1);
     r.now = 0; g.start(0); run(g, r, 1, 3100);
-    eqi("休みをはさんでも、前のコード(48)から: Ⅵ=45", r.steps[2].info.root, 45);
+    eqi("休みをはさんでも、つながりは切れない: Ⅰ(48) → Ⅵ → Ⅴ(G3=55) → Ⅰ（5度下）。全体で、Ⅵ=A3(57)", r.steps[2].info.root, 57);
   }
   {
     // 1周ごとにではなく、START し直すと、前のコードの記憶は消える

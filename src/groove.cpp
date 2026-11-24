@@ -24,8 +24,6 @@ Groove::Groove(int numSteps, GrooveListener* listener, const GrooveSettings& set
       acc_(0),
       nowTick_(0),
       nextTick_(0),
-      lastPlayedRoot_(-1),
-      prevRootBeforeStep_(-1),
       keyDirty_(false),
       queueCount_(0),
       maxLateMs_(0) {
@@ -80,10 +78,7 @@ void Groove::setKey(const Key& key) {
 void Groove::setBaseC(uint8_t baseC) {
   int delta = (int)baseC - (int)settings_.baseC;
   if (delta == 0) return;
-  settings_.baseC = baseC;
-  // 「前のコードの高さ」の記憶も、同じだけ動かす（動かさないと、記憶の高さに引き戻されて、高さの変更が打ち消される）
-  if (lastPlayedRoot_ >= 0) lastPlayedRoot_ += delta;
-  if (prevRootBeforeStep_ >= 0) prevRootBeforeStep_ += delta;
+  settings_.baseC = baseC;  // コードの高さは、ステップごとに、ループ全体の計画（planBoardShifts）から、そのつど決める（記憶はない）
   if (playing_) keyDirty_ = true;  // 鳴らし直しは、次の update で
 }
 
@@ -98,8 +93,6 @@ void Groove::start(uint32_t nowMs) {
   nextTick_ = 0;
   acc_ = 0;
   lastMs_ = nowMs;
-  lastPlayedRoot_ = -1;
-  prevRootBeforeStep_ = -1;
   lastHit_.valid = false;
   keyDirty_ = false;
   maxLateMs_ = 0;
@@ -182,22 +175,27 @@ void Groove::beginStep(int step) {
   const Chord* chord = (resolved != 0) ? chordById(resolved) : nullptr;
   if (chord != nullptr && chordIsRepeat(*chord)) chord = nullptr;
 
-  // 位置1（ループの最初）に戻ってきたら、前のコードの高さは忘れて、本来の高さに戻す
-  if (step == 0) lastPlayedRoot_ = -1;
-  prevRootBeforeStep_ = lastPlayedRoot_;
+  // 高さは、ループ全体を見て決める（最初のコードは、いつも本来の高さ。強進行は、4度上か 5度下。終止は、5度下を優先）
   if (chord != nullptr) {
     info.chordId = chord->id;
-    computeVoicing(&info, *chord, prevRootBeforeStep_);
-    lastPlayedRoot_ = info.root;  // 次のコードは、このコードから一番近い高さで鳴らす
+    computeVoicing(&info, *chord, planShiftForStep(step));
   }
   cur_ = info;
   lastHit_.valid = false;
 }
 
-// コードの音を作る。本来の高さ（ルートが baseC〜baseC+11）から、前のコードに一番近い高さに、1オクターブずらす
-void Groove::computeVoicing(StepInfo* info, const Chord& chord, int previousRoot) {
+// いまの盤から、ループ全体の高さの計画を作って、step 番目のコードの、本来の高さからのずれ（-12 / 0 / +12）を返す
+int Groove::planShiftForStep(int step) {
+  uint8_t raw[GROOVE_MAX_STEPS];
+  int8_t shifts[GROOVE_MAX_STEPS];
+  for (int i = 0; i < numSteps_; i++) raw[i] = listener_->rawChordAtStep(i);
+  planBoardShifts(raw, numSteps_, key_, settings_.baseC, voiceLeading_, shifts);
+  return (step >= 0 && step < numSteps_) ? shifts[step] : 0;
+}
+
+// コードの音を作る。本来の高さ（ルートが baseC〜baseC+11）から、shift（-12 / 0 / +12）だけ、ずらす
+void Groove::computeVoicing(StepInfo* info, const Chord& chord, int shift) {
   int nominal = settings_.baseC + chordRootPitchClass(chord, key_);
-  int shift = chooseOctaveShift(nominal, previousRoot, voiceLeading_);
   info->shift = shift;
   info->root = nominal + shift;
   info->noteCount = chordMidiNotes(chord, key_, (uint8_t)(settings_.baseC + shift), info->notes, octaveForTriads_);
@@ -354,11 +352,10 @@ void Groove::restrikeForKeyChange() {
 
   flushChannel(settings_.pianoChannel);  // 鳴っている和音を止める
 
-  // 前のコードの高さは、そのまま（もう鳴らした音）。今のステップのコードだけを、新しいキーで作り直す
+  // 今のステップのコードだけを、新しいキー（高さ）で、計画から作り直す（もう鳴らした音は、そのまま）
   const Chord* chord = chordById(cur_.chordId);
   if (chord == nullptr) return;
-  computeVoicing(&cur_, *chord, prevRootBeforeStep_);
-  lastPlayedRoot_ = cur_.root;
+  computeVoicing(&cur_, *chord, planShiftForStep(cur_.step));
 
   // 直前の打鍵（和音・ベース・アルペジオの1音）を、新しい音で、同じ終わりの時刻まで鳴らし直す
   if (lastHit_.valid && lastHit_.endTick > nowTick_) {

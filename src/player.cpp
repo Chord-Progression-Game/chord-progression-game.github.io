@@ -81,7 +81,7 @@ class PlayerListener : public GrooveListener {
       else Serial.print(chord->name);
       Serial.printf("   Key=%s: %s  ♪ ", keyText, symbol);
       printNotes(info, *chord);
-      if (info.shift != 0) Serial.printf("  [前のコードに近づけて、1オクターブ%s]", info.shift > 0 ? "上" : "下");
+      if (info.shift != 0) Serial.printf("  [ループ全体の流れで、1オクターブ%s]", info.shift > 0 ? "上" : "下");
       Serial.println();
     } else {
       Serial.printf("▶ ステップ%d/%d  位置%d: （休み: ", info.step + 1, NUM_POSITIONS, info.step + 1);

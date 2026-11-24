@@ -67,6 +67,18 @@ export async function run(t) {
     return { e, buf };
   };
 
+  // ============ 音の高さの計画（2026-11-24）: エンジンが、ループ全体の計画どおりの高さで鳴らす ============
+  {
+    // ご指定の例（コンファーメーション）: ⅠM7 → Ⅶm7♭5 Ⅲ7（完全4度上）Ⅵm7（完全4度上）→ Ⅴm7 Ⅰ7（完全5度下。ループ後の ⅠM7 と同じ高さ）
+    const { e } = await make('ⅠM7 → Ⅶm7-5 Ⅲ7 Ⅵm7 → Ⅴm7 Ⅰ7', { seconds: 8.4, drumId: 0, bpm: 240 });
+    const st = e.events.filter((x) => x.type === 'step').map((x) => x.notes.length ? x.notes[0] : null);
+    t.eq('コンファーメーション（ご指定の例）: 1周目のルートは C3 C3 B2 E3 A3 A3 G3 C3', st.slice(0, 8), [48, 48, 47, 52, 57, 57, 55, 48]);
+    t.eq('2周目も、同じ高さ（最後の Ⅰ7 は、ループ後の ⅠM7 と同じ C3）', st.slice(8, 16), [48, 48, 47, 52, 57, 57, 55, 48]);
+    const a = (await make('Ⅰ Ⅰ Ⅳ Ⅴ', { seconds: 2.2, drumId: 0, bpm: 240 })).e.events.filter((x) => x.type === 'step').slice(0, 4).map((x) => x.notes.join(','));
+    const b = (await make('Ⅰ → Ⅳ Ⅴ', { seconds: 2.2, drumId: 0, bpm: 240 })).e.events.filter((x) => x.type === 'step').slice(0, 4).map((x) => x.notes.join(','));
+    t.eq('同じ和音の連続（Ⅰ Ⅰ Ⅳ Ⅴ）と「→」（Ⅰ → Ⅳ Ⅴ）は、同じ音で鳴る', a, b);
+  }
+
   // ============ パターンの文字 ============
   t.eq('マスの文字: C = 和音', parseCell('C'), { hit: true, shape: 'chord', soft: false });
   t.eq('マスの文字: d = ベース＋和音（弱く）', parseCell('d'), { hit: true, shape: 'bassChord', soft: true });
@@ -77,13 +89,13 @@ export async function run(t) {
 
   // ============ 時計と和音 ============
   {
-    const { e, buf } = await make('Ⅰ Ⅴ', { seconds: 4 });
+    const { e, buf } = await make('Ⅰ Ⅴ', { seconds: 4, drumId: 0 });          // ドラムなし（スネアの響きが、200Hz 前後の音の測定に混ざらないように）
     const steps = e.events.filter((x) => x.type === 'step');
     t.eq('ステップの合図は、1秒ごと（BPM120・1ステップ=2拍）', steps.slice(0, 4).map((s) => Math.round(s.time * 1000) / 1000), [0.02, 1.02, 2.02, 3.02]);
     t.eq('ステップ1・2のコード', steps.slice(0, 3).map((s) => s.chordId), [table.byName('Ⅰ').id, table.byName('Ⅴ').id, null]);
     t.eq('標準の高さは、ルートが C3〜B3（以前より 1オクターブ下）', [BASE_C_DEFAULT + 12 * OCTAVE_DEFAULT, OCTAVE_DEFAULT], [48, 0]);
     t.eq('Ⅰ の音（C3 E3 G3 C4）', steps[0].notes, [48, 52, 55, 60]);
-    t.eq('Ⅴ は、前のⅠに近い高さ（G2 B2 D3 G3）', steps[1].notes, [43, 47, 50, 55]);
+    t.eq('Ⅴ は、ループのつなぎ目（Ⅴ → Ⅰ）が完全5度下の終止になる高さ（G3 B3 D4 G4）', steps[1].notes, [55, 59, 62, 67]);
     const beats = e.events.filter((x) => x.type === 'beat');
     t.eq('拍の合図（0.5秒ごと）', beats.slice(0, 4).map((b) => Math.round(b.time * 1000) / 1000), [0.02, 0.52, 1.02, 1.52]);
     t.ok('音が出ている（無音ではない）', rms(buf, 0, 2) > 0.01);
@@ -91,11 +103,11 @@ export async function run(t) {
     const strong = [48, 52, 55].map((m) => power(buf, 0, 0.12, 0.95, hz(m)));
     const weak = [49, 51, 54].map((m) => power(buf, 0, 0.12, 0.95, hz(m)));
     t.ok(`Ⅰ の構成音（C3 E3 G3）が、半音ずれた音より強い（強 ${strong.map((x) => x.toExponential(1))} / 弱 ${weak.map((x) => x.toExponential(1))}）`, Math.min(...strong) > 3 * Math.max(...weak));
-    // Ⅴ（1.12〜1.95秒。低い音は、半音の間隔がせまい（G2 と G#2 は 6Hz）ので、長めに測って、見分ける）に G2 B2 D3 が強い
-    const strong2 = [43, 47, 50].map((m) => power(buf, 0, 1.12, 1.95, hz(m)));
-    const weak2 = [44, 46, 51].map((m) => power(buf, 0, 1.12, 1.95, hz(m)));
+    // Ⅴ（1.12〜1.95秒）に G3 B3 D4 が強い
+    const strong2 = [55, 59, 62].map((m) => power(buf, 0, 1.12, 1.95, hz(m)));
+    const weak2 = [56, 58, 63].map((m) => power(buf, 0, 1.12, 1.95, hz(m)));
     const sum = (a) => a.reduce((x, y) => x + y, 0);
-    t.ok(`Ⅴ の構成音（G2 B2 D3）が強い（強 ${strong2.map((x) => x.toExponential(1))} / 弱 ${weak2.map((x) => x.toExponential(1))}）`, sum(strong2) > 8 * sum(weak2) && Math.min(...strong2) > 1.5 * Math.max(...weak2));
+    t.ok(`Ⅴ の構成音（G3 B3 D4）が強い（強 ${strong2.map((x) => x.toExponential(1))} / 弱 ${weak2.map((x) => x.toExponential(1))}）`, sum(strong2) > 8 * sum(weak2) && Math.min(...strong2) > 1.5 * Math.max(...weak2));
     t.ok('ステップの境目（1秒）で、新しい和音が立ち上がる', rms(buf, 1.02, 1.07) > 1.3 * rms(buf, 0.96, 1.01));
   }
 

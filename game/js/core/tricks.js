@@ -208,8 +208,8 @@ export const HEAD_V = {
 
 // 点数（仮。遊びながら調整する）
 //   2026-11-24 に、配分を見直した（ご指摘: 名前のついた進行の点と倍率が、内声・ほかの技にくらべて大きすぎる / 駒を載せれば載せるだけ点がふえる「載せ得」）
-//     ① 名前のついた進行の基本の点を、約6割に / コンボの倍率を、最大 ×3 → ×2 に / 種類の数の倍率を、1種類ごとに +10% → +5% に
-//     ② 駒をふやしても、技や耳に馴染むつながりに使われていない駒は、1つにつき −15（sense.js の idle）。同じ駒を並べると −20（dup）
+//     ① 名前のついた進行の基本の点を、約6割に / コンボの倍率を、最大 ×3 → ×1.6 に / 種類の数の倍率を、1種類ごとに +10% → +5% に
+//     ② 駒をふやしても、技や耳に馴染むつながりに使われていない駒は、1つにつき −15（sense.js の idle）。※ 同じ和音が続く = 「→」と同じ（buildSegments が1つにまとめる）ので、減点はない（第9弾で、−20 を削除）
 //     ③ 「コードの難しさ」の加点は、技や、耳に馴染むつながりに使われた駒だけ（使われていない難しい駒を、ならべても、点にならない）
 //   名前のついた進行は、その進行を、ふつうのつながりに分けたときの合計より、いつも高くなるようにしてある（テストで確かめている）
 export const SCORE = {
@@ -446,11 +446,17 @@ export function buildSegments(board, table, split = null) {
     const chord = table.byId(id);
     if (!chord) { cur = null; continue; }               // 知らないコード（未登録）は休み
     if (!cur) { cur = []; segments.push(cur); }
-    const second = split && split[pos] !== null && split[pos] !== undefined ? table.byId(split[pos]) : null;
-    const ev = { chord, first: pos, last: pos, positions: [pos], blocked: false, half: second ? 0 : null };
-    ev.blocked = isHeadV(ev);
-    cur.push(ev);
-    if (second && !second.isRepeat) cur.push({ chord: second, first: pos, last: pos, positions: [pos], blocked: false, half: 1 });       // 分割したマスの、後半のコード（前半と同じマスの番号）
+    const second0 = split && split[pos] !== null && split[pos] !== undefined ? table.byId(split[pos]) : null;
+    const second = second0 && !second0.isRepeat && second0 !== chord ? second0 : null;                       // 前半と同じ和音の後半は、分割とみなさない（1つのマスと同じ）
+    const prev = cur.length ? cur[cur.length - 1] : null;
+    if (prev && prev.chord === chord) {                 // 同じ和音が続く = 「→」と同じ（2026-11-24。ご指定: 点数が「→」と同じになるように。駒を並べるだけで、駒の数がふえるわけではない）
+      prev.last = pos; prev.positions.push(pos);
+    } else {
+      const ev = { chord, first: pos, last: pos, positions: [pos], blocked: false, half: second ? 0 : null };
+      ev.blocked = isHeadV(ev);
+      cur.push(ev);
+    }
+    if (second) cur.push({ chord: second, first: pos, last: pos, positions: [pos], blocked: false, half: 1 });       // 分割したマスの、後半のコード（前半と同じマスの番号）
   }
   const head = segments.find((s) => s[0].first === 0);
   if (head && head[0].blocked && headExempt(head)) head[0].blocked = false;      // ラグタイム進行・ブルースなどは、冒頭のドミナントを認める
