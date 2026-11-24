@@ -9,7 +9,7 @@ import { Sfx } from './audio/sfx.js';
 import { Game } from './game/game.js';
 import { STAGES, FREE_STAGE, CHALLENGE_STAGE } from './game/stages.js';
 import { TRIAL_STAGES, nextTrialAfter } from './game/trials.js';
-import { loadSave, writeSave, resetSave } from './game/save.js';
+import { loadSave, writeSave, resetSave, DEFAULT_MIX } from './game/save.js';
 import { HUD } from './ui/hud.js';
 import { Screens } from './ui/screens.js';
 import { Input } from './ui/input.js';
@@ -401,6 +401,7 @@ async function main() {
     hud.setCollection(game.collection());
     hud.setBpm(stage.bpm);
     hud.setToggle('#btn-hint', game.hintsOn, '#hint-state');
+    if (mode === 'free' && chordStore.levelsMoved) { hud.toast(`自作コード ${chordStore.levelsMoved}つを、「自作」の段に移しました（レベルを使いたいコードは、編集画面で選びなおせます）`); chordStore.levelsMoved = 0; }
     if (mode === 'free' && chordStore.migrated) { hud.toast(`以前に編集したコード ${chordStore.migrated}つは、新しい自作コードに引っ越しました（もとのコードは、もとの姿にもどっています）`); chordStore.migrated = 0; }
     if (mode === 'challenge') hud.setTimer(stage.seconds);
     $('#btn-presets').classList.toggle('hidden', mode === 'tutorial' || mode === 'challenge' || mode === 'trial');       // プリセットは、自由に組み立てるとき（フリープレイ・メロディ）だけ
@@ -660,7 +661,7 @@ async function main() {
     $('#btn-howto-title').addEventListener('click', () => howto.open());
     $('#btn-howto').addEventListener('click', () => howto.open());
     $('#btn-unlock').addEventListener('click', () => { save.unlockAll = !save.unlockAll; writeSave(save); hud.toast(save.unlockAll ? '全ステージを開きました（デモ用）' : '元に戻しました'); });
-    $('#btn-reset').addEventListener('click', () => { if (confirm('進み具合（クリア・図鑑・ベスト・メロディの記録）をすべてリセットしますか？\n（保存したプリセットと、つくったメロディ・自作コード・取り込んだリズムは残ります）')) { const keep = { presets: save.presets, library: save.library, chordbook: save.chordbook, userMelody: save.userMelody, userMelodyOn: save.userMelodyOn, volume: save.volume, volumeSet: save.volumeSet }; Object.assign(save, resetSave(), keep); writeSave(save); hud.toast('リセットしました（プリセット・メロディ・自作コード・取り込んだリズムは残してあります）'); showTitle(); } });
+    $('#btn-reset').addEventListener('click', () => { if (confirm('進み具合（クリア・図鑑・ベスト・メロディの記録）をすべてリセットしますか？\n（保存したプリセットと、つくったメロディ・自作コード・取り込んだリズムは残ります）')) { const keep = { presets: save.presets, library: save.library, chordbook: save.chordbook, userMelody: save.userMelody, userMelodyOn: save.userMelodyOn, volume: save.volume, volumeSet: save.volumeSet, mix: save.mix }; Object.assign(save, resetSave(), keep); writeSave(save); hud.toast('リセットしました（プリセット・メロディ・自作コード・取り込んだリズムは残してあります）'); showTitle(); } });
     $('#btn-menu').addEventListener('click', openPause);
     $$('#pause [data-act]').forEach((b) => b.addEventListener('click', () => {
       if (app.state !== 'pause') return;                         // メニューが開いているときだけ（見えていないボタンが、押されても、何も起きない）
@@ -736,7 +737,7 @@ async function main() {
   function toggleHints() { app.hintsPref = !game.hintsOn; game.setHints(app.hintsPref); hud.setToggle('#btn-hint', game.hintsOn, '#hint-state'); hud.toast(game.hintsOn ? 'ヒント ON: 次に置く候補がうっすら出ます' : 'ヒント OFF'); if (app.sfx && !app.muted && game.hintsOn) app.sfx.hint(); }
   // 音量（全体）とミュート。上のバーの「音」のボタン → 音量のメニュー（バーとミュート）。M キーは、ミュートの ON/OFF
   function applyVolume() {
-    if (app.engine) app.engine.setVolumes({ master: masterGainFor(save.volume, app.muted) });
+    if (app.engine) { app.engine.setVolumes({ master: masterGainFor(save.volume, app.muted) }); app.engine.setMix(save.mix); }
     const b = $('#btn-sound'); b.classList.toggle('on', !app.muted);
     $('#sound-state').textContent = app.muted ? 'ミュート' : `${save.volume}%`;
     volumeMenu.refresh();
@@ -747,10 +748,20 @@ async function main() {
     if (app.muted && save.volume > 0) app.muted = false;           // ミュート中に、バーを動かしたら、解除する
     applyVolume(); writeSave(save);
   }
+  // ドラム・バッキングの音量（0〜100%。はじめは 50% = これまでと同じ大きさ）。ミュート・全体の音量とは別。保存される
+  function setMix(kind, pct) {
+    save.mix = { ...save.mix, [kind]: Math.max(0, Math.min(100, Math.round(pct))) };
+    applyVolume(); writeSave(save);
+  }
+  function resetMix() { save.mix = { drums: DEFAULT_MIX, backing: DEFAULT_MIX }; applyVolume(); writeSave(save); }
   const volumeMenu = new VolumeMenu({
-    root: $('#volmenu'), button: $('#btn-sound'), getModel: () => ({ percent: save.volume, muted: app.muted }),
-    onVolume: setVolume, onMute: toggleSound,
-    onRelease: () => { if (app.engine && !app.muted && save.volume > 0) app.engine.audition(table.byName('Ⅰ').id); },        // バーをはなしたら、和音を1つ鳴らして、大きさを聴けるように
+    root: $('#volmenu'), button: $('#btn-sound'), getModel: () => ({ percent: save.volume, muted: app.muted, mix: save.mix, mixDefault: DEFAULT_MIX }),
+    onVolume: setVolume, onMute: toggleSound, onMix: setMix, onMixReset: resetMix,
+    onRelease: (kind) => {                                                                                                // バーをはなしたら、聴いて大きさが分かるように、音を鳴らす
+      if (!app.engine || app.muted || save.volume <= 0) return;
+      if (kind === 'drums' || kind === 'backing') app.engine.previewMix(kind);                                               // 演奏中は、ほんとうの演奏で聴けるので、鳴らさない
+      else app.engine.audition(table.byName('Ⅰ').id);
+    },
   });
   app.volumeMenu = volumeMenu;
   applyVolume();                                                                  // 保存してあった音量を、ボタンの文字に出す

@@ -248,7 +248,8 @@ body.is-phone.guide-open #stamp-layer, body.is-phone.guide-open #toasts { visibi
   .sm-close { display: inline-flex; align-items: center; margin-left: auto; min-height: 2.45rem; padding: 0.2rem 0.8rem; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); font-size: 0.82rem; font-weight: 700; }
   .soundmenu .sm-head { align-items: center; }
   .sm-arrow { width: 2.4rem; height: 2.4rem; }
-  .vm-slider { height: 2.2rem; }
+  .vm-slider, .vm-mixbox .vm-slider { height: 2.2rem; }
+  .vm-label { font-size: 0.82rem; }
   .vm-mute, .sm-reset { min-height: 2.4rem; }
   /* 色・形の見本のボタンは、指で押せる大きさに */
   .cl-sw { width: 2.3rem; height: 2.3rem; }

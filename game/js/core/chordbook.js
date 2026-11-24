@@ -312,7 +312,7 @@ export function sanitizeChordbook(data, baseIds = new Set()) {
     if (rec) edits[id] = rec;
   }
   const maxId = custom.reduce((m, c) => Math.max(m, c.id), CUSTOM_ID_BASE - 1);
-  return { custom, edits, nextId: Math.max(maxId + 1, Number.isInteger(d.nextId) ? d.nextId : 0, CUSTOM_ID_BASE) };
+  return { custom, edits, nextId: Math.max(maxId + 1, Number.isInteger(d.nextId) ? d.nextId : 0, CUSTOM_ID_BASE), lvRule: Number.isInteger(d.lvRule) && d.lvRule > 0 ? d.lvRule : 0 };
 }
 function fromStored(r) {
   if (!r || typeof r !== 'object') return null;

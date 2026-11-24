@@ -26,6 +26,14 @@ export const MASTER_GAIN = 1.35;       // 全体の大きさ（ノートパソ�
 export const VOLUME_TOP = 0.5;         // バーの 100% が、これまでの何% の大きさか（2026-11-24）
 const TIMER_MS = 25;
 export const DRUM_BUS_GAIN = 0.57;    // ドラムの音の通り道の大きさ（ピアノ 0.9・メロディ 0.9 に対して）
+export const PIANO_BUS_GAIN = 0.9;     // バッキング（和音）の音の通り道の大きさ
+// ドラム・バッキングの音量のバー（0〜100%）。はじめの値 50% = 上の標準の大きさ（これまでと同じ出音）。100% = その 2倍（+6dB）・0% = 無音
+// （全体のバーと同じく、はじめの値の上にも、余裕を残した）
+export const MIX_DEFAULT = 50;
+export function mixGainFor(percent) {
+  const p = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : MIX_DEFAULT));
+  return p / MIX_DEFAULT;
+}
 const MELODY_GATE = 0.97;              // メロディの音の長さのうち、何%で止めるか（なめらかにつなぐ）
 const MELODY_VELOCITY = 86;
 const AUDITION_DUCK = 0.34;            // 演奏中（ほかのコードが鳴っている間）の試聴は、音の強さをこの倍に下げる（およそ -12dB）。ぶつかって不協和になるのを防ぐ
@@ -84,7 +92,8 @@ export class AudioEngine {
     this.limiter.threshold.value = -3; this.limiter.knee.value = 0; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.09;
     this.master.connect(this.comp); this.comp.connect(this.limiter); this.limiter.connect(ctx.destination);
     this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 512; this.limiter.connect(this.analyser);
-    this.pianoBus = ctx.createGain(); this.pianoBus.gain.value = 0.9;
+    this.pianoBus = ctx.createGain(); this.pianoBus.gain.value = PIANO_BUS_GAIN;       // バッキング（演奏中の和音）。音量のメニューの「バッキング」
+    this.auditionBus = ctx.createGain(); this.auditionBus.gain.value = PIANO_BUS_GAIN; // 試聴（駒を置いたとき・編集画面）。バッキングの音量とは別（バーを 0 にしても、駒の音は聞こえる）
     this.drumBus = ctx.createGain(); this.drumBus.gain.value = DRUM_BUS_GAIN;            // ドラムは、伴奏・メロディより少し小さく（2026-11-24 に、0.8 → 0.57 = 約 −3dB。ご指摘: ドラムが大きい）
     this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = 0.7;
     this.melodyBus = ctx.createGain(); this.melodyBus.gain.value = 0.9;
@@ -97,12 +106,13 @@ export class AudioEngine {
     this.sfxSend = ctx.createGain(); this.sfxSend.gain.value = 0.35;
     this.melodySend = ctx.createGain(); this.melodySend.gain.value = 0.2;
     this.pianoBus.connect(this.master); this.pianoBus.connect(this.pianoSend); this.pianoSend.connect(this.reverb);
+    this.auditionBus.connect(this.master); this.auditionBus.connect(this.pianoSend);
     this.drumBus.connect(this.master); this.drumBus.connect(this.drumSend); this.drumSend.connect(this.reverb);
     this.sfxBus.connect(this.master); this.sfxBus.connect(this.sfxSend); this.sfxSend.connect(this.reverb);
     this.melodyBus.connect(this.master); this.melodyBus.connect(this.melodySend); this.melodySend.connect(this.reverb);
     // 演奏中の試聴: 高い音をやわらかく削って、ほかのコードの後ろに、そっと置く
     this.duckFilter = ctx.createBiquadFilter(); this.duckFilter.type = 'lowpass'; this.duckFilter.frequency.value = 2200; this.duckFilter.Q.value = 0.5;
-    this.duckFilter.connect(this.pianoBus);
+    this.duckFilter.connect(this.auditionBus);
     this.session = null;
   }
 
@@ -113,6 +123,21 @@ export class AudioEngine {
     if (drums !== undefined) this.drumBus.gain.setTargetAtTime(drums, t, 0.02);
     if (sfx !== undefined) this.sfxBus.gain.setTargetAtTime(sfx, t, 0.02);
     if (melody !== undefined) this.melodyBus.gain.setTargetAtTime(melody, t, 0.02);
+  }
+  // ドラム・バッキングの音量（0〜100%。mixGainFor）。メロディ・試聴・技の効果音は、変えない
+  setMix({ drums, backing } = {}) {
+    const v = {};
+    if (drums !== undefined) v.drums = DRUM_BUS_GAIN * mixGainFor(drums);
+    if (backing !== undefined) v.piano = PIANO_BUS_GAIN * mixGainFor(backing);
+    this.setVolumes(v);
+  }
+  // バーをはなしたときの、聴き比べ用の音。演奏中は、ほんとうの演奏が鳴っているので、何もしない
+  previewMix(kind) {
+    if (this.playing) return false;
+    const t = this.ctx.currentTime + 0.03;
+    if (kind === 'drums') { [['K', 0, 'x'], ['H', 0.18, 'o'], ['S', 0.36, 'x'], ['H', 0.54, 'o'], ['K', 0.72, 'x'], ['S', 0.9, 'x']].forEach(([lane, dt, lv]) => this.playDrum(lane, t + dt, lv)); return true; }
+    if (kind === 'backing') { const c = this.table.byName('Ⅰ'); if (c) this.audition(c.id, t, 1.2, this.pianoBus); return true; }
+    return false;
   }
 
   // ---------- 音源の読み込み ----------
@@ -173,14 +198,14 @@ export class AudioEngine {
 
   // 止めたとき、鳴っている音をまとめて消せるように、「演奏ごとの出口」を挟む
   _sessionNode(dest) {
-    if (dest !== this.pianoBus && dest !== this.drumBus && dest !== this.melodyBus) return dest;
+    if (dest !== this.pianoBus && dest !== this.drumBus && dest !== this.melodyBus && dest !== this.auditionBus) return dest;
     if (!this.session) this.session = this._newSession();
-    return dest === this.pianoBus ? this.session.piano : dest === this.drumBus ? this.session.drums : this.session.melody;
+    return dest === this.pianoBus ? this.session.piano : dest === this.drumBus ? this.session.drums : dest === this.auditionBus ? this.session.audition : this.session.melody;
   }
   _newSession() {
-    const piano = this.ctx.createGain(), drums = this.ctx.createGain(), melody = this.ctx.createGain();
-    piano.connect(this.pianoBus); drums.connect(this.drumBus); melody.connect(this.melodyBus);
-    return { piano, drums, melody };
+    const piano = this.ctx.createGain(), drums = this.ctx.createGain(), melody = this.ctx.createGain(), audition = this.ctx.createGain();
+    piano.connect(this.pianoBus); drums.connect(this.drumBus); melody.connect(this.melodyBus); audition.connect(this.auditionBus);
+    return { piano, drums, melody, audition };
   }
 
   // 試聴の音の強さの倍率。演奏が進んでいて、いまコードが鳴っている間は、小さく（ほかのコードと、ぶつからないように）。それ以外は 1
@@ -188,13 +213,13 @@ export class AudioEngine {
 
   // 1つの和音を、すぐ鳴らす（試聴用）。駒を選んだときなど。
   //   演奏中は、音を小さく・短く・やわらかくする（ほかのコードが鳴っているところへ、駒のコードが重なると、不協和音になりやすいため）
-  audition(chordId, when = this.ctx.currentTime + 0.02, duration = 1.1) {
+  audition(chordId, when = this.ctx.currentTime + 0.02, duration = 1.1, bus = this.auditionBus) {
     const chord = this.table.byId(chordId);
     if (!chord || chord.isRepeat) return;
     const level = this.auditionLevel();
     const ducked = level < 1;
     const v = voiceChord(chord, BASE_C_DEFAULT + 12 * this.octave, -1, false);
-    v.notes.forEach((n, i) => this.playNote(n, when + i * 0.012, ducked ? duration * 0.55 : duration, (78 - i * 3) * level, ducked ? this.duckFilter : this.pianoBus, { idx: i, chord: true }));
+    v.notes.forEach((n, i) => this.playNote(n, when + i * 0.012, ducked ? duration * 0.55 : duration, (78 - i * 3) * level, ducked ? this.duckFilter : bus, { idx: i, chord: true }));
   }
 
   // 好きな音の組（MIDI ノート）を、すぐ鳴らす（コードの編集画面の試聴）。arpeggio: 低い音から、ばらして鳴らす。単音のときは、1つだけ
@@ -202,7 +227,7 @@ export class AudioEngine {
     const list = [...notes].sort((a, b) => a - b);
     const level = this.auditionLevel();
     const ducked = level < 1;
-    list.forEach((n, i) => this.playNote(n, when + i * (arpeggio ? 0.16 : 0.012), ducked ? duration * 0.55 : duration, (78 - Math.min(i, 8) * 3) * level, ducked ? this.duckFilter : this.pianoBus, { idx: i, chord: list.length > 1 }));
+    list.forEach((n, i) => this.playNote(n, when + i * (arpeggio ? 0.16 : 0.012), ducked ? duration * 0.55 : duration, (78 - Math.min(i, 8) * 3) * level, ducked ? this.duckFilter : this.auditionBus, { idx: i, chord: list.length > 1 }));
   }
 
   // ---------- メロディ ----------
@@ -270,8 +295,8 @@ export class AudioEngine {
     const t = this.ctx.currentTime;
     if (this.session) {                                             // 鳴っている音を、すっと消す
       const old = this.session;
-      old.piano.gain.setTargetAtTime(0, t, 0.04); old.drums.gain.setTargetAtTime(0, t, 0.04); old.melody.gain.setTargetAtTime(0, t, 0.04);
-      setTimeout(() => { try { old.piano.disconnect(); old.drums.disconnect(); old.melody.disconnect(); } catch (e) { /* 何もしない */ } }, 700);
+      old.piano.gain.setTargetAtTime(0, t, 0.04); old.drums.gain.setTargetAtTime(0, t, 0.04); old.melody.gain.setTargetAtTime(0, t, 0.04); old.audition.gain.setTargetAtTime(0, t, 0.04);
+      setTimeout(() => { try { old.piano.disconnect(); old.drums.disconnect(); old.melody.disconnect(); old.audition.disconnect(); } catch (e) { /* 何もしない */ } }, 700);
       this.session = null;
     }
     this.cur = null;

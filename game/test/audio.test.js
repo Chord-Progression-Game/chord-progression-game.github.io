@@ -1,7 +1,7 @@
 // ゲームの音（時計・ピアノ・ドラム）のテスト。音を出さずに（OfflineAudioContext）書き出して、中身を調べる。
 import { ChordTable } from '../js/core/chords.js';
-import { AudioEngine, parseCell, holdSlots, SLOTS_PER_STEP, masterGainFor, MASTER_GAIN, VOLUME_TOP, DRUM_BUS_GAIN } from '../js/audio/engine.js';
-import { DEFAULT_VOLUME } from '../js/game/save.js';
+import { AudioEngine, parseCell, holdSlots, SLOTS_PER_STEP, masterGainFor, MASTER_GAIN, VOLUME_TOP, DRUM_BUS_GAIN, PIANO_BUS_GAIN, MIX_DEFAULT, mixGainFor } from '../js/audio/engine.js';
+import { DEFAULT_VOLUME, DEFAULT_MIX } from '../js/game/save.js';
 import { Sfx } from '../js/audio/sfx.js';
 import { INSTRUMENTS, INSTRUMENT_IDS, driveCurve } from '../js/audio/instruments.js';
 import { BASE_C_DEFAULT, OCTAVE_DEFAULT } from '../js/core/voicing.js';
@@ -53,7 +53,7 @@ export async function run(t) {
     while (out.length < 8) out.push(null);
     return out;
   };
-  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120, voicing = 'off', octave = null } = {}) => {
+  const make = async (spec, { seconds = 6, drumId = 2, backingId = 1, bpm = 120, voicing = 'off', octave = null, mix = null, master = null } = {}) => {
     const ctx = new OfflineAudioContext(2, SR * seconds, SR);
     const e = new AudioEngine(ctx, table, presets);
     await e.load('../audio/');
@@ -61,6 +61,8 @@ export async function run(t) {
     e.setPatterns({ drumId, backingId }); e.setBpm(bpm);
     e.setVoicing(voicing);                                                    // 和音のつなぎ方（'off' / 'mid' / 'high'）
     if (octave !== null) e.octave = octave;
+    if (mix) e.setMix(mix);                                                   // ドラム・バッキングの音量（0〜100%）
+    if (master !== null) e.master.gain.value = master;                        // 全体の音量（アプリのはじめの値。最後の圧縮が、ほとんど働かない大きさ）
     // 鳴らす指示を記録する（音は、そのまま鳴らす）
     e.rec = { piano: [], drum: [] };
     const pp = e.playPianoNote.bind(e), pd = e.playDrum.bind(e);
@@ -499,5 +501,49 @@ export async function run(t) {
     };
     const full = await level(100), half = await level(50), off = await level(0);
     t.ok(`音量: 50% は 100% の約 1/4 の大きさで鳴る（比 ${(half / full).toFixed(3)}）。0% は無音（${off.toExponential(1)}）`, full > 0.01 && Math.abs(half / full - 0.25) < 0.03 && off < 1e-6);
+  }
+  // ---- ドラム・バッキングの音量（2026-11-24 夜。ご依頼: 音量のポップアップで、ドラムとバッキングを、別々に）----
+  {
+    t.eq('ミックス: はじめの値 50% = 標準の大きさ（倍率 1）・100% = 2倍・0% = 無音', [mixGainFor(MIX_DEFAULT), mixGainFor(100), mixGainFor(0), mixGainFor(25)], [1, 2, 0, 0.5]);
+    t.eq('ミックス: 範囲の外・変な値は、おさまる（-5 → 0・500 → 2倍・NaN → 標準）', [mixGainFor(-5), mixGainFor(500), mixGainFor(NaN)], [0, 2, 1]);
+    t.eq('ミックス: 保存のはじめの値（DEFAULT_MIX）= 標準の大きさ。はじめの出音は、これまでと変わらない', [DEFAULT_MIX, MIX_DEFAULT, mixGainFor(DEFAULT_MIX)], [50, 50, 1]);
+    t.ok('ミックス: ドラム・バッキングの通り道は、別々のバス。試聴・メロディのバスとも別', new Set([DRUM_BUS_GAIN, PIANO_BUS_GAIN]).size === 2 && (() => { const c = new OfflineAudioContext(2, 100, SR); const e = new AudioEngine(c, table, presets); return e.pianoBus !== e.drumBus && e.pianoBus !== e.auditionBus && e.pianoBus !== e.melodyBus && typeof e.setMix === 'function'; })());
+    const rmsOf = async (opts) => rms((await make('Ⅰ Ⅴ ⅣM7 Ⅰ', { seconds: 4, bpm: 120, master: masterGainFor(DEFAULT_VOLUME), ...opts })).buf, 0.2, 3.6);
+    // ドラムだけを鳴らして、ドラムのバーを動かす
+    const d0 = await rmsOf({ backingId: 0, mix: { drums: 0 } }), d25 = await rmsOf({ backingId: 0, mix: { drums: 25 } }), d50 = await rmsOf({ backingId: 0, mix: { drums: 50 } }), d100 = await rmsOf({ backingId: 0, mix: { drums: 100 } });
+    t.ok(`ミックス: ドラム 0% は、ほぼ無音（${d0.toExponential(1)}。変える瞬間の、ごく短い名残だけ）・25% < 50% < 100%（${d25.toFixed(4)} / ${d50.toFixed(4)} / ${d100.toFixed(4)}）`, d0 < d50 * 0.01 && d25 < d50 && d50 < d100 && d50 > 0.001);
+    t.ok(`ミックス: ドラム 100% は 50% の約 2倍（比 ${(d100 / d50).toFixed(2)}。アプリのはじめの全体の音量で）`, d100 / d50 > 1.6 && d100 / d50 < 2.1);
+    // バッキングだけを鳴らして、バッキングのバーを動かす
+    const b0 = await rmsOf({ drumId: 0, mix: { backing: 0 } }), b25 = await rmsOf({ drumId: 0, mix: { backing: 25 } }), b50 = await rmsOf({ drumId: 0, mix: { backing: 50 } }), b100 = await rmsOf({ drumId: 0, mix: { backing: 100 } });
+    t.ok(`ミックス: バッキング 0% は、ほぼ無音（${b0.toExponential(1)}）・25% < 50% < 100%（${b25.toFixed(4)} / ${b50.toFixed(4)} / ${b100.toFixed(4)}）`, b0 < b50 * 0.01 && b25 < b50 && b50 < b100 && b50 > 0.001);
+    t.ok(`ミックス: バッキング 100% は 50% の約 2倍（比 ${(b100 / b50).toFixed(2)}）`, b100 / b50 > 1.6 && b100 / b50 < 2.1);
+    // 別々: ドラムのバーは、バッキングだけの演奏に効かない。バッキングのバーは、ドラムだけの演奏に効かない
+    const bx = await rmsOf({ drumId: 0, mix: { drums: 0 } }), by = await rmsOf({ drumId: 0, mix: { drums: 100 } });
+    const dx = await rmsOf({ backingId: 0, mix: { backing: 0 } }), dy = await rmsOf({ backingId: 0, mix: { backing: 100 } });
+    t.ok(`ミックス: ドラムのバーは、バッキングに効かない・バッキングのバーは、ドラムに効かない（${bx.toFixed(5)} = ${by.toFixed(5)} / ${dx.toFixed(5)} = ${dy.toFixed(5)}）`, Math.abs(bx - by) < bx * 1e-4 && Math.abs(dx - dy) < dx * 1e-4);
+    // 標準（50%・50%）で、バーを動かさない演奏と、同じ音
+    const base = await rmsOf({}), mixed = await rmsOf({ mix: { drums: 50, backing: 50 } });
+    t.ok(`ミックス: 50%・50% は、バーを動かさないときと、同じ音（${base.toFixed(5)} = ${mixed.toFixed(5)}）`, Math.abs(base - mixed) < base * 1e-4);
+    // 試聴（駒を置いたときの音）は、バッキングのバーを 0 にしても、聞こえる
+    const auditionLevel = async (mix) => {
+      const c = new OfflineAudioContext(2, SR, SR);
+      const e = new AudioEngine(c, table, presets); await e.load('../audio/');
+      e.setMix(mix);
+      e.audition(table.byName('Ⅰ').id, 0.25, 0.8);
+      return rms(await c.startRendering(), 0.3, 0.8);
+    };
+    const a0 = await auditionLevel({ backing: 0, drums: 0 }), a100 = await auditionLevel({ backing: 100, drums: 100 });
+    t.ok(`ミックス: 試聴は、ドラム・バッキングのバーに左右されない（バッキング 0% でも ${a0.toFixed(4)} = 100% の ${a100.toFixed(4)}）`, a0 > 0.01 && Math.abs(a0 - a100) < 1e-9);
+    // バーをはなしたときの、聴き比べの音
+    const preview = async (kind, playing = false) => {
+      const c = new OfflineAudioContext(2, SR * 2, SR);
+      const e = new AudioEngine(c, table, presets); await e.load('../audio/');
+      e.playing = playing;
+      const r = e.previewMix(kind);
+      return { r, level: rms(await c.startRendering(), 0.05, 1.4) };
+    };
+    const pd = await preview('drums'), pb = await preview('backing'), pp = await preview('backing', true), pn = await preview('???');
+    t.ok(`ミックス: ドラムのバーをはなすと、ドラムが鳴る（${pd.level.toFixed(4)}）・バッキングのバーをはなすと、和音が鳴る（${pb.level.toFixed(4)}）`, pd.r === true && pd.level > 0.003 && pb.r === true && pb.level > 0.01);
+    t.ok('ミックス: 演奏中は、聴き比べの音を、鳴らさない（ほんとうの演奏で聴ける）・知らない種類も鳴らさない', pp.r === false && pp.level < 1e-6 && pn.r === false && pn.level < 1e-6);
   }
 }

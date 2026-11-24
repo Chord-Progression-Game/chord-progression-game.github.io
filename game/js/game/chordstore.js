@@ -8,6 +8,9 @@ import { detectChord, makeRecord, normalizeNotes, semitonesOf, sanitizeChordbook
 
 const sameArray = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
+// lvRule: 保存してある自作コードの「レベル」の決まりの版。2 = 2026-11-24 夜から（もとの駒をもとにしたコードは、もとの駒と同じ段には入れず、「自作」の段に並べる）
+const LEVEL_RULE = 2;
+
 export class ChordStore {
   constructor(save, table) {
     this.save = save;
@@ -15,8 +18,21 @@ export class ChordStore {
     this.listeners = [];
     this.save.chordbook = sanitizeChordbook(save.chordbook, new Set(table.baseList.filter((c) => !c.isRepeat).map((c) => c.id)));
     this.migrated = this._migrateEdits();
+    const ruleBefore = this.save.chordbook.lvRule;
+    this.levelsMoved = this._migrateLevels();
     table.setLayer(this.save.chordbook);
-    if (this.migrated) writeSave(this.save);
+    if (this.migrated || this.levelsMoved || ruleBefore !== LEVEL_RULE) writeSave(this.save);
+  }
+
+  // 以前の版では、もとの駒をもとにしてつくったコードが、もとの駒と同じレベルの段に入っていた。
+  // いまは、「自作」の段に並べる（ご指定）。もとの駒をもとにしたかは、保存からは分からないので、保存してあるレベルを、一度だけ、すべて未設定にする（編集画面で、選びなおせる）。外した数を返す
+  _migrateLevels() {
+    const lay = this.save.chordbook;
+    if ((lay.lvRule || 0) >= LEVEL_RULE) return 0;
+    let n = 0;
+    for (const r of lay.custom) if (r.level !== null && r.level !== undefined) { r.level = null; n++; }
+    lay.lvRule = LEVEL_RULE;
+    return n;
   }
 
   // 以前の版では、もとの駒を編集すると、その駒を上書きしていた（layer.edits）。いまは、もとの駒は書きかえないので、
@@ -37,6 +53,7 @@ export class ChordStore {
         if (!sameNotesAsBase && !dup) {
           const cid = Math.max(lay.nextId, CUSTOM_ID_BASE);
           raw.id = cid; raw.name = uniqueName(raw.name, taken); taken.add(raw.name);
+          raw.level = null;                                                // もとの駒をもとにしたコードは、もとの駒と同じ段には入れない（「自作」の段）
           lay.custom.push(raw); lay.nextId = cid + 1; n++;
         }
       }

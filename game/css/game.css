@@ -270,15 +270,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sm-reset { border: 1px solid var(--line); background: var(--panel-2); border-radius: 3px; padding: 0.4rem 0.7rem; font-size: 0.8rem; font-weight: 700; }
 .sm-reset:hover { border-color: var(--text); }
 /* 音量のメニュー（上のバーの「音」） */
-.volmenu { width: 17rem; }
-.vm-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0 0.6rem; }
-.vm-lo, .vm-hi { font-size: 0.7rem; color: var(--faint); flex: none; }
+.volmenu { width: 19.5rem; }
+.vm-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
+.vm-label { flex: none; width: 4.2rem; font-size: 0.78rem; font-weight: 700; color: var(--dim); }
 .vm-slider { flex: 1; min-width: 0; height: 1.4rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.vm-readout { flex: none; width: 4.2rem; text-align: right; font-family: var(--num); font-variant-numeric: tabular-nums; font-size: 0.92rem; }
-.volmenu.is-muted .vm-slider { opacity: 0.45; }
-.volmenu.is-muted .vm-readout { color: var(--danger); font-family: var(--font); font-size: 0.8rem; }
+.vm-readout { flex: none; width: 3.5rem; text-align: right; font-family: var(--num); font-variant-numeric: tabular-nums; font-size: 0.92rem; }
+.vm-mixbox { margin: 0.3rem 0 0.6rem; padding: 0.3rem 0 0.2rem; border-top: 1px solid var(--line); }
+.vm-mixbox .vm-slider { height: 1.2rem; }
+.vm-mixbox .vm-readout { font-size: 0.84rem; color: var(--dim); }
+.volmenu.is-muted #vm-slider { opacity: 0.45; }
+.volmenu.is-muted #vm-readout { color: var(--danger); font-family: var(--font); font-size: 0.8rem; }
 .vm-mute { border: 1px solid var(--line); background: var(--panel-2); border-radius: 3px; padding: 0.4rem 0.7rem; font-size: 0.8rem; font-weight: 700; }
 .vm-mute:hover { border-color: var(--text); }
+.vm-mute:disabled { opacity: 0.45; cursor: default; }
+.vm-mute:disabled:hover { border-color: var(--line); }
 #btn-sound.menu-open { border-color: var(--text); }
 
 /* ---------- モーダル ---------- */

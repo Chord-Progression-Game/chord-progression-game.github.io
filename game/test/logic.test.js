@@ -16,7 +16,7 @@ import { MELODY_STAGES, melodyPar, applyMelody } from '../js/game/melodies.js';
 import { makePreset, sanitizePresets, placementPlan, defaultName, trimChords, sameChords, sliceMelody, cutNotes, applyMelodyPlan, MAX_PRESETS, PresetStore } from '../js/game/presets.js';
 import * as AM from '../js/core/automelody.js';
 import * as SH from '../js/net/share.js';
-import { loadSave, DEFAULT_VOLUME } from '../js/game/save.js';
+import { loadSave, DEFAULT_VOLUME, DEFAULT_MIX } from '../js/game/save.js';
 import { MelodyDoc, sanitizeNotes, NOTE_LO, NOTE_HI, MAX_NOTES } from '../js/game/usermelody.js';
 
 export async function run(t) {
@@ -960,6 +960,8 @@ export async function run(t) {
     t.eq('音量: 以前の版が自動で書いた 100（volumeSet なし）は、はじめの値 50% にもどす', (() => { const x = load({ volume: 100 }); return [x.volume, x.volumeSet]; })(), [50, false]);
     t.eq('音量: 新しい目盛りで、バーで決めた値（volumeScale 2・volumeSet あり）は、そのまま（100 でも 0 でも 60 でも）', [100, 0, 60].map((v) => load({ volume: v, volumeSet: true, volumeScale: 2 }).volume), [100, 0, 60]);
     t.eq('音量: これまでの目盛りで決めた値（volumeScale なし）は、2倍にして、同じ出音に（30 → 60・25 → 50・0 → 0）。100 をこえるぶんは 100', [30, 25, 0, 80].map((v) => load({ volume: v, volumeSet: true }).volume), [60, 50, 0, 100]);
+    t.eq('ミックス: ドラム・バッキングの音量のはじめの値は 50%（標準の大きさ）。保存がまっさらのとき', (() => { const x = load(null); return [x.mix, DEFAULT_MIX]; })(), [{ drums: 50, backing: 50 }, 50]);
+    t.eq('ミックス: 保存した値は、そのまま読み込む（0〜100）。範囲の外・変な値・片方だけの保存は、おさまる（150 → 100・-5 → 0・"x" → 50）', [load({ mix: { drums: 20, backing: 80 } }).mix, load({ mix: { drums: 150, backing: -5 } }).mix, load({ mix: { drums: 'x' } }).mix, load({ mix: 'bad' }).mix, load({}).mix], [{ drums: 20, backing: 80 }, { drums: 100, backing: 0 }, { drums: 50, backing: 50 }, { drums: 50, backing: 50 }, { drums: 50, backing: 50 }]);
     t.eq('音量: 範囲の外・変な値は、おさまる（150 → 100・-5 → 0・"x" → 50）', [load({ volume: 150, volumeSet: true, volumeScale: 2 }).volume, load({ volume: -5, volumeSet: true, volumeScale: 2 }).volume, load({ volume: 'x', volumeSet: true, volumeScale: 2 }).volume], [100, 0, 50]);
     if (keep === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, keep);
   }
@@ -1052,6 +1054,29 @@ export async function run(t) {
       const st = new ChordStore({ chordbook: old }, T3); T3.setMode('user');
       t.eq('引っ越し: 以前の上書き（Ⅴ7 → Ⅴ9）は、新しい自作コード Ⅴ9 になる。もとの駒と同じ内容の上書き（色・形だけ）は、足さない', [st.migrated, T3.customChords().map((c) => `${c.id}:${c.name}:${c.symbol}`), Object.keys(T3.layer.edits).length], [1, ['200:Ⅴ9:G9'], 0]);
       t.eq('引っ越し: Ⅴ7 は、もとの姿（G7）にもどる。Ⅴ9 でも Ⅴ7 でも、それぞれの駒を指す', [T3.byName('Ⅴ7').symbol, !!T3.byName('Ⅴ7').edited, T3.byName('Ⅴ9').custom, T3.byName('Ⅴ7').id === v], ['G7', false, true, true]);
+      t.eq('引っ越し: 引っ越したコードは、もとの駒のレベル（Ⅴ7 は Lv.2）を引きつがない（「自作」の段に並ぶ。2026-11-24 夜のご指定）', T3.customChords().map((c) => c.level), [null]);
+    }
+    // もとの駒をもとにして、以前の版で保存した自作コード（レベルつき・lvRule なし）は、一度だけ、未設定（「自作」の段）にする
+    {
+      const rec = (id, name, notes, rootPc, symbol, level) => ({ id, notes, rootPc, symbol, name, level, color: null, shape: 'auto', at: 1 });
+      const T4 = new ChordTable(await (await fetch('../data/chords.json')).json());
+      const sv = { chordbook: { custom: [rec(200, 'Ⅴ9', [55, 59, 62, 65, 69], 7, 'G9', 2), rec(201, 'Ⅰ9', [48, 52, 55, 59, 62], 0, 'CM9', 5), rec(202, 'Ⅵm9', [57, 60, 64, 67, 71], 9, 'Am9', null)], edits: {}, nextId: 203 } };
+      const s4 = new ChordStore(sv, T4); T4.setMode('user');
+      t.eq('レベルの引っ越し: 保存してあったレベルは、一度だけ、すべて外す（2つ）。「自作」の段に並ぶ。決まりの版（lvRule）が 2 になる', [s4.levelsMoved, T4.customChords().map((c) => c.level), T4.layer.lvRule, sv.chordbook.lvRule], [2, [null, null, null], 2, 2]);
+      // 2回目: 決まりの版が 2 の保存は、そのまま（編集画面で、あとから決めたレベルを、消さない）
+      const T5 = new ChordTable(await (await fetch('../data/chords.json')).json());
+      const again = JSON.parse(JSON.stringify(sv.chordbook)); again.custom[0].level = 3;
+      const s5 = new ChordStore({ chordbook: again }, T5); T5.setMode('user');
+      t.eq('レベルの引っ越し: 2回目からは、しない（決めたレベルは残る）', [s5.levelsMoved, T5.customChords().map((c) => c.level)], [0, [3, null, null]]);
+      // 自作コードがない新しい保存でも、決まりの版を覚える（あとから決めたレベルが、消えないように）
+      const sv6 = { chordbook: { custom: [], edits: {}, nextId: 200 } };
+      const T6 = new ChordTable(await (await fetch('../data/chords.json')).json());
+      const s6 = new ChordStore(sv6, T6); T6.setMode('user');
+      const r6 = s6.addCustom({ notes: [55, 59, 62, 65, 69], level: 2 });
+      const T7 = new ChordTable(await (await fetch('../data/chords.json')).json());
+      new ChordStore({ chordbook: JSON.parse(JSON.stringify(sv6.chordbook)) }, T7); T7.setMode('user');
+      t.eq('レベルの引っ越し: 新しい保存（自作なし）も、決まりの版を持つ。あとで決めたレベル（Lv.2）は、読み直しても残る', [r6.ok, sv6.chordbook.lvRule, T7.customChords().map((c) => c.level)], [true, 2, [2]]);
+      t.eq('保存: 決まりの版（lvRule）は、検査のあとも残る・ないものは 0', [sanitizeChordbook({ custom: [], lvRule: 2 }).lvRule, sanitizeChordbook({ custom: [] }).lvRule, sanitizeChordbook({ custom: [], lvRule: 'x' }).lvRule], [2, 0, 0]);
     }
     // 保存の形・読み直し・壊れた保存
     const json = JSON.parse(JSON.stringify(save.chordbook));

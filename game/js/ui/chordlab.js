@@ -50,9 +50,10 @@ export class ChordLab {
     const notes = this.store.notesOf(id);
     const cands = detectChord(notes, { max: 12 });
     const auto = cands.find((x) => x.rootPc === c.rootPc) || cands[0];
-    const common = { notes, symbol: c.symbol, touched: !!auto && c.symbol !== auto.symbol, level: c.level === undefined ? null : c.level, color: c.color || null, shape: c.shape || 'auto', rootPc: c.rootPc };
+    // もとの駒をもとにしてつくるコードは、もとの駒と同じレベルにはしない（「自作」の段に並べる。2026-11-24 夜のご指定）。自作コードの編集は、いまのレベルのまま
+    const common = { notes, symbol: c.symbol, touched: !!auto && c.symbol !== auto.symbol, level: c.custom ? (c.level === undefined ? null : c.level) : null, color: c.color || null, shape: c.shape || 'auto', rootPc: c.rootPc };
     if (c.custom) this.start({ ...common, mode: 'custom', id, title: `自作コードを編集: ${c.symbol}` });
-    else this.start({ ...common, mode: 'new', id: null, from: { id: c.id, name: c.name, symbol: c.symbol }, title: `「${c.name}（${c.symbol}）」をもとに、自作コードをつくる` });
+    else this.start({ ...common, mode: 'new', id: null, from: { id: c.id, name: c.name, symbol: c.symbol, level: c.level === undefined ? null : c.level }, title: `「${c.name}（${c.symbol}）」をもとに、自作コードをつくる` });
     return true;
   }
   start(state) {
@@ -233,7 +234,7 @@ export class ChordLab {
     const lv = clear(e.levels);
     [null, 1, 2, 3, 4, 5].forEach((n) => lv.append(h('button', { class: `chip seg${s.level === n ? ' on' : ''}`, type: 'button', dataset: { level: n === null ? '' : String(n) },
       title: n === null ? 'レベルを決めない（Lv.5 のあとの「自作」の段に並びます）' : `Lv.${n} の段に入ります`, onclick: () => { s.level = n; this.renderPanel(); } }, n === null ? '未設定' : `Lv.${n}`)));
-    lv.append(h('small', { class: 'cl-lvnote' }, s.level === null ? 'いまは「自作」の段（Lv.5 の右）' : '高いレベルのコードを使うと「コードの難しさ」の加点がつきます'));
+    lv.append(h('small', { class: 'cl-lvnote' }, s.level === null ? `いまは「自作」の段（Lv.5 の右）${s.from && s.from.level ? `。もとの駒は Lv.${s.from.level} ですが、同じ段には入れません` : ''}` : '高いレベルのコードを使うと「コードの難しさ」の加点がつきます'));
     // 色
     const cb = clear(e.colors);
     cb.append(h('button', { class: `cl-sw auto${s.color === null ? ' on' : ''}`, type: 'button', title: '働きの色（トニック系=黄・広がり=青・緊張=赤・色づけ=紫）', onclick: () => { s.color = null; this.renderPanel(); } }, '自動'));
