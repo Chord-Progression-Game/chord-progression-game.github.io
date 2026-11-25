@@ -85,6 +85,7 @@ export class AudioEngine {
     this._loops = [];                  // 周回の始まりの記録 [{ start（マスの通し番号）, steps }]。いまの位置が、周回の何マス目かを知るのに使う
     this._resumeSlot = null;           // シークのあと、最初に鳴らすマス（そこで、鳴っているはずの音を、つづきから鳴らす）
     this._seekHold = null;             // シークのあと、続きの演奏が始まる（when）まで、位置を、この位置に止めておく { slot, len, until }（印が、一瞬、後ろにもどらないように）
+    this.cueSlot = 0;                  // 演奏を止めているあいだの位置（周回の何マス目か）。シークバーで動かせる。つぎに演奏を始めるとき、ここから始まる（止めると、0 にもどる）
     this._buildGraph();
   }
 
@@ -278,16 +279,20 @@ export class AudioEngine {
   _drum() { return this.drumId ? this.presets.drums.find((d) => d.id === this.drumId) : null; }
   _backing() { return this.backingId ? this.presets.backings.find((b) => b.id === this.backingId) : null; }
 
-  start() {
+  // 演奏を始める。fromSlot: 周回の何マス目から始めるか（省くと、止まっているあいだに、シークバーで決めた位置 = cueSlot。ふつうは 0）
+  start(fromSlot = null) {
     if (this.playing) return;
     this.playing = true;
-    this.slotIndex = 0; this.lastRoot = -1; this.cur = null;
-    this.scrub = null; this._loops = []; this._resumeSlot = null; this._seekHold = null;
-    this.loopStart = 0; this.loopSteps = this._wantedSteps();
+    const steps = this._wantedSteps(), len = steps * SLOTS_PER_STEP;
+    let slot = fromSlot === null || fromSlot === undefined ? (this.scrub ? this.scrub.pos : this.cueSlot) : fromSlot;     // 止まっているあいだに、シークバーをつかんだまま始めたときは、つかんだ位置から
+    if (this.scrub) { const snd = this.scrubSound; this.scrub = null; if (snd) snd.end(this.ctx.currentTime); }
+    slot = Number.isFinite(slot) ? Math.max(0, Math.min(len - 1, Math.round(slot))) : 0;
+    this.cueSlot = 0;
+    this.lastRoot = -1; this.cur = null;
+    this._loops = []; this._resumeSlot = null; this._seekHold = null;
     this.session = this._newSession();
-    this.nextTime = this.ctx.currentTime + 0.12;
-    this.refTime = this.nextTime; this.refSlot = 0;
     this.events.length = 0;
+    this._applySeek(slot, steps, this.ctx.currentTime + 0.12, { tick: false });
     this._tick();
     this._timer = setInterval(() => this._tick(), TIMER_MS);
   }
@@ -300,6 +305,7 @@ export class AudioEngine {
     if (this.scrub) { this.scrub = null; if (this.scrubSound) this.scrubSound.end(t); }          // シークバーをつかんでいる途中で止めたら、巻き戻しの音も止める
     this._cutSession(0.04);                                         // 鳴っている音を、すっと消す
     this.cur = null;
+    this.cueSlot = 0;                                               // 止めると、位置は、はじめ（0）にもどる（シークバーで動かすと、そこから始められる）
     this.events.push({ type: 'stop', time: t });
   }
 
@@ -527,7 +533,7 @@ export class AudioEngine {
   // seeks: [{ at（秒）, slot（周回の何マス目か）}]。その時刻に、演奏の位置を動かす（シークバーをはなした場合と同じ）
   async renderOffline(seconds, { seeks = [] } = {}) {
     this.playing = true; this.slotIndex = 0; this.lastRoot = -1; this.cur = null; this.events.length = 0;
-    this.scrub = null; this._loops = []; this._resumeSlot = null; this._seekHold = null;
+    this.scrub = null; this._loops = []; this._resumeSlot = null; this._seekHold = null; this.cueSlot = 0;
     this.loopStart = 0; this.loopSteps = this._wantedSteps();
     this.refTime = 0.02; this.refSlot = 0;
     const sec = this.slotSeconds(), total = Math.ceil(seconds / sec);
@@ -552,9 +558,10 @@ export class AudioEngine {
     if (this._loops.length > 8) this._loops.shift();
   }
 
-  // 時刻 t の、演奏の位置: { pos: 周回の何マス目か（小数）, len: 周回のマス数 }。シークバーをつかんでいるあいだは、つかんでいる位置
+  // 時刻 t の、演奏の位置: { pos: 周回の何マス目か（小数）, len: 周回のマス数 }。シークバーをつかんでいるあいだは、つかんでいる位置。演奏を止めているあいだは、演奏を始める位置（cueSlot）
   loopPosAt(t = this.ctx.currentTime) {
     if (this.scrub) return { pos: this.scrub.pos, len: this.scrub.len };
+    if (!this.playing) return { pos: this.cueSlot, len: this._wantedSteps() * SLOTS_PER_STEP };               // 止まっているあいだ: 演奏を始める位置
     if (this._seekHold && t < this._seekHold.until) return { pos: this._seekHold.slot, len: this._seekHold.len };      // はなした直後: 続きが始まるまでは、はなした位置のまま
     const slots = Math.round((this.refSlot + (t - this.refTime) / this.slotSeconds()) * 1e6) / 1e6;       // 時刻 → マスの計算の、ごく小さな誤差で、周回の境目が、ずれないように
     let e = this._loops.length ? this._loops[0] : { start: 0, steps: this.loopSteps };
@@ -568,16 +575,18 @@ export class AudioEngine {
   // 時刻 t は、周回の、何マス目か（小数。0〜64。4ステップのときは 0〜32）。メロディの帯・シークバーの、再生位置の表示に使う
   loopSlotAt(t = this.ctx.currentTime) { return this.loopPosAt(t).pos; }
 
-  // シークバーをつかんだ。fromPos: いま見えている位置（省くと、いまの演奏の位置）。演奏を止めて、鳴っている音を消す。演奏していなければ、何もしない（false）
+  // シークバーをつかんだ。fromPos: いま見えている位置（省くと、いまの演奏の位置）。演奏中は、演奏を止めて、鳴っている音を消す。演奏を止めているときも、つかめる（動かした位置が、演奏を始める位置になる）。すでにつかんでいれば false
   scrubBegin(fromPos = null) {
-    if (!this.playing || this.scrub) return false;
+    if (this.scrub) return false;
     const cur = this.loopPosAt(this.ctx.currentTime);
     const len = cur.len;
     const pos = fromPos === null || fromPos === undefined ? cur.pos : Math.max(0, Math.min(len - 1e-6, fromPos));
     this.scrub = { pos, len, v: 0, lastT: null, tickT: null, burst: null };
-    this._cutSession(0.015);
     const now = this.ctx.currentTime;
-    this.events = this.events.filter((e) => e.time <= now + 0.005);        // これから来るはずだった、ステップ・拍の知らせは、捨てる（その音は、消えた）
+    if (this.playing) {
+      this._cutSession(0.015);
+      this.events = this.events.filter((e) => e.time <= now + 0.005);        // これから来るはずだった、ステップ・拍の知らせは、捨てる（その音は、消えた）
+    }
     if (!this.scrubSound) this.scrubSound = new ScrubSound(this.ctx, this.scrubBus);
     this.scrubSound.begin(now);
     return true;
@@ -621,7 +630,7 @@ export class AudioEngine {
     snd.update(Math.min(SCRUB_MAX_SPEED, Math.abs(v) / natural), v < 0 ? -1 : 1, this.ctx.currentTime);
   }
 
-  // シークバーをはなした。その位置（pos を省くと、つかんでいた位置）から、続きを演奏する。snap: ステップの頭に近ければ、頭に合わせる。戻り値: 再開したマス（なければ null）
+  // シークバーをはなした。その位置（pos を省くと、つかんでいた位置）から、続きを演奏する（止まっているときは、演奏を始める位置を決めるだけ）。snap: ステップの頭に近ければ、頭に合わせる。戻り値: 再開した（決めた）マス（なければ null）
   scrubEnd(pos = null, { snap = true, nowMs = performance.now() } = {}) {
     const s = this.scrub;
     if (!s) return null;
@@ -630,7 +639,8 @@ export class AudioEngine {
     const tail = s.burst && nowMs < s.burst.until ? (s.burst.until - nowMs) / 1000 : 0;          // 「ひゅっ」は、最後まで鳴らす
     this.scrub = null;
     if (this.scrubSound) this.scrubSound.end(this.ctx.currentTime + tail);
-    this._applySeek(slot, s.len / SLOTS_PER_STEP, this.ctx.currentTime + RESUME_DELAY);
+    if (this.playing) this._applySeek(slot, s.len / SLOTS_PER_STEP, this.ctx.currentTime + RESUME_DELAY);
+    else this.cueSlot = slot;                                                     // 止まっているとき: 演奏は始めない。つぎに演奏を始める位置だけ、決める
     return slot;
   }
 

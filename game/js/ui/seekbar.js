@@ -16,7 +16,7 @@ export class SeekBar {
     root.setAttribute('role', 'slider');
     root.setAttribute('aria-label', '演奏の位置');
     root.setAttribute('aria-orientation', 'horizontal');
-    root.title = 'ドラッグで、演奏の位置を動かします（左へ巻き戻し・右へ早送り）。はなすと、そこから続きます';
+    root.title = 'ドラッグで、演奏の位置を動かします（左へ巻き戻し・右へ早送り）。はなすと、そこから続きます。演奏を止めているときは、動かした位置から、演奏ボタンで始まります';
     this.build(this.len / SLOTS_PER_STEP);
     root.addEventListener('pointerdown', (e) => this.down(e));
     root.addEventListener('pointermove', (e) => this.move(e));

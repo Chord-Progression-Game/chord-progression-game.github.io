@@ -4,6 +4,8 @@
 //      ・つながりの跳躍が小さく、進行全体で「低すぎる・高すぎる」ことがないように、動的計画法で、全体の費用がいちばん小さい組み合わせを選ぶ
 //      ・強進行（ルートが完全4度上 = 完全5度下へ進む）は、完全4度上か、完全5度下の、どちらかだけ。どちらにするかは、全体の音域で決まる
 //      ・終止（強進行で、フレーズの終わりの主和音 Ⅰ へ着く）は、完全5度下へ動くことを、優先する（4度上へ跳ぶ罰を、大きくする）。途中の主和音・Ⅵm 系への強進行（解決）は、やや優先する
+//      ・セカンダリードミナント（2026-11-25。ご指定）: ドミナント（Ⅲ7・Ⅱ7・Ⅵ7 など）や、ツーファイブの Ⅱm7 が、Ⅰ系以外へ強進行するとき（Ⅲ7 → Ⅵm7・Ⅱm7 → Ⅴ7 など）は、完全4度上のほうが聞き馴染みがあるので、4度上を優先する（5度下に罰）。
+//        ただし、高くなりすぎるとき（音域の帯の外に出る罰が、それを上回るとき）や、Ⅰ系のコードに解決するときは、これまでどおり、完全5度下
 //      ・ループのつなぎ目（最後 → 最初）も、費用に入れる。最後のコードが、最初のコードと同じルートなら、同じ高さになる
 //   ② 1つ前だけを見る簡易版（chooseOctaveShift）: 本来の高さと、その上下1オクターブのうち、前のルートに一番近いものを選ぶ（同じ近さなら本来の高さ）。試聴・ファームとの照合に使う
 // ゲームの音が、実機の音と同じになるように、同じ計算（整数だけ）を保つ。ファームと一致するかは、テストで確かめている。
@@ -41,7 +43,8 @@ export function voiceChordAt(chord, root, baseC = BASE_C_DEFAULT) {
 // 費用（整数）。ファームの voicing.cpp の VOICE_PLAN_* と同じ値
 export const PLAN = {
   CAD1: 20,     // 終止（強進行で、フレーズの終わり・ループのつなぎ目の、主和音 Ⅰ へ着く）が、4度上へ跳ぶときの罰。大きいので、完全5度下を優先する
-  CAD2: 8,      // 強進行で、フレーズの途中の主和音へ着く（解決）・Ⅵm 系へ着くときが、4度上へ跳ぶときの罰。やや大きい
+  CAD2: 8,      // 強進行で、フレーズの途中の主和音へ着く（解決）・Ⅵm 系へ着くときが、4度上へ跳ぶときの罰。やや大きい（Ⅵm 系は、ドミナントから着くときを、のぞく = 下の SEC）
+  SEC: 8,       // セカンダリードミナントの動き（ドミナント・ツーファイブの Ⅱm7 → Ⅰ系以外への強進行）が、5度下へ動くときの罰（= 4度上を優先する）
   PEN: 4,       // 音域の帯（下は baseC - LOW、上は baseC + HIGH）の外に出る、1半音ごとの罰
   BIG: 1000,    // 強進行なのに、完全4度上でも完全5度下でもない（ここでは、選ばれない）ときの罰
   OCT: 1,       // 本来の高さから、1オクターブずれるときの罰（同じ費用なら、本来の高さを選ぶ）
@@ -54,8 +57,12 @@ const GOAL_TYPES = ['min', 'min7', 'maj'];
 // 着地先の和音の強さ: 2 = 主和音（Ⅰ。どの種類でも）/ 1 = Ⅵm 系（Ⅵm・Ⅵm7・Ⅵ。短調の主和音）/ 0 = 着地先ではない
 export const goalLevel = (c) => (!c || c.isRepeat ? 0 : c.rootPc === 0 ? 2 : (c.rootPc === 9 && GOAL_TYPES.includes(c.type) ? 1 : 0));
 export const isGoalChord = (c) => goalLevel(c) > 0;
+// 次の和音を引っぱるドミナントか（セカンダリードミナントの、もとになる和音）: ドミナント7th（Ⅲ7・Ⅱ7・Ⅵ7 など）・Ⅴ・Ⅵ の長三和音（Ⅱm のドミナント）
+export const isDomSource = (c) => !!c && !c.isRepeat && (c.type === 'dom7' || (c.type === 'maj' && (c.rootPc === 7 || c.rootPc === 9)));
+// ツーファイブの Ⅱ にあたる、マイナー系の和音（Ⅱm・Ⅱm7・Ⅶm7♭5 など）
+export const isIiChord = (c) => !!c && !c.isRepeat && (c.type === 'min' || c.type === 'min7' || c.type === 'min7b5');
 
-// nodes: ループの順に並べた和音（休みは入れない）。{ pc: ルートの音名の番号（0〜11）, goal: 着地先の強さ（goalLevel。0・1・2）, final: フレーズの終わりか }
+// nodes: ループの順に並べた和音（休みは入れない）。{ pc: ルートの音名の番号（0〜11）, goal: 着地先の強さ（goalLevel。0・1・2）, final: フレーズの終わりか, dom: ドミナントか（isDomSource）, ii: マイナー系か（isIiChord）。dom・ii は、省いてもよい（false）}
 // 戻り値: 各ノードの、本来の高さからのずれ（-12 / 0 / 12）。最初のノードは、いつも 0
 export function planOctaves(nodes, baseC) {
   const n = nodes.length;
@@ -64,12 +71,15 @@ export function planOctaves(nodes, baseC) {
   const lo = baseC - PLAN.LOW, hi = baseC + PLAN.HIGH;
   const reg = (h) => PLAN.PEN * (h < lo ? lo - h : h > hi ? h - hi : 0);
   // a → b のつながりの種類。0 = ふつう / 1 = 終止（強進行で、フレーズの終わり・ループのつなぎ目の、主和音 Ⅰ へ）/ 2 = 解決（強進行で、途中の主和音へ・Ⅵm 系へ）
-  const kind = (a, b, seam) => (mod12(b.pc - a.pc) !== 5 || !b.goal ? 0 : (b.goal === 2 && (seam || b.final) ? 1 : 2));
+  const strong = (a, b) => mod12(b.pc - a.pc) === 5;
+  // セカンダリードミナントの動き: 強進行で、ドミナント（または、ドミナントへ向かう Ⅱm 系）から、Ⅰ系以外へ。4度上を優先する（5度下に、罰 PLAN.SEC）
+  const sec = (a, b) => strong(a, b) && b.goal !== 2 && !!(a.dom || (a.ii && b.dom));
+  const kind = (a, b, seam) => (!strong(a, b) || !b.goal || sec(a, b) ? 0 : (b.goal === 2 && (seam || b.final) ? 1 : 2));
   const trans = (a, b, ha, hb, kd) => {
     const d = hb - ha;
-    if (mod12(b.pc - a.pc) === 5) {                            // 強進行: 完全4度上（+5）か、完全5度下（-7）
+    if (strong(a, b)) {                                        // 強進行: 完全4度上（+5）か、完全5度下（-7）
       if (d === 5) return 5 + (kd === 1 ? PLAN.CAD1 : kd === 2 ? PLAN.CAD2 : 0);
-      if (d === -7) return 7;
+      if (d === -7) return 7 + (sec(a, b) ? PLAN.SEC : 0);
       return PLAN.BIG + Math.abs(d);
     }
     return Math.abs(d);                                        // ほかは、近いほどよい
@@ -154,7 +164,7 @@ export function planVoicing(board, table, { baseC = BASE_C_DEFAULT, split = null
     }
     return false;
   };
-  const plan = planOctaves(nodes.map((nd, i) => ({ pc: nd.chord.rootPc, goal: goalLevel(nd.chord), final: endsPhrase(i) })), baseC);
+  const plan = planOctaves(nodes.map((nd, i) => ({ pc: nd.chord.rootPc, goal: goalLevel(nd.chord), final: endsPhrase(i), dom: isDomSource(nd.chord), ii: isIiChord(nd.chord) })), baseC);
   nodes.forEach((nd, i) => { for (const e of nd.members) put(e, nominal(nd.chord) + plan[i]); });
   return { first, second, nodes: nodes.length };
 }

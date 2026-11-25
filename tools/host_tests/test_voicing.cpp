@@ -153,6 +153,25 @@ int main() {
     eqi("コンファーメーション: Ⅰ7 の高さ = 最初の ⅠM7 の高さ", r7, r0);
     eqi("コンファーメーション: 「→」は、前の駒と同じ高さ", sh[1] == sh[0] && sh[5] == sh[4], 1);
 
+    // セカンダリードミナントは、完全4度上を優先（2026-11-25。ご指定）。高くなりすぎるとき・Ⅰ系に解決するときは、完全5度下
+    {
+      int ivm7 = idOf("ⅣM7"), ii7 = idOf("Ⅱ7"), iim7 = idOf("Ⅱm7"), v7 = idOf("Ⅴ7"), vi7 = idOf("Ⅵ7"), iiim7 = idOf("Ⅲm7");
+      shiftsOf({ivm7, iii7, vim7, i7}, sh);
+      eqi("丸サ進行: ⅣM7 = F3(53)", rootAt(0, ivm7), 53);
+      eqi("丸サ進行: Ⅲ7 = E3(52)", rootAt(1, iii7), 52);
+      eqi("丸サ進行: Ⅵm7 = A3(57)（Ⅲ7 から完全4度上。セカンダリードミナントは、4度上を優先）", rootAt(2, vim7), 57);
+      eqi("丸サ進行: Ⅰ7 = C3(48)", rootAt(3, i7), 48);
+      int iimaj7 = imaj7;
+      shiftsOf({iim7, v7, iimaj7}, sh);
+      eqi("ツーファイブワン: Ⅱm7 = D3(50)・Ⅴ7 = G3(55)（完全4度上）・ⅠM7 = C3(48)（Ⅰ系への解決は、完全5度下）", rootAt(0, iim7) == 50 && rootAt(1, v7) == 55 && rootAt(2, iimaj7) == 48, 1);
+      shiftsOf({imaj7, ii7, v7, imaj7}, sh);
+      eqi("Ⅱ7 → Ⅴ7（Ⅱ7 はドミナント）: D3(50) → G3(55)（完全4度上）", rootAt(1, ii7) == 50 && rootAt(2, v7) == 55, 1);
+      shiftsOf({iii7, vi7, ii7, v7, imaj7}, sh);
+      eqi("ラグタイム: Ⅲ7 = E3(52)・Ⅵ7 = A3(57)・Ⅱ7 = D3(50)（D4 は高すぎるので、完全5度下）・Ⅴ7 = G3(55)・ⅠM7 = C3(48)",
+          rootAt(0, iii7) == 52 && rootAt(1, vi7) == 57 && rootAt(2, ii7) == 50 && rootAt(3, v7) == 55 && rootAt(4, imaj7) == 48, 1);
+      shiftsOf({iiim7, vim7, iim7, v7}, sh);
+      eqi("ドミナントではない強進行（Ⅲm7 → Ⅵm7）は、これまでどおり、完全5度下: E3(52) → A2(45)", rootAt(0, iiim7) == 52 && rootAt(1, vim7) == 45, 1);
+    }
     int i1 = idOf("Ⅰ"), iv = idOf("Ⅳ"), v = idOf("Ⅴ"), vim = idOf("Ⅵm");
     // Ⅰ Ⅳ Ⅴ（ループ）: Ⅴ → Ⅰ（つなぎ目）は終止なので、5度下（Ⅴ = G3 = 55）。Ⅳ = F3
     shiftsOf({i1, R, iv, v}, sh);

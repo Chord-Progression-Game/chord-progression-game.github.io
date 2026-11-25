@@ -139,6 +139,34 @@ def main():
             click(ch, *center(ch, '#ms-undo')); time.sleep(0.2)
             check("消したあとも、元に戻せる", notes(ch), "[[8,12,72]]")
 
+            # ============ ダブルクリックで、音を消す（2026-11-25。ご依頼: コードの編集画面と同じように）============
+            ch.eval("__app.melodyDoc.replaceAll([[0,2,72],[4,2,74],[8,12,76]]); __app.studio.select(null)"); time.sleep(0.3)
+            x, y = cell_xy(ch, 4, 74, 0.3)
+            click(ch, x, y); time.sleep(0.1)
+            check("クリック1回: 音は消えない（選ばれるだけ）", [notes(ch), ch.eval("__app.studio.sel.size")], ["[[0,2,72],[4,2,74],[8,12,76]]", 1])
+            click(ch, x, y); time.sleep(0.25)
+            check("ダブルクリック（同じ音を、続けて2回）: その音が消える。ほかの音は残る・選びも消える", [notes(ch), ch.eval("__app.studio.sel.size"), ch.eval("document.querySelectorAll('#studio .ms-note').length")], ["[[0,2,72],[8,12,76]]", 0, 2])
+            click(ch, *center(ch, '#ms-undo')); time.sleep(0.2)
+            check("ダブルクリックで消したあとも、元に戻せる（1回で、もとの3つ）", notes(ch), "[[0,2,72],[4,2,74],[8,12,76]]")
+            click(ch, x, y); time.sleep(0.6); click(ch, x, y); time.sleep(0.25)
+            check("間があいた2回（0.6秒）は、ダブルクリックではない。消えない", notes(ch), "[[0,2,72],[4,2,74],[8,12,76]]")
+            x2, y2 = cell_xy(ch, 0, 72, 0.3)
+            time.sleep(0.5)                                                                # 前の2回目のクリックから、間をあける（続けて3回目を押すと、2回目と3回目が、ダブルクリックになるため）
+            click(ch, x, y); click(ch, x2, y2); time.sleep(0.25)
+            check("別々の音を、続けてクリックしても、消えない", notes(ch), "[[0,2,72],[4,2,74],[8,12,76]]")
+            drag(ch, x, y, x + 3 * ch.eval("__app.studio.cw"), y); time.sleep(0.25)
+            moved = notes(ch)
+            click(ch, *cell_xy(ch, 8, 76, 0.3)); time.sleep(0.1)
+            click(ch, *cell_xy(ch, 8, 76, 0.3)); time.sleep(0.25)
+            check("動かしたあとでも、ダブルクリックで消える（動かしただけでは、消えない）", [moved != "[[0,2,72],[4,2,74],[8,12,76]]", "76" not in notes(ch)], [True, True])
+            ch.eval("__app.melodyDoc.replaceAll([[0,2,72],[4,2,74],[8,12,76]]); __app.studio.select(null)"); time.sleep(0.2)
+            # 複数を選んでいるときの、ダブルクリック: ダブルクリックした音だけが消える（選んだほかの音は、残る）
+            ch.eval("__app.studio.setSel([__app.melodyDoc.items[0].id, __app.melodyDoc.items[1].id], __app.melodyDoc.items[1].id)"); time.sleep(0.1)
+            x, y = cell_xy(ch, 4, 74, 0.3)
+            click(ch, x, y); time.sleep(0.1); click(ch, x, y); time.sleep(0.25)
+            check("選んだ音が2つあるときの、ダブルクリック: 押した音だけが消える", [notes(ch), ch.eval("document.querySelectorAll('#studio .ms-note').length")], ["[[0,2,72],[8,12,76]]", 2])
+            ch.eval("__app.melodyDoc.replaceAll([]); __app.studio.select(null)"); time.sleep(0.2)
+
             # ============ ドラッグで範囲選択・まとめて動かす・消す（2026-11-24）============
             ch.eval("__app.melodyDoc.replaceAll([[0,2,72],[4,2,74],[8,2,76],[16,2,72]]); __app.studio.select(null)"); time.sleep(0.3)
             check("範囲選択: 準備（4つの音。選びなし）", [notes(ch), ch.eval("__app.studio.sel.size")], ["[[0,2,72],[4,2,74],[8,2,76],[16,2,72]]", 0])

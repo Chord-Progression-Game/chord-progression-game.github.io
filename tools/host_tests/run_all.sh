@@ -68,6 +68,8 @@ echo "== 第11弾: 音量のメニュー（ドラム・バッキングを別々�
 python3 tools/host_tests/test_round11_ui.py
 echo "== 第12弾: シークバー（演奏の位置・巻き戻し・早送り）。本物のマウス・指。PC・スマホの縦・横 =="
 python3 tools/host_tests/test_round12_ui.py
+echo "== 第13弾: 止めているときのシークバー（指）・メロディの画面のダブルタップで消す・パッシング・ディミニッシュ（ご指定の例）=="
+python3 tools/host_tests/test_round13_ui.py
 echo "== 公開ページ（https。ブリッジなし）: リズム・コード編集の内容の取り込み =="
 python3 tools/host_tests/test_pages_ui.py
 echo "== 全端末への共有（にせの Firebase）: ブリッジが書く側・ゲームが読む側 =="

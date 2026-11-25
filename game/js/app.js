@@ -413,6 +413,7 @@ async function main() {
     screens.show('hud');
     if (app.engine) {
       app.engine.setBpm(stage.bpm); applySound();
+      app.engine.cueSlot = 0;                                                       // 止まっていたときに、シークバーで動かした位置は、ステージを変えたら、はじめにもどす
       if (!app.engine.playing && app.playing) app.engine.start();
     }
     if (mode === 'challenge') hud.toast('最初の駒を置くとスタート！');
@@ -771,8 +772,8 @@ async function main() {
   //   上のバーの下の真ん中。演奏に合わせて動く。つかんで動かすと、演奏が止まって、巻き戻しの音だけが鳴る（engine.scrubBegin / scrubTo）。はなすと、その位置から続く（scrubEnd）
   function seekInfo() {
     const en = app.engine;
-    if (!en || en.ctx.state !== 'running' || !en.playing) return { enabled: false, pos: 0, len: wantLoopSteps() * 8 };
-    const p = en.loopPosAt(en.ctx.currentTime - (en.ctx.outputLatency || 0));           // 耳に届いている位置（出力の遅れのぶん、少し前）
+    if (!en || en.ctx.state !== 'running') return { enabled: false, pos: 0, len: wantLoopSteps() * 8 };
+    const p = en.loopPosAt(en.ctx.currentTime - (en.ctx.outputLatency || 0));           // 耳に届いている位置（出力の遅れのぶん、少し前）。演奏を止めているときは、演奏を始める位置
     const v = en.scrub ? en.scrub.v : 0;
     return { enabled: true, pos: p.pos, len: p.len, dir: Math.abs(v) >= 0.5 / en.slotSeconds() ? Math.sign(v) : 0 };      // dir: 通常の演奏の半分以上の速さで動かしているとき、◀◀ ▶▶ を出す
   }
@@ -786,10 +787,15 @@ async function main() {
     root: $('#seekbar'),
     onBegin: (shown) => !!app.engine && app.state === 'play' && app.engine.scrubBegin(shown),
     onMove: (pos) => { if (app.engine) { app.engine.scrubTo(pos); followScrub(pos); } },
-    onEnd: (pos) => { app.scrubStep = -1; if (app.engine) app.engine.scrubEnd(pos); },
+    onEnd: (pos) => {
+      app.scrubStep = -1;
+      if (!app.engine) return;
+      const slot = app.engine.scrubEnd(pos);
+      if (slot !== null && !app.engine.playing) scene.setPlayhead(Math.floor(slot / 8));          // 止まっているとき: 演奏を始める位置の印を、盤に残す（演奏が始まると、ふつうの印にかわる）
+    },
     onKey: ({ delta, to }) => {                                                       // キーボード: ← → で 1ステップ・Home・End
       const en = app.engine;
-      if (!en || !en.playing || app.state !== 'play') return;
+      if (!en || app.state !== 'play') return;
       const p = en.loopPosAt(en.ctx.currentTime - (en.ctx.outputLatency || 0));
       const target = to !== undefined ? to : Math.round(p.pos / 8) * 8 + delta;
       en.seekTo(((target % p.len) + p.len) % p.len);
@@ -798,6 +804,7 @@ async function main() {
   app.seekbar = seekbar; app.scrubStep = -1;
   function togglePlay() {
     if (!app.engine) return;
+    if (app.seekbar && app.seekbar.dragging) app.seekbar.cancel();                 // シークバーをつかんだまま、スペース・演奏ボタン: つかんだところで、はなしたことにしてから（止まっていたなら、そこから始まる）
     app.playing = !app.engine.playing;
     if (app.playing) app.engine.start(); else app.engine.stop();
     hud.setToggle('#btn-play', app.playing, '#play-state');

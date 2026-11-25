@@ -87,6 +87,14 @@ export async function run(t) {
     t.eq('ご指定の例（コンファーメーション）: ⅠM7 → Ⅶm7-5 Ⅲ7 Ⅵm7 → Ⅴm7 Ⅰ7 = C3 C3 B2 E3 A3 A3 G3 C3（Ⅲ7・Ⅵm7 は完全4度上。Ⅰ7 は完全5度下で、ループ後の ⅠM7 と同じ高さ）',
       rootsOf('ⅠM7 → Ⅶm7-5 Ⅲ7 Ⅵm7 → Ⅴm7 Ⅰ7'), [48, 48, 47, 52, 57, 57, 55, 48]);
     t.eq('Ⅰ → Ⅳ Ⅴ: Ⅳ = F3（強進行は4度上）・Ⅴ = G3（つなぎ目の Ⅴ → Ⅰ は、完全5度下の終止）', rootsOf('Ⅰ → Ⅳ Ⅴ').slice(0, 4), [48, 48, 53, 55]);
+    // セカンダリードミナントは、完全4度上を優先（2026-11-25。ご指定）。ただし、高くなりすぎるとき・Ⅰ系に解決するときは、完全5度下
+    t.eq('ご指定: ⅣM7 → Ⅲ7 → Ⅵm7 → Ⅰ7（丸サ進行）= F3 E3 A3 C3（Ⅲ7 → Ⅵm7 は、完全4度上。以前は A2 へ、完全5度下）', rootsOf('ⅣM7 Ⅲ7 Ⅵm7 Ⅰ7').slice(0, 4), [53, 52, 57, 48]);
+    t.eq('ご指定: Ⅱm7 → Ⅴ7 → ⅠM7 = D3 G3 C3（ツーファイブ。Ⅱm7 → Ⅴ7 は完全4度上。Ⅴ7 → ⅠM7 は、Ⅰ系への解決なので、完全5度下）', rootsOf('Ⅱm7 Ⅴ7 ⅠM7').slice(0, 3), [50, 55, 48]);
+    t.eq('ご指定: Ⅱ7 → Ⅴ7 → ⅠM7（Ⅱ7 はドミナント）も、Ⅱ7 → Ⅴ7 は完全4度上（D3 → G3）', rootsOf('ⅠM7 Ⅱ7 Ⅴ7 ⅠM7').slice(0, 4), [48, 50, 55, 48]);
+    t.eq('Ⅰ Ⅲ7 Ⅵm Ⅳ: Ⅲ7 → Ⅵm も、完全4度上（E3 → A3）', rootsOf('Ⅰ Ⅲ7 Ⅵm Ⅳ').slice(0, 4), [48, 52, 57, 53]);
+    t.eq('高くなりすぎるときは、完全5度下: ラグタイム Ⅲ7 Ⅵ7 Ⅱ7 Ⅴ7 ⅠM7 = E3 A3 D3（D4 は高すぎるので、A3 から5度下）G3 C3', rootsOf('Ⅲ7 Ⅵ7 Ⅱ7 Ⅴ7 ⅠM7').slice(0, 5), [52, 57, 50, 55, 48]);
+    t.eq('ドミナントではない強進行は、これまでどおり: Ⅲm7 → Ⅵm7（Ⅵm 系へ着く）は完全5度下（E3 → A2）', rootsOf('Ⅲm7 Ⅵm7 Ⅱm7 Ⅴ7').slice(0, 4), [52, 45, 50, 55]);
+    t.eq('Ⅵm7 → Ⅱm7（ドミナントではない・4度上は高すぎる）は、完全5度下（A3 → D3）', rootsOf('Ⅵm7 Ⅱm7 Ⅴ7 ⅠM7').slice(0, 4), [57, 50, 55, 48]);
     t.eq('Ⅰ Ⅵm Ⅳ Ⅴ × 2: 1周目も2周目も C3 A2 F3 G3', rootsOf('Ⅰ Ⅵm Ⅳ Ⅴ Ⅰ Ⅵm Ⅳ Ⅴ'), [48, 45, 53, 55, 48, 45, 53, 55]);
     t.eq('Ⅱm7 Ⅴ7 ⅠM7 Ⅵm7: Ⅴ7 → ⅠM7 は完全5度下（G3 → C3）', rootsOf('Ⅱm7 Ⅴ7 ⅠM7 Ⅵm7').slice(0, 4), [50, 55, 48, 45]);
     t.eq('同じ和音の連続は「→」と同じ高さ（Ⅰ Ⅰ Ⅳ Ⅴ = Ⅰ → Ⅳ Ⅴ）', [JSON.stringify(rootsOf('Ⅰ Ⅰ Ⅳ Ⅴ')) === JSON.stringify(rootsOf('Ⅰ → Ⅳ Ⅴ')), JSON.stringify(rootsOf('Ⅱm7 Ⅱm7 Ⅴ7 ⅠM7')) === JSON.stringify(rootsOf('Ⅱm7 → Ⅴ7 ⅠM7'))], [true, true]);
@@ -120,7 +128,7 @@ export async function run(t) {
     t.ok(`計画: 強進行のつながりは、いつも、完全4度上（+5）か完全5度下（-7）（${strong} 個）`, strong > 1000 && strongOk === strong);
     t.ok(`計画: 終止（強進行で、4番・8番の主和音へ）は、ほとんど完全5度下（${cadDown}/${cad}）`, cad > 100 && cadDown >= cad * 0.9);
     t.ok(`計画: 音域の帯（baseC-7 〜 baseC+11）の外に出る和音は、1割より少ない（${outBand}/${roots}）`, outBand * 10 < roots);
-    t.ok('計画: 費用の定数（終止 20・解決 8・帯の罰 4）', PLAN.CAD1 === 20 && PLAN.CAD2 === 8 && PLAN.PEN === 4);
+    t.ok('計画: 費用の定数（終止 20・解決 8・セカンダリードミナントの5度下 8・帯の罰 4）', PLAN.CAD1 === 20 && PLAN.CAD2 === 8 && PLAN.SEC === 8 && PLAN.PEN === 4);
   }
   // 「→」と空きの解決（ファームの grooveResolveChordId と同じ）
   const R = table.repeatId, a = table.byName('Ⅴ7').id;
@@ -1520,4 +1528,96 @@ export async function run(t) {
       return liftFor(bd.map((id, k) => voiceChordAt(table.byId(id), roots.first[k], 48)));
     })(), 0);
   }
+
+  // ============ 32. パッシング・ディミニッシュ（2026-11-25。ご指定: 前か後に、半音上か半音下の dim があれば、経過の和音として加点する。進行は、dim を飛ばして評価する）============
+  {
+    const sp8 = (spec) => spec.split(' ').map((nm) => (nm === '-' ? null : table.byName(nm).id));
+    const run1 = (spec, split) => analyze(board(spec), table, split ? { split: sp8(split) } : {});
+    const pd = (r) => r.instances.filter((i) => i.id === 'passing_dim');
+    const one = (spec, split) => { const l = pd(run1(spec, split)); return l.length === 1 ? l[0].variant : `${l.length}個`; };
+
+    // ---- ご指定の例: ⅣM7 / Ⅲ7｜Ⅴ♯dim7 / Ⅵm7 / Ⅰ7（Fmaj7・E7｜G♯dim7・Am7・C7）----
+    const ex = run1('ⅣM7 Ⅲ7 Ⅵm7 Ⅰ7', '- Ⅴ#dim7 - -'), ctl = run1('ⅣM7 Ⅲ7 Ⅵm7 Ⅰ7');
+    t.ok('ご指定の例（Ⅲ7｜Ⅴ♯dim7）: 全体の進行は、丸サ進行として決まる（dim を飛ばして、ⅣM7 → Ⅲ7 → Ⅵm7 → Ⅰ7）', ex.instances.some((i) => i.id === 'maru_sa' && i.chords.join(' ') === 'ⅣM7 Ⅲ7 Ⅵm7 Ⅰ7'));
+    t.eq('ご指定の例: 「Ⅴ♯dim7 → Ⅵm7」が、パッシング・ディミニッシュとして加点される（120点・次のコードの半音下から）', pd(ex).map((i) => [i.variant, i.chords.join(' '), i.points]), [['次のコードの半音下から', 'Ⅴ#dim7 Ⅵm7', 120]]);
+    t.ok('ご指定の例: dim のぶん、dim がないとき（Ⅲ7 → Ⅵm7 → Ⅰ7 のまま）より、点が上がる（技の点 120 以上）', ex.score.total >= ctl.score.total + 120);
+    t.ok('ご指定の例: ほかの技は、変わらない（丸サ進行の基本の点は、dim があってもなくても同じ。dim の技との、コンボの倍率だけが付く）', (ex.instances.find((i) => i.id === 'maru_sa').points === ctl.instances.find((i) => i.id === 'maru_sa').points));
+    t.ok('ご指定の例: dim の技は、丸サ進行とコンボ（Ⅵm7 を共有。倍率 1.15）になる', pd(ex)[0].total > pd(ex)[0].points && pd(ex)[0].combo === ex.instances.find((i) => i.id === 'maru_sa').combo);
+    t.ok('ご指定の例: 「進行感がない」「唐突」などの減点は、付かない（dim は、進行から外れて数えない）', ex.critiques.every((c) => c.points >= 0 || /^idle/.test(c.id)));
+    // 1マスぜんぶが dim でも、同じ
+    const whole = run1('ⅣM7 Ⅲ7 Ⅴ#dim7 Ⅵm7 Ⅰ7');
+    t.ok('1マスぜんぶが dim でも、同じ（丸サ進行 + パッシング・ディミニッシュ）', whole.instances.some((i) => i.id === 'maru_sa' && i.chords.join(' ') === 'ⅣM7 Ⅲ7 Ⅵm7 Ⅰ7') && pd(whole).length === 1 && whole.score.total === ex.score.total);
+
+    // ---- 形（variants）----
+    t.eq('のぼる形: Ⅴ7 → Ⅴ♯dim7 → Ⅵm（ルートが、半音ずつのぼる）', one('Ⅰ Ⅴ7 Ⅴ#dim7 Ⅵm'), 'のぼる形');
+    t.eq('くだる形: Ⅵm → Ⅴ♯dim7 → Ⅴ7（ルートが、半音ずつくだる）', one('Ⅰ Ⅵm Ⅴ#dim7 Ⅴ7'), 'くだる形');
+    t.eq('行って、もどる形: Ⅵm → Ⅴ♯dim7 → Ⅵm7（前のコードの半音下へ寄り道して、同じルートへもどる）', one('Ⅰ Ⅵm Ⅴ#dim7 Ⅵm7'), '行って、もどる形');
+    t.eq('次のコードの半音下から: Ⅴ♯dim7 → Ⅵm（前のコードは、半音ではなれていない）', one('Ⅰ Ⅱm7 Ⅴ#dim7 Ⅵm'), '次のコードの半音下から');
+    t.eq('次のコードの半音上から: Ⅴ♯dim7 → Ⅴ7', one('Ⅰ Ⅱm7 Ⅴ#dim7 Ⅴ7'), '次のコードの半音上から');
+    t.eq('前のコードの半音上へ: Ⅴ7 → Ⅴ♯dim7（あとに、駒がない）', one('Ⅰ Ⅴ7 Ⅴ#dim7'), '前のコードの半音上へ');
+    t.eq('前のコードの半音下へ: Ⅵm → Ⅴ♯dim7（あとに、駒がない）', one('Ⅰ Ⅵm Ⅴ#dim7'), '前のコードの半音下へ');
+    t.eq('前・次の、どちらも半音ではなれていなければ、パッシング・ディミニッシュではない（Ⅲm → Ⅴ♯dim7 → Ⅰ）', one('Ⅱm7 Ⅲm Ⅴ#dim7 Ⅰ'), '0個');
+    t.eq('となりが、駒ではなく、空き・「？」のとき: 使わない（空きをはさむ・冒頭の Ⅴ7 は「？」）', [one('Ⅰ - Ⅴ#dim7 Ⅵm'), one('Ⅴ7 Ⅴ#dim7 Ⅳ'), one('Ⅴ7 Ⅴ#dim7 Ⅵm')], ['次のコードの半音下から', '0個', '次のコードの半音下から']);
+    t.eq('冒頭（1番）の dim は、「？」（冒頭のドミナント）。パッシング・ディミニッシュにはならない', [one('Ⅴ#dim7 Ⅵm7 Ⅱm7'), run1('Ⅴ#dim7 Ⅵm7 Ⅱm7').oddities.some((o) => o.id === 'head_v')], ['0個', true]);
+    t.eq('dim どうしは、つながない（Ⅴ♯dim7 のとなりが dim なら、そのとなりは数えない）', one('Ⅰ Ⅱm7 Ⅴ#dim7 Ⅴ#dim7'), '0個');
+
+    // ---- 進行は、dim を飛ばして評価する ----
+    const seg = buildSegments(board('Ⅰ Ⅴ7 Ⅴ#dim7 Ⅵm'), table)[0];
+    t.eq('進行から dim を飛ばす: Ⅰ Ⅴ7 Ⅴ♯dim7 Ⅵm は、Ⅴ7 → Ⅵm の偽終止（4番で終える）として決まる', [run1('Ⅰ Ⅴ7 Ⅴ#dim7 Ⅵm').instances.some((i) => i.kind === 'deceptive_cadence' && i.chords.join(' ') === 'Ⅴ7 Ⅵm'), seg.length], [true, 4]);
+    t.eq('同じコードにもどる（Ⅵm → Ⅴ♯dim7 → Ⅵm）: dim を飛ばして同じコードが並ぶので、「→」と同じ（強進行・弱進行などは、付かない）', (() => { const r = run1('Ⅰ Ⅵm Ⅴ#dim7 Ⅵm'); return [pd(r).map((i) => i.variant), r.instances.filter((i) => i.id !== 'passing_dim').map((i) => i.chords.join(' '))]; })(), [['行って、もどる形'], ['Ⅰ Ⅵm']]);
+    t.ok('dim を飛ばしても、ほかの技は、dim の位置を、またいで決まる（Ⅱm7 → Ⅴ♯dim7 → Ⅴ7 → Ⅰ のドミナントモーション）', run1('Ⅱm7 Ⅴ#dim7 Ⅴ7 Ⅰ').instances.some((i) => i.kind === 'dominant_motion' && i.chords.join(' ').includes('Ⅱm7 Ⅴ7')));
+
+    // ---- 点数 ----
+    t.ok('コードの難しさの加点は、dim の駒（Lv.4）にも付く（技に使われているので）', run1('Ⅰ Ⅵm Ⅴ#dim7 Ⅵm7').score.levelBonus >= table.byName('Ⅴ#dim7').level * 5 - 5);
+    t.ok('同じ技が重なるとき（dim が2回）は、2回目から点が下がる', (() => { const r = run1('Ⅰ Ⅱm7 Ⅴ#dim7 Ⅵm Ⅱm7 Ⅴ#dim7 Ⅵm'); const l = pd(r); return l.length === 2 && l[1].total < l[0].total; })());
+
+    // ---- ヒント ----
+    const hintNames = (spec, split) => { const h = suggest(board(spec), table, ALL, split ? { split: sp8(split) } : {}); return { p: h.primary.map((c) => c.name), a: h.advanced.map((c) => c.name), all: [...h.primary, ...h.advanced] }; };
+    t.ok('ヒント: Ⅵm のあとに、Ⅴ♯dim7（前のコードの半音下へ）が、「発展」に出る', (() => { const h = hintNames('Ⅰ Ⅵm'); const c = h.all.find((x) => x.name === 'Ⅴ#dim7'); return !!c && c.tier === 2 && c.reason.includes('パッシング'); })());
+    t.ok('ヒント: Ⅴ7 のあとの Ⅴ♯dim7（前のコードの半音上へ）も、候補になる（同じルートの ♭Ⅵ（Ⅵ♭M7。借用の偽終止）があるときは、より自然なほうが、先に選ばれる）', (() => {
+      const noFlat = ALL.filter((id) => table.byId(id).name !== 'Ⅵ♭M7');
+      const h = suggest(board('Ⅰ Ⅴ7'), table, noFlat), c = [...h.primary, ...h.advanced].find((x) => x.name === 'Ⅴ#dim7');
+      return !!c && c.tier === 2 && c.reason.includes('パッシング') && !hintNames('Ⅰ Ⅴ7').all.some((x) => x.name === 'Ⅴ#dim7') && hintNames('Ⅰ Ⅴ7').all.some((x) => x.name === 'Ⅵ♭M7');
+    })());
+    t.ok('ヒント: 半音ではなれていないコードのあと（Ⅱm7・Ⅲm・Ⅳ）には、Ⅴ♯dim7 は出ない', ['Ⅰ Ⅱm7', 'Ⅰ Ⅲm', 'Ⅰ Ⅳ'].every((sp) => !hintNames(sp).all.some((c) => c.name === 'Ⅴ#dim7')));
+    t.ok('ヒント: 前のコードの自然さが低い（Ⅴm7 のあと）ときは、Ⅴ♯dim7 を勧めない', !hintNames('Ⅵm Ⅴm7').all.some((c) => c.name === 'Ⅴ#dim7'));
+    t.ok('ヒント: あとにコードがあるとき（Ⅱm7 ＿ Ⅵm）は、その間に Ⅴ♯dim7 を勧める（次のコードの半音下から）', (() => { const c = hintNames('Ⅰ Ⅱm7 - Ⅵm').all.find((x) => x.name === 'Ⅴ#dim7'); return !!c && c.reason.includes('パッシング'); })());
+    t.ok('ヒント: dim のあとは、dim を飛ばして考える（Ⅰ Ⅴ7 Ⅴ♯dim7 のあと、Ⅵm・Ⅰ が出る）', (() => { const n = hintNames('Ⅰ Ⅴ7 Ⅴ#dim7').all.map((c) => c.name); return n.some((x) => x.startsWith('Ⅵm')) && n.some((x) => x === 'Ⅰ' || x === 'ⅠM7'); })());
+
+    // ---- 無作為な盤（分割したマスも）で、定義どおりか（定義を、実装とは別の書き方で確かめる）----
+    {
+      let sd = 20261125; const rn = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+      const isDim = (c) => !!c && !c.isRepeat && (c.type === 'dim7' || c.type === 'dim');
+      const dims = ALL.filter((id) => isDim(table.byId(id))), others = ALL.filter((id) => !isDim(table.byId(id)));
+      let n = 0, missing = 0, extra = 0, bad = 0, chainBad = 0; const ex2 = [];
+      for (let k = 0; k < 2500; k++) {
+        const b = Array.from({ length: 8 }, () => { const x = rn(); return x < 0.1 ? null : x < 0.25 ? table.repeatId : x < 0.45 ? dims[Math.floor(rn() * dims.length)] : others[Math.floor(rn() * others.length)]; });
+        const useSplit = rn() < 0.4;
+        const spl = useSplit ? Array.from({ length: 8 }, (_, i) => (b[i] !== null && rn() < 0.4 ? (rn() < 0.5 ? dims[Math.floor(rn() * dims.length)] : others[Math.floor(rn() * others.length)]) : null)) : undefined;
+        const r = analyze(b, table, spl ? { split: spl } : {});
+        n++;
+        const segs = buildSegments(b, table, spl);
+        const inPd = new Set(pd(r).flatMap((i) => i.positions));
+        for (const sg of segs) sg.forEach((ev, i) => {
+          if (!isDim(ev.chord) || ev.blocked) return;
+          const near = (e) => !!e && !e.blocked && !e.chord.isRepeat && !isDim(e.chord) && [1, 11].includes((((e.chord.rootPc - ev.chord.rootPc) % 12) + 12) % 12);
+          const want = near(sg[i - 1]) || near(sg[i + 1]);
+          const got = ev.positions.every((p) => inPd.has(p)) && pd(r).some((x) => x.chords.includes(ev.chord.name));
+          if (want && !got) { missing++; if (ex2.length < 3) ex2.push(`欠け ${b.join(',')}`); }
+          if (!want && pd(r).some((x) => x.positions.some((p) => ev.positions.includes(p)) && x.chords.some((nm) => nm === ev.chord.name && isDim(table.byName(nm))) && !near(sg[i - 1]) && !near(sg[i + 1]) && x.chords.length === 1)) extra++;
+        });
+        for (const i of pd(r)) {
+          const cs = i.chords.map((nm) => table.byName(nm));
+          const dimCount = cs.filter(isDim).length;
+          if (dimCount !== 1 || cs.length < 2 || cs.length > 3 || i.points !== 120) { bad++; if (ex2.length < 3) ex2.push(`形 ${b.join(',')}`); }
+        }
+        // 点の合計 = 技の点の合計（技の点・コンボ・種類・難しさ・ジャッジ）が、いつも、数として成り立つ（NaN・負の技がない）
+        if (!Number.isFinite(r.score.total) || r.instances.some((i) => !Number.isFinite(i.total) || i.total < 0)) chainBad++;
+      }
+      t.ok(`無作為な盤（${n} 通り。分割・「→」・空き・dim を含む）: 半音ではなれたコードのとなりにある dim は、いつも、パッシング・ディミニッシュ（取りこぼし 0）`, n > 2000 && missing === 0, ex2.join(' | '));
+      t.ok('無作為な盤: パッシング・ディミニッシュの技は、いつも、dim が1つ + となりのコード（1〜2つ）の形・120点（形の崩れ 0）', bad === 0, ex2.join(' | '));
+      t.ok('無作為な盤: 点が、数として成り立つ（NaN・負がない）', chainBad === 0);
+    }
+  }
+
 }

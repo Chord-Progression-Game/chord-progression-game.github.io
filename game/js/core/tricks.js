@@ -185,10 +185,15 @@ export const TRICKS = {
   },
   passing_dim: {
     no: 26, group: 'motion', name: 'パッシング・ディミニッシュ', color: '#a99be0',
-    explain: '全音はなれた2つのコードの間に、ディミニッシュ（dim7）を、経過的にはさむ技。ルートが半音ずつ、なめらかにつながります（Ⅴ → Ⅴ♯dim7 → Ⅵm は「ソ → ソ♯ → ラ」）。ディミニッシュは、次のコードの属七の和音（Ⅲ7 など）の、ルートのない形に似ているので、次のコードへ強く解決します。のぼる形も、くだる形（Ⅵm → Ⅴ♯dim7 → Ⅴ）もあります。盤の、どの位置でも決まります。',
+    explain: 'ディミニッシュ（dim7）が、前か後のコードの、半音上か半音下にあるとき、経過の和音として加点される技（Ⅴ♯dim7 → Ⅵm7 は「ソ♯ → ラ」。ルートが半音でつながるので、次のコードへ強く解決します）。進行そのものは、ディミニッシュを飛ばして数えます（ⅣM7 → Ⅲ7｜Ⅴ♯dim7 → Ⅵm7 → Ⅰ7 は、丸サ進行として決まります）。盤の、どの位置でも決まります。',
     variants: {
-      'のぼる形': 'ルートが半音ずつのぼります（例: Ⅴ → Ⅴ♯dim7 → Ⅵm）。',
-      'くだる形': 'ルートが半音ずつくだります（例: Ⅵm → Ⅴ♯dim7 → Ⅴ）。',
+      'のぼる形': '前のコードから、半音ずつのぼって、次のコードへ（例: Ⅴ → Ⅴ♯dim7 → Ⅵm）。',
+      'くだる形': '前のコードから、半音ずつくだって、次のコードへ（例: Ⅵm → Ⅴ♯dim7 → Ⅴ）。',
+      '行って、もどる形': '前のコードの、半音上か半音下の dim7 へ寄り道して、同じルートのコードへもどります（例: Ⅵm → Ⅴ♯dim7 → Ⅵm7）。',
+      '次のコードの半音下から': 'dim7 のルートが、次のコードの半音下。次のコードへ、導音のように、強く解決します（例: Ⅴ♯dim7 → Ⅵm7。前のコードが Ⅲ7 でも決まります）。',
+      '次のコードの半音上から': 'dim7 のルートが、次のコードの半音上。半音さがって、次のコードへ解決します（例: Ⅴ♯dim7 → Ⅴ7）。',
+      '前のコードの半音上へ': '前のコードの、半音上に dim7 を置きます（例: Ⅴ → Ⅴ♯dim7）。',
+      '前のコードの半音下へ': '前のコードの、半音下に dim7 を置きます（例: Ⅵm → Ⅴ♯dim7）。',
     },
   },
   blues8: {
@@ -284,18 +289,53 @@ export function isLineCliche(evs) {
   return false;
 }
 
-// ---- パッシング・ディミニッシュの判定（2026-11-24）----
-//   全音はなれたダイアトニックの2つのコードの間に、ディミニッシュ（dim7）を、経過的にはさむ。ルートが半音ずつ、のぼる（X → X♯dim → Y）かくだる。例: Ⅴ → Ⅴ♯dim7 → Ⅵm
-const DIATONIC_ROOTS = [0, 2, 4, 5, 7, 9, 11];
-export function isPassingDim(evs) {
-  if (!evs || evs.length < 2) return false;
-  const a = evs[0].chord, d = evs[1].chord, b = evs[2] ? evs[2].chord : null;
-  if (a.isRepeat || d.isRepeat || d.type !== 'dim7' || a.type === 'dim7' || !DIATONIC_ROOTS.includes(a.rootPc)) return false;
-  const up = rootMotion(a, d) === 1, down = rootMotion(d, a) === 1;
-  if (!up && !down) return false;
-  if (!b) return true;
-  if (b.isRepeat || b.type === 'dim7' || !DIATONIC_ROOTS.includes(b.rootPc)) return false;
-  return up ? rootMotion(d, b) === 1 : rootMotion(b, d) === 1;
+// ---- パッシング・ディミニッシュの判定（2026-11-24。2026-11-25 に、ご指定で作りなおし）----
+//   ディミニッシュ（dim7・dim）が、前か後のコードの、半音上か半音下にあるとき、経過の和音（パッシング・ディミニッシュ）として、加点する。
+//   進行そのものは、そのディミニッシュを飛ばして、評価する（例: ⅣM7 → Ⅲ7｜Ⅴ♯dim7 → Ⅵm7 → Ⅰ7 は、Ⅴ♯dim7 を飛ばして、丸サ進行。Ⅴ♯dim7 → Ⅵm7 の「ソ♯ → ラ」が、パッシング・ディミニッシュ）
+//   ・となりが、ディミニッシュではないコードで、ルートが半音はなれているときだけ（となりが「？」の駒のときは、使わない）
+//   ・前と後の両方が半音はなれているときは、3つのコード（前・dim・後）で、1つの技（のぼる形・くだる形・行って、もどる形）。片方だけのときは、dim とそのとなりの、2つのコード
+const isDimChord = (c) => !!c && !c.isRepeat && (c.type === 'dim7' || c.type === 'dim');
+// 並び seg の中の、パッシング・ディミニッシュ（経過の dim）の位置（イベント番号）の一覧
+export function passingDimIndexes(seg) {
+  const out = [];
+  for (let i = 0; i < seg.length; i++) {
+    const d = seg[i];
+    if (d.blocked || !isDimChord(d.chord)) continue;
+    const anchor = (e) => !!e && !e.blocked && !e.chord.isRepeat && !isDimChord(e.chord) && [1, 11].includes(rootMotion(d.chord, e.chord));
+    if (anchor(seg[i - 1]) || anchor(seg[i + 1])) out.push(i);
+  }
+  return out;
+}
+
+// 並び seg から、経過の dim を飛ばした並び（chain）を作る。ornaments: 飛ばした dim の一覧 { idx（seg の中の番号）, prev・next（となりのイベント。半音でつながっているものだけ。なければ null）}
+//   dim を飛ばしたら、同じコードが並んだ（Ⅵm → dim → Ⅵm）ときは、同じコードの連続 = 「→」と同じ（1つにまとめる）。もとのイベントは、書きかえない（まとめるときは、写しを使う）
+//   map: seg の番号 → chain の番号（飛ばした dim は -1）
+export function chainOf(seg) {
+  const idx = passingDimIndexes(seg);
+  if (!idx.length) return { chain: seg, ornaments: [], map: seg.map((_, i) => i) };
+  const skip = new Set(idx);
+  const chain = [], map = new Array(seg.length).fill(-1);
+  seg.forEach((ev, i) => {
+    if (skip.has(i)) return;
+    const last = chain[chain.length - 1];
+    if (last && last.chord === ev.chord) chain[chain.length - 1] = { ...last, last: ev.last, positions: [...last.positions, ...ev.positions] };
+    else chain.push(ev);
+    map[i] = chain.length - 1;
+  });
+  const near = (d, e) => (e && !e.blocked && !e.chord.isRepeat && !isDimChord(e.chord) && [1, 11].includes(rootMotion(d.chord, e.chord)) ? e : null);
+  const ornaments = idx.map((i) => ({ idx: i, ev: seg[i], prev: near(seg[i], seg[i - 1]), next: near(seg[i], seg[i + 1]), prevIdx: i - 1, nextIdx: i + 1 }));
+  return { chain, ornaments, map };
+}
+
+// 経過の dim の技の、形の名前（variants）。前・次: となりのイベント（半音はなれているものだけ。なければ null）
+function passingDimVariant(prev, d, next) {
+  if (prev && next) {
+    const up = rootMotion(prev.chord, d.chord) === 1 && rootMotion(d.chord, next.chord) === 1;
+    const down = rootMotion(prev.chord, d.chord) === 11 && rootMotion(d.chord, next.chord) === 11;
+    return up ? 'のぼる形' : down ? 'くだる形' : '行って、もどる形';
+  }
+  if (next) return rootMotion(d.chord, next.chord) === 1 ? '次のコードの半音下から' : '次のコードの半音上から';
+  return rootMotion(prev.chord, d.chord) === 1 ? '前のコードの半音上へ' : '前のコードの半音下へ';
 }
 
 // セカンダリードミナント: ドミナント（ドミナント7th。Ⅵ の長三和音も、Ⅱm のドミナント）が、Ⅰ（主和音）以外のコードへ、ルートが4度上がって進む動き（Ⅴ7→Ⅰ は、ふつうのドミナントなので、含めない）
@@ -381,9 +421,9 @@ export const PATTERNS = [
   { id: 'cliche', kind: 'cliche', tier: 88, steps: [ANY_PIECE, ANY_PIECE, ANY_PIECE], check: (evs) => isLineCliche(evs), points: 150,
     extend: [{ steps: [ANY_PIECE, ANY_PIECE], check: (evs) => isLineCliche(evs), points: 150, variant: '5つの和音' }, { steps: [ANY_PIECE], check: (evs) => isLineCliche(evs), points: 100, variant: '4つの和音' }],
     advancedHint: true, hintAdvanced: true, noStartHint: true },
-  // パッシング・ディミニッシュ: X → X♯dim7 → Y（ルートが半音ずつ、のぼる・くだる）
-  { id: 'passing_dim', kind: 'passing_dim', tier: 86, steps: [ANY_PIECE, (c) => !c.isRepeat && c.type === 'dim7', ANY_PIECE], check: (evs) => isPassingDim(evs), points: 120,
-    bonus: (evs) => ({ points: 0, variant: rootMotion(evs[0].chord, evs[1].chord) === 1 ? 'のぼる形' : 'くだる形' }),
+  // パッシング・ディミニッシュ（2026-11-25 作りなおし）: dim7 が、前か後のコードの、半音上か半音下にあるとき。進行は、dim を飛ばして評価する（analyze の、ふつうの取り合いには入らない。chainOf と、下の ornament の処理が決める）。
+  //   ここは、点数・ヒントの定義（ヒントは、「発展」に出す）
+  { id: 'passing_dim', kind: 'passing_dim', tier: 86, ornament: true, steps: [ANY_PIECE, (c) => isDimChord(c)], check: () => false, points: 120,
     advancedHint: true, hintAdvanced: true, noStartHint: true },
   // ---- tier 85: ツーファイブワン（強進行が2回つながる。短調の ⅶm7-5→Ⅲ7→Ⅵm7 なども含む）----
   { id: 'two_five_one', kind: 'dominant_motion', variant: 'ツーファイブワン', tier: 85,
@@ -522,7 +562,9 @@ function seamPass(n, segments, claimed, claimedKinds, instances) {
 // ------------------------------------------------------------
 export function analyze(board, table, opts = {}) {
   const ctx = { phrase: opts.slotsPerPhrase || PHRASE };
-  const segments = buildSegments(board, table, opts.split);
+  const rawSegments = buildSegments(board, table, opts.split);
+  const chained = rawSegments.map((sg) => chainOf(sg));            // 経過の dim（パッシング・ディミニッシュ）を飛ばした並び。技・ジャッジは、これで探す（2026-11-25）
+  const segments = chained.map((c) => c.chain);
   const claimed = new Set();                        // 取られたつながり "セグメント番号:イベント番号"（その番号のイベントから、次のイベントへ）
   const claimedKinds = new Map();                   // 取られたつながり → 'generic'（ふつうの強進行・弱進行・半音下）か 'named'（名前のついた技）。ジャッジの「解決」が使う
   const instances = [];
@@ -544,7 +586,7 @@ export function analyze(board, table, opts = {}) {
     // その優先度の、すべての候補を集める → 左から・長いものから取る
     const cands = [];
     segments.forEach((seg, si) => {
-      for (const pat of PATTERNS.filter((p) => p.tier === tier)) {
+      for (const pat of PATTERNS.filter((p) => p.tier === tier && !p.ornament)) {
         const len = pat.steps.length;
         for (let i = 0; i + len <= seg.length; i++) {
           const evs = seg.slice(i, i + len);
@@ -593,6 +635,22 @@ export function analyze(board, table, opts = {}) {
     }
   }
   if (board.length === 8) seamPass(board.length, segments, claimed, claimedKinds, instances);          // 8番 → 1番（ループのつなぎ目）の進行系の技
+  // パッシング・ディミニッシュ: 飛ばした dim ごとに、1つの技（dim とそのとなりのコード。進行のつながり（claimed）は、取らない）
+  chained.forEach((c, si) => {
+    for (const o of c.ornaments) {
+      const evs = [o.prev, o.ev, o.next].filter(Boolean);
+      const variant = passingDimVariant(o.prev, o.ev, o.next);
+      const kind = TRICKS.passing_dim, pat = PATTERNS.find((pp) => pp.id === 'passing_dim');
+      const anchors = [o.prev ? c.map[o.prevIdx] : -1, o.next ? c.map[o.nextIdx] : -1].filter((k) => k >= 0);
+      instances.push({
+        id: 'passing_dim', kind: 'passing_dim', group: kind.group, variant, name: kind.name, sub: kind.sub || null, color: kind.color,
+        segment: si, from: Math.min(...anchors), to: Math.max(...anchors),                 // となりのコード（chain の番号）。コンボは、この番号で、前後の技とつながる
+        startPos: Math.min(...evs.map((e) => e.first)), endPos: Math.max(...evs.map((e) => e.last)), endFirst: evs[evs.length - 1].first,
+        positions: evs.flatMap((e) => e.positions), chords: evs.map((e) => e.chord.name), symbols: evs.map((e) => e.chord.symbol),
+        points: pat.points, generic: false, soft: false, reason: kind.variants[variant] || kind.explain,
+      });
+    }
+  });
   instances.sort((a, b) => a.startPos - b.startPos || b.endPos - a.endPos);
   oddities.sort((a, b) => a.startPos - b.startPos);
 
@@ -636,7 +694,7 @@ export function analyze(board, table, opts = {}) {
   // コードの難しさのボーナス: 盤の上の、技に使われている「ちがう駒」ごとに、1回だけ（「→」と、「？」の駒は除く）。技に使われていない駒は、数えない
   const levelPieces = [];
   const usedIds = new Set();
-  segments.forEach((seg) => seg.forEach((ev) => {
+  rawSegments.forEach((seg) => seg.forEach((ev) => {
     if (ev.blocked || ev.chord.isRepeat || !ev.positions.some((p) => inTrick.has(p)) || usedIds.has(ev.chord.id)) return;
     usedIds.add(ev.chord.id);
     const bonus = SCORE.levelBonus[ev.chord.level] || 0;

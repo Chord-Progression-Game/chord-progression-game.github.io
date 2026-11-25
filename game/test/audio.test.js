@@ -28,6 +28,26 @@ function rms(buf, a, b) {
   return Math.sqrt(s / Math.max(1, i1 - i0));
 }
 const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+// 音の強さを、周波数ごとに調べる（FFT。基数2）。区間 [a, a+size/SR) 秒の、Hann 窓つき。戻り値: 各ビン（SR/size Hz ごと）の強さ（2乗）
+function spectrum(buf, a, size = 8192) {
+  const d = buf.getChannelData(0), i0 = Math.floor(a * SR);
+  const re = new Float64Array(size), im = new Float64Array(size);
+  for (let i = 0; i < size; i++) re[i] = (d[i0 + i] || 0) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / size));
+  for (let i = 1, j = 0; i < size; i++) { let bit = size >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { const t = re[i]; re[i] = re[j]; re[j] = t; } }
+  for (let len = 2; len <= size; len <<= 1) {
+    const ang = (-2 * Math.PI) / len;
+    for (let i = 0; i < size; i += len) for (let k = 0; k < len / 2; k++) {
+      const wr = Math.cos(ang * k), wi = Math.sin(ang * k), ur = re[i + k], ui = im[i + k];
+      const vr = re[i + k + len / 2] * wr - im[i + k + len / 2] * wi, vi = re[i + k + len / 2] * wi + im[i + k + len / 2] * wr;
+      re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+    }
+  }
+  const out = new Float64Array(size / 2);
+  for (let i = 0; i < size / 2; i++) out[i] = re[i] * re[i] + im[i] * im[i];
+  return out;
+}
+// スペクトルの、f1〜f2 Hz の合計
+const bandPower = (sp, f1, f2, size = 8192) => { let t = 0; for (let i = Math.max(1, Math.floor(f1 * size / SR)); i <= Math.min(sp.length - 1, Math.floor(f2 * size / SR)); i++) t += sp[i]; return t; };
 function peakOf(buf, a, b) {
   const d = buf.getChannelData(0), i0 = Math.floor(a * SR), i1 = Math.min(d.length, Math.floor(b * SR));
   let p = 0; for (let i = i0; i < i1; i++) p = Math.max(p, Math.abs(d[i]));
@@ -422,7 +442,7 @@ export async function run(t) {
     // lead は、コードの音色の一覧には、出さない
     t.ok('メロディの音色（lead）は、コードの音色の一覧に出ない', !INSTRUMENT_IDS.includes('lead'));
     // loopSlotAt: 時刻 → 周回の何マス目か
-    { const c3 = new OfflineAudioContext(1, SR, SR); const e3 = new AudioEngine(c3, table, presets); e3.bpm = 120; e3.refTime = 0.5; e3.refSlot = 0;
+    { const c3 = new OfflineAudioContext(1, SR, SR); const e3 = new AudioEngine(c3, table, presets); e3.bpm = 120; e3.refTime = 0.5; e3.refSlot = 0; e3.playing = true;
       t.eq('周回の位置: 0.5秒 = 0マス、1.5秒 = 8マス、8.5秒 = 0マス（1周 = 64マス = 8秒）', [e3.loopSlotAt(0.5), e3.loopSlotAt(1.5), e3.loopSlotAt(8.5)], [0, 8, 0]); }
   }
 
@@ -557,9 +577,9 @@ export async function run(t) {
     t.eq('巻き戻しの音: ほとんど動かさなければ無音（しきい値より遅い・0・NaN）', [scrubParams(0).amp, scrubParams(SCRUB_SILENT_BELOW * 0.5).amp, scrubParams(NaN).amp], [0, 0, 0]);
     const speeds = [0.1, 0.5, 1, 2, 5, 10, 30];
     const ps = speeds.map((v) => scrubParams(v, -1));
-    t.ok('巻き戻しの音: 速く動かすほど、大きく・高く（風切り音の帯域も、のこぎり波も）なる（単調）', ps.every((p, i) => i === 0 || (p.amp > ps[i - 1].amp && p.noiseHz > ps[i - 1].noiseHz && p.whineHz > ps[i - 1].whineHz)));
+    t.ok('巻き戻しの音: 速く動かすほど、大きく・高く（水の音の中心も、テープの音も）・ゆらぎも、はやくなる（単調）', ps.every((p, i) => i === 0 || (p.amp > ps[i - 1].amp && p.waterHz > ps[i - 1].waterHz && p.toneHz > ps[i - 1].toneHz && p.bubbleRate > ps[i - 1].bubbleRate && p.swirlHz > ps[i - 1].swirlHz)));
     t.ok('巻き戻しの音: ゆっくり動かしても聞こえる（0.5倍速で、最大の 25% 以上）・上限をこえない', scrubParams(0.5).amp > 0.25 * scrubParams(SCRUB_MAX_SPEED).amp && scrubParams(1e6).amp === scrubParams(SCRUB_MAX_SPEED).amp);
-    t.ok('巻き戻しの音: 向きで、のこぎり波の高さが変わる（早送りは、巻き戻しより高い）。大きさは同じ', scrubParams(4, 1).whineHz > scrubParams(4, -1).whineHz && scrubParams(4, 1).amp === scrubParams(4, -1).amp);
+    t.ok('巻き戻しの音: 向きで、テープの音の高さが変わる（早送りは、巻き戻しより高い）。大きさは同じ', scrubParams(4, 1).toneHz > scrubParams(4, -1).toneHz && scrubParams(4, 1).amp === scrubParams(4, -1).amp);
     // ---- つかんだ位置の、まるめ方（はなしたとき）----
     t.eq('はなした位置: ステップの頭に 2マス以内なら、頭に吸いつく（0.9 → 0・7 → 8・17 → 16・18 → 16・19 → 19（3マス離れている））', [snapSlot(0.9, 64), snapSlot(7, 64), snapSlot(17, 64), snapSlot(18, 64), snapSlot(19, 64)], [0, 8, 16, 16, 19]);
     t.eq('はなした位置: 頭から遠ければ、いちばん近いマス（5 → 5・12.4 → 12・13.6 → 14）', [snapSlot(5, 64), snapSlot(12.4, 64), snapSlot(13.6, 64)], [5, 12, 14]);
@@ -643,7 +663,21 @@ export async function run(t) {
       const ctx = new OfflineAudioContext(2, SR, SR);
       const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
       e.getBoard = () => board('Ⅰ Ⅴ ⅣM7 Ⅰ'); e.setPatterns({ drumId: 2, backingId: 1 });
-      t.eq('つかむ: 演奏していないときは、つかめない（シークバーは、使えない）', [e.scrubBegin(), e.scrub], [false, null]);
+      // 演奏を止めているとき（2026-11-25。ご依頼: 止めているときも、動かして、そこから再生できるように）: つかめる。はなしても、演奏は始まらない。位置（cueSlot）が決まる。つぎに演奏を始めると、そこから
+      t.eq('止まっているとき: 位置は 0（はじめ）。つかめる（つかんだ位置は、その位置）', [e.loopPosAt().pos, e.cueSlot, e.scrubBegin(), e.scrub && e.scrub.pos], [0, 0, true, 0]);
+      e.scrubTo(21.3, 100); e.scrubTo(21.3, 116);
+      t.eq('止まっているとき: 動かしている間も、つかんでいる位置を、位置として返す', Math.abs(e.loopPosAt().pos - 21.3) < 1e-9, true);
+      t.eq('止まっているとき: はなしても、演奏は始まらない。位置（cueSlot）だけ決まる（21.3 → いちばん近いマス 21）', [e.scrubEnd(21.3, { nowMs: 200 }), e.playing, e.cueSlot, e.scrub, e.loopPosAt().pos], [21, false, 21, null, 21]);
+      t.eq('止まっているとき: つぎに演奏を始めると、その位置（21）から。始めたら、位置は 0 にもどる（つぎに止めたときのため）', (() => { e.start(); const r = [e.playing, e.refSlot, e.slotIndex >= 21, e.cueSlot]; return r; })(), [true, 21, true, 0]);
+      t.eq('止まっていたところから始めたときの、画面への知らせ: ステップの途中（21 = 3番目の 6マス目）から。「シーク」として届く', (() => { const st = e.events.filter((x) => x.type === 'step'); return [st.length > 0 && st[0].step, st.length > 0 && !!st[0].seek]; })(), [2, true]);
+      e.stop();
+      t.eq('演奏を止めると、位置は 0（はじめ）にもどる', [e.cueSlot, e.loopPosAt().pos], [0, 0]);
+      e.seekTo(40);
+      t.eq('止まっているとき: seekTo（つかまずに動かす）でも、位置が決まる。演奏は始まらない', [e.cueSlot, e.playing, e.scrub], [40, false, null]);
+      e.scrubBegin(); e.scrubTo(12, 10);
+      e.start();
+      t.eq('止まっているとき: つかんだまま演奏を始めたら、つかんだ位置（12）から始まる。つかみは外れる', [e.playing, e.refSlot, e.scrub], [true, 12, null]);
+      e.stop();
       e.start();
       const idx0 = e.slotIndex;
       t.ok('つかむ: 演奏中なら、つかめる。つかんだ位置は、いまの演奏の位置', e.scrubBegin() === true && e.scrub !== null && e.scrub.len === 64 && e.scrub.pos >= 0);
@@ -676,7 +710,8 @@ export async function run(t) {
       const ctx = new OfflineAudioContext(2, SR, SR);
       const e = new AudioEngine(ctx, table, presets); await e.load('../audio/');
       e.getBoard = () => board('Ⅰ Ⅴ'); e.setPatterns({ drumId: 0, backingId: 1 });
-      t.eq('seekTo: 演奏していなければ、何もしない', e.seekTo(8), null);
+      t.eq('seekTo: 演奏していなくても、位置を決める（止まっているときの位置。8 → 8）。演奏は始まらない', [e.seekTo(8), e.cueSlot, e.playing], [8, 8, false]);
+      e.cueSlot = 0;
       e.start();
       t.eq('seekTo: 演奏中は、その位置から続く（8 → 8）', [e.seekTo(8), e.refSlot, e.scrub], [8, 8, null]);
       t.eq('seekTo: 範囲の外は、はしにおさまる（500 → 63）', e.seekTo(500), 63);
@@ -700,9 +735,32 @@ export async function run(t) {
     {
       const r = [];
       for (const v of [0.3, 1.5, 6, 24]) r.push(rms(await scrubRender([[0, v, -1]], 0.8), 0.2, 0.6));
-      t.ok(`巻き戻しの音: 速く動かすほど、大きい（${r.map((x) => x.toFixed(3)).join(' < ')}）`, r.every((x, i) => i === 0 || x > r[i - 1]) && r[0] > 0.002);
+      t.ok(`巻き戻しの音: 速く動かすほど、大きい（${r.map((x) => x.toFixed(3)).join(' < ')}。速い側は、上限で頭打ち）`, r[0] < r[1] && r[1] < r[2] && r[3] > r[2] * 0.95 && r[0] > 0.002);
       const back = await scrubRender([[0, 6, -1]], 0.8), fwd = await scrubRender([[0, 6, 1]], 0.8);
       t.ok('巻き戻しの音: 向きで、音色が変わる（早送りのほうが、高い音の成分が多い）', power(fwd, 0, 0.2, 0.6, 1500) !== power(back, 0, 0.2, 0.6, 1500));
+    }
+    {
+      // 水っぽい質感（2026-11-25。ご指定: ジッパーを閉じるような、擦れる音ではなく、DJ の速戻しのような、水っぽい音）
+      //   水のような音（低めの帯域にしぼったやわらかいノイズ + 中心のゆらぎ）が主役・高い音のシャリシャリがない・音量が、ぽこぽことゆらぐ
+      const render = async (levels, speed = 6, dir = -1) => {
+        const ctx = new OfflineAudioContext(2, SR, SR);
+        const snd = new ScrubSound(ctx, ctx.destination, levels);
+        snd.begin(0); snd.update(speed, dir, 0); snd.end(0.95);
+        return ctx.startRendering();
+      };
+      const all = await render({}), toneOnly = await render({ water: 0, swirl: 0 }), waterOnly = await render({ tone: 0 });
+      const sp = spectrum(all, 0.3);
+      const edges = [80, 200, 400, 800, 1600, 3200, 4800, 7200, 12000], bands = edges.slice(1).map((f2, i) => bandPower(sp, edges[i], f2));
+      const tot = bands.reduce((x, y) => x + y, 0), high = (bands[6] + bands[7]) / tot;
+      let num = 0, den = 0; for (let i = 1; i < sp.length; i++) { num += (i * SR / 8192) * sp[i]; den += sp[i]; }
+      const centroid = num / den;
+      const win = []; for (let a0 = 0.3; a0 < 0.9; a0 += 0.01) win.push(rms(all, a0, a0 + 0.01));
+      const mean = win.reduce((x, y) => x + y, 0) / win.length, cv = Math.sqrt(win.reduce((x, y) => x + (y - mean) ** 2, 0) / win.length) / mean;
+      const rAll = rms(all, 0.3, 0.9), rTone = rms(toneOnly, 0.3, 0.9), rWater = rms(waterOnly, 0.3, 0.9);
+      t.log(`水っぽい音（速さ6倍）: 全体 ${rAll.toFixed(4)} / テープの音だけ ${rTone.toFixed(4)} / 水の音だけ ${rWater.toFixed(4)} ・ 4.8kHz より高い成分 ${(high * 100).toFixed(2)}% ・ 重心 ${Math.round(centroid)}Hz ・ 音量のゆらぎ（ばらつき ÷ 平均）${cv.toFixed(3)} ・ 帯域（${edges.join('/')}Hz）${bands.map((x) => (x / tot * 100).toFixed(1)).join(' / ')}%`);
+      t.ok('水っぽい音: 水の音が主役（テープの音より大きい）・どちらも聞こえる', rWater > rTone && rTone > rAll * 0.12);
+      t.ok(`水っぽい音: 高い音のシャリシャリ（4.8kHz より高い成分）がない（${(high * 100).toFixed(2)}%）・重心は、低〜中音域（${Math.round(centroid)}Hz）`, high < 0.04 && centroid > 300 && centroid < 2500);
+      t.ok(`水っぽい音: 音量が、ぽこぽことゆらぐ（ばらつき ${cv.toFixed(3)}。一定の音ではない）が、ゆらぎすぎない`, cv > 0.04 && cv < 0.9);
     }
     {
       // エンジンを通した音: つかんで動かすと、全体の通り道（マスター）を通って、鳴る。止めると消える

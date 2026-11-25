@@ -12,7 +12,7 @@
 //   ・いつも続く和音（level 3）は、技にならなくても、おすすめに入れる。おすすめが4つをこえたぶんは、発展に回す（つぶさない）
 // 数字（level）は、順位をつけるための仮の値。ふつうの音楽の流れを、ヒントが外れないようにするための、ものさし
 
-import { analyze, buildSegments, isHeadV, isDominantType, PATTERNS, PHRASE, TRICKS } from './tricks.js';
+import { analyze, buildSegments, chainOf, isHeadV, isDominantType, PATTERNS, PHRASE, TRICKS } from './tricks.js';
 import { flowReason, isDominantV, isStableTonic, isSus } from './sense.js';
 import { continuationGrade, LEVEL_LABEL } from './continuation.js';
 import { stepFit, stepSegments, fitSummary } from './melody.js';
@@ -96,7 +96,8 @@ export function suggest(board, table, allowedIds, opts = {}) {
 
   // 左の駒（文脈）
   const segs = buildSegments(board, table, opts.split);
-  const seg = segs.find((s) => s.length && s[s.length - 1].last === cursor - 1) || [];
+  const rawSeg = segs.find((s) => s.length && s[s.length - 1].last === cursor - 1) || [];
+  const seg = rawSeg.length ? chainOf(rawSeg).chain : [];                      // 経過の dim（パッシング・ディミニッシュ）は、飛ばした並び（2026-11-25。進行は、dim を飛ばして評価する）
   const context = seg.map((e) => e.chord.name);
 
   let cands = [];
@@ -133,7 +134,9 @@ export function suggest(board, table, allowedIds, opts = {}) {
     const progressText = best ? `${[...new Set(PATTERNS.filter((p) => p.steps.length >= 3 && prefixLength(p, virtual) === best.L).map((p) => `「${trickLabel(p.kind, p.variant)}」`))].join('')}の途中` : '';
     // どのコードのあとでも成立する終わり方（偽終止の「前は何でもよい」・ピカルディ終止）だけが当たったときは、前の駒から自然につながるときだけ（Ⅰ7 → Ⅵm・Ⅶm7♭5 → Ⅵm などは、出さない）
     //   ループのつなぎ目（8番 → 1番）の技だけが当たったときも、同じ（つなぎ目の技は、いまの駒から先のつながりを見ているので、前の駒とのつながりが不自然なら、勧めない）
-    if (named.length && !best && named.every((i) => i.soft || i.seam) && lv !== null && lv < 1) continue;
+    //   経過の dim（パッシング・ディミニッシュ。2026-11-25）だけが当たったときも、同じ。ただし、あとに続くコードに、半音でつながるとき（「次のコードの半音下から」など。前のコードとの間にはさむ形も）は、前の駒から離れていても出す（dim は、あとのコードへ解決するので）
+    const dimToNext = (i) => i.id === 'passing_dim' && !/^前のコードの/.test(i.variant || '');
+    if (named.length && !best && named.every((i) => i.soft || i.seam || i.id === 'passing_dim') && lv !== null && lv < 1 && !named.some(dimToNext)) continue;
     const curated = named.length > 0 || !!best;                // 名前のついた技・進行の途中（技の定義が、そう決めている駒）
     if (named.length) {
       const special = named.every((i) => (PATTERNS.find((p) => p.id === i.id) || {}).hintAdvanced);     // ピカルディ終止など、特別な終わり方だけのときは、「発展」に出す
@@ -346,7 +349,7 @@ export function suggest(board, table, allowedIds, opts = {}) {
       for (const z of allowed) {
         if (z.id === y.id) continue;                                  // 同じ和音の連続は、進行がふえない（「→」と同じ）
         const after = analyze(withChord(b2, cursor + 1, z.id), table, opts);
-        const hit = after.instances.find((i) => !i.generic && i.positions.includes(cursor + 1) && i.positions.includes(cursor) && !(isEndPattern(i.id) && (cursor + 1) % PHRASE !== PHRASE - 1));
+        const hit = after.instances.find((i) => !i.generic && i.id !== 'passing_dim' && i.positions.includes(cursor + 1) && i.positions.includes(cursor) && !(isEndPattern(i.id) && (cursor + 1) % PHRASE !== PHRASE - 1));       // パッシング・ディミニッシュは、先読みの理由にしない（どの和音のあとにも、半音の dim は置けるため）
         if (hit) {
           const dist = Math.min(((y.rootPc - prevRoot) + 12) % 12, ((prevRoot - y.rootPc) + 12) % 12);
           look.push({ chord: y, tier: 3, score: 100 - dist * 5 - y.level, reason: `次に ${z.name} を置くと「${trickLabel(hit.kind, hit.variant)}」`, gain: 0, level: lv ?? 2 });

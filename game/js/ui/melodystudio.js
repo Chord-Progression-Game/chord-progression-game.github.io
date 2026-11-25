@@ -15,6 +15,7 @@ import { NOTE_LO, NOTE_HI } from '../game/usermelody.js';
 const FN_VAR = { T: 'var(--T)', SD: 'var(--SD)', D: 'var(--D)', X: 'var(--X)', R: 'var(--R)' };
 const LENGTHS = [{ slots: 1, label: '16分' }, { slots: 2, label: '8分' }, { slots: 4, label: '4分' }, { slots: 8, label: '2分' }];
 const BLACK = new Set([1, 3, 6, 8, 10]);
+const DOUBLE_MS = 350;          // ダブルクリック（ダブルタップ）と見る、2回の間隔（コードの編集画面と同じ）
 const RANK = { avoid: 0, unstable: 1, none: 2, passing: 3, tension: 4, chord: 5 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const octaveOf = (m) => Math.floor(m / 12) - 1;                                // 音の高さの番号（ド4 = 真ん中のド）
@@ -459,6 +460,16 @@ export class MelodyStudio {
     }
     if (d.mode === 'marquee') { this.el.box.classList.add('hidden'); this.renderNotes(); this.renderInfo(); this.renderTools(); return; }
     this.doc.commitEdit();
+    if (!d.moved && !d.additive) {                                                            // 動かさずに離した: 同じ音を、続けて2回（ダブルクリック・ダブルタップ）で、その音を消す（コードの編集画面と同じ。2026-11-25）
+      const now = performance.now();
+      if (this._lastTap && this._lastTap.id === d.id && now - this._lastTap.t < DOUBLE_MS && this.doc.item(d.id)) {
+        this._lastTap = null;
+        this.sel.delete(d.id); if (this.selected === d.id) this.selected = this.sel.size ? [...this.sel].pop() : null;
+        this.doc.remove(d.id);
+        return;                                                                                // 消すと、doc の変更の知らせで、画面は、描きなおされる
+      }
+      this._lastTap = { id: d.id, t: now };
+    } else this._lastTap = null;
     if (!d.moved && !d.additive && d.ids.length > 1) this.setSel([d.id], d.id);               // 選んだ音を、動かさずに、クリックだけ: その1つだけの選びに
     this.refresh(true);
   }

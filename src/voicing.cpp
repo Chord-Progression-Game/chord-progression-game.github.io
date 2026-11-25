@@ -32,16 +32,23 @@ static const int PLAN_INF = 1000000000;
 static const int PLAN_SHIFT[3] = {0, -12, +12};  // 先に並べたものが、同じ費用のときに選ばれる（本来の高さが先）
 
 // a → b のつながりの種類。0 = ふつう / 1 = 終止（強進行で、フレーズの終わり・つなぎ目の、主和音 Ⅰ へ）/ 2 = 解決（途中の主和音・Ⅵm 系へ）
+static bool planStrong(const VoicePlanNode& a, const VoicePlanNode& b) { return mod12(b.pc - a.pc) == 5; }
+
+// セカンダリードミナントの動き: 強進行で、ドミナント（または、ドミナントへ向かう Ⅱm 系）から、Ⅰ系以外へ。4度上を優先する（5度下に、罰 VOICE_PLAN_SEC）
+static bool planSecondary(const VoicePlanNode& a, const VoicePlanNode& b) {
+  return planStrong(a, b) && b.goal != 2 && (a.dom || (a.ii && b.dom));
+}
+
 static int planKind(const VoicePlanNode& a, const VoicePlanNode& b, bool seam) {
-  if (mod12(b.pc - a.pc) != 5 || b.goal == 0) return 0;
+  if (!planStrong(a, b) || b.goal == 0 || planSecondary(a, b)) return 0;
   return (b.goal == 2 && (seam || b.final)) ? 1 : 2;
 }
 
 static int planTransition(const VoicePlanNode& a, const VoicePlanNode& b, int ha, int hb, int kind) {
   int d = hb - ha;
-  if (mod12(b.pc - a.pc) == 5) {  // 強進行: 完全4度上（+5）か、完全5度下（-7）
+  if (planStrong(a, b)) {  // 強進行: 完全4度上（+5）か、完全5度下（-7）
     if (d == 5) return 5 + (kind == 1 ? VOICE_PLAN_CAD1 : (kind == 2 ? VOICE_PLAN_CAD2 : 0));
-    if (d == -7) return 7;
+    if (d == -7) return 7 + (planSecondary(a, b) ? VOICE_PLAN_SEC : 0);
     return VOICE_PLAN_BIG + absInt(d);
   }
   return absInt(d);  // ほかは、近いほどよい
@@ -99,6 +106,14 @@ static int8_t goalLevel(const Chord& c) {
   if (off == 0) return 2;
   return (off == 9 && (c.type == CT_MINOR || c.type == CT_MIN7 || c.type == CT_MAJOR)) ? 1 : 0;
 }
+
+// ドミナントか（セカンダリードミナントの、もとになる和音）: ドミナント7th・Ⅴ・Ⅵ の長三和音（game/js/core/voicing.js の isDomSource と同じ）
+static bool planIsDom(const Chord& c) {
+  int off = degreeOffset(c);
+  return c.type == CT_DOM7 || (c.type == CT_MAJOR && (off == 7 || off == 9));
+}
+// ツーファイブの Ⅱ にあたる、マイナー系の和音（isIiChord と同じ）
+static bool planIsIi(const Chord& c) { return c.type == CT_MINOR || c.type == CT_MIN7 || c.type == CT_MIN7B5; }
 
 // step 番目の位置で鳴らすコード（なければ nullptr）。grooveResolveChordId と同じ規則
 static const Chord* planChordAt(const uint8_t* rawIds, int numSteps, int step) {
@@ -159,6 +174,8 @@ void planBoardShifts(const uint8_t* rawIds, int numSteps, const Key& key, int ba
     plan[i].pc = (int8_t)rootOf(i);
     plan[i].goal = goalLevel(*nodes[i].chord);
     plan[i].final = endsPhrase(i);
+    plan[i].dom = planIsDom(*nodes[i].chord);
+    plan[i].ii = planIsIi(*nodes[i].chord);
   }
   planOctaves(plan, count, baseC, shifts);
   for (int k = 0; k < numSteps && k < VOICE_PLAN_MAX_NODES; k++) {
