@@ -1,5 +1,10 @@
 # Chord-Progression-Game01 引き継ぎメモ（コード進行ゲーム。物理デバイスは RC522 8台）
 
+## ★ 待つときの決まり（2026-11-25。ユーザーの不安への対応）— 長い処理を待つ前に読む
+- **Claude は、ユーザーのメッセージ・道具の結果・Claude Code 本体の通知（`run_in_background` の終了・予約の時刻）が届いたときだけ動く。自分で自分に通知は送れない。** 長い処理（全体テスト・ビルド・公開の反映）を待つときは、**必ず、再開のきっかけを仕込んでから、ターンを閉じる**。仕込まないと、ユーザーが声をかけるまで、止まったままになる（画面に「考え中」の表示も出ないので、ユーザーには、中断したように見える）。
+- **仕込み方**: 処理は `nohup sh スクリプト &`（ログの最後に `ALL_DONE`）で回す。**それとは別に**、`Bash` の `run_in_background: true` で `until grep -q ALL_DONE ログ; do sleep 10; done` を回す（終わると通知が届いて、自動で再開する。2026-11-25 に、ユーザーが何も送らなくても、実際に再開した）。念のため、`CronCreate` で1回だけの予約も入れ、通知が先に届いたら `CronDelete`。`nohup … &` だけでは、通知は来ない（仕様の読み。単独では未確認）。
+- **ターンを閉じる前に、ユーザーへ書く**: ①何が動いているか（`ps`・ログの最新行）②何が自分を起こすか ③いつまでに来なければ、一声ほしいか。進み具合は、メモリ（`project-roundNN`）にも書く（使用量の制限・スリープ・VS Code を閉じたときは、再開しない。2026-11-18・11-24 に、制限で止まった）。
+
 ## ★ 作業フォルダの引っ越し（2026-11-23 夕）— 最初に読む
 - **これ以降の作業フォルダは、`/Users/woodbell/Documents/GitHub/Chord-Progression-Game`（GitHub のクローン）だけ。** 以前の `Documents/PlatformIO/Projects/Chord-Progression-Game01(The_Original_One_Is_ESP32_Octo_01)`（旧フォルダ）は、**バックアップ**。編集しない。ここから先の章に出る「このフォルダ」「`Chord-Progression-Game01(...)`」は、旧フォルダのことがある（記録は、引っ越し前のまま）。
 - リモート: `https://github.com/Chord-Progression-Game/chord-progression-game.github.io`（**公開リポジトリ**。2026-11-23 に API で確認。最初は `Chord-Progression-Game` という名前で、組織のサイトを `https://chord-progression-game.github.io/` にするため、名前を変えた。古い URL は転送される。Mac のフォルダ名は `Chord-Progression-Game` のまま）。ブランチは `main`。**コミット・プッシュ: 2026-11-25 から、作業が完了したら、Claude が自動で行う**（ユーザーの指示:「今後こちらから断りがない限り」。それまでは、ユーザーが GitHub Desktop で行っていた）。メッセージは日本語（「プロトタイプ261125_01 …」の形）。**`docs/screens/261125/` は commit しない**（ユーザーの指示。`.git/info/exclude` に書いてある）。公開なので、秘密・個人の情報・他人の権利物（歌詞・楽譜・未許諾の音源）を入れない。push で、GitHub Pages が自動で公開される。
